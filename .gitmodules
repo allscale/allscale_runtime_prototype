@@ -1,0 +1,3 @@
+[submodule "api"]
+	path = api
+	url = git@goedis.dps.uibk.ac.at:herbert.jordan/allscale_api.git

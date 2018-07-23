@@ -10,6 +10,9 @@
 #include <cstdint>
 #include <ostream>
 
+#include "allscale/utils/assert.h"
+#include "allscale/runtime/com/node_service.h"
+
 namespace allscale {
 namespace runtime {
 namespace com {
@@ -36,9 +39,14 @@ namespace com {
 		 */
 		rank_t rank;
 
+		/**
+		 * A register of services running on this node.
+		 */
+		NodeServiceRegistry services;
+
 	public:
 
-		Node(Network& network, rank_t rank) : network(network), rank(rank) {};
+		Node(Network& network, rank_t rank) : network(network), rank(rank), services(*this) {};
 
 		// -------- observer --------
 
@@ -56,6 +64,22 @@ namespace com {
 			return network;
 		}
 
+		/**
+		 * Starts a new service on this node.
+		 */
+		template<typename S, typename ... Args>
+		S& startService(Args&& ... args) {
+			return services.startService<S>(std::forward<Args>(args)...);
+		}
+
+		/**
+		 * Obtains access to a selected service running on this node.
+		 */
+		template<typename S>
+		S& getService() const {
+			return services.getService<S>();
+		}
+
 		// -------- protocol --------
 
 		/**
@@ -71,8 +95,8 @@ namespace com {
 		 */
 		template<typename Op>
 		auto run(const Op& op) -> decltype(op(*this)) {
-			// fix rank
-			tp_local_rank = getRank();
+			// fix the local node
+			tp_local_node = this;
 			// just run this operation on this node
 			return op(*this);
 		}
@@ -81,10 +105,18 @@ namespace com {
 		// -------- utilities --------
 
 		/**
+		 * Obtains a reference to the local node instance.
+		 */
+		static Node& getLocalNode() {
+			assert_true(tp_local_node);
+			return *tp_local_node;
+		}
+
+		/**
 		 * Obtains the rank of the node currently processed in this thread.
 		 */
 		static rank_t getLocalRank() {
-			return tp_local_rank;
+			return getLocalNode().getRank();
 		}
 
 		/**
@@ -97,7 +129,7 @@ namespace com {
 		/**
 		 * A thread private value to trace who is currently executing code.
 		 */
-		static thread_local rank_t tp_local_rank;
+		static thread_local Node* tp_local_node;
 
 	};
 

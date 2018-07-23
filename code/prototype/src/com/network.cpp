@@ -24,7 +24,7 @@ namespace com {
 	std::ostream& operator<<(std::ostream& out, const Network::Statistics& stats) {
 		out << std::setw(10);
 		out << "rank, bytes_received, bytes_sent, received_calls, sent_calls\n";
-		for(int i=0; i<stats.stats.size(); i++) {
+		for(std::size_t i=0; i<stats.stats.size(); i++) {
 			out << std::setw(4) << i << "," << stats.stats[i] << "\n";
 		}
 		return out;

@@ -7,9 +7,49 @@ namespace allscale {
 namespace runtime {
 namespace com {
 
+	struct DummyService {
 
-	TEST(Node, Creation) {
-		// TODO: extend or drop
+		int x;
+
+		DummyService(Node&, int value=0) : x(value) {}
+
+	};
+
+
+	TEST(Node, Service) {
+
+		// create a network (implicit node creation)
+		Network net(2);
+
+		// create a service
+		net.runOn(0,[](Node& node){
+			auto s = node.startService<DummyService>();
+			EXPECT_EQ(0,s.x);
+		});
+
+		// retrieve the service
+		net.runOn(0,[](Node& node){
+			auto s = node.getService<DummyService>();
+			EXPECT_EQ(0,s.x);
+		});
+
+		// create a service with initial value
+		net.runOn(1,[](Node& node){
+			auto s = node.startService<DummyService>(12);
+			EXPECT_EQ(12,s.x);
+		});
+
+		// retrieve the service and check the value
+		net.runOn(1,[](Node& node){
+			auto s = node.getService<DummyService>();
+			EXPECT_EQ(12,s.x);
+		});
+
+		// check that original service is not effected
+		net.runOn(0,[](Node& node){
+			auto s = node.getService<DummyService>();
+			EXPECT_EQ(0,s.x);
+		});
 	}
 
 

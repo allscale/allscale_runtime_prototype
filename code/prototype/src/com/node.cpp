@@ -11,7 +11,7 @@ namespace com {
 		return x+1;
 	}
 
-	thread_local rank_t Node::tp_local_rank = 0;
+	thread_local Node* Node::tp_local_node = nullptr;
 
 } // end of namespace com
 } // end of namespace runtime

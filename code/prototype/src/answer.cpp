@@ -1,5 +1,3 @@
-#include "allscale_runtime_prototype/example/answer.h"
-
 
 namespace allscale_runtime_prototype {
 namespace example {

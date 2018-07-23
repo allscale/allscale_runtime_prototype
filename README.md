@@ -1,8 +1,10 @@
 # allscale_runtime_prototype
 
-Description goes here...
+A prototype implementation of the AllScale runtime system providing a foundation for the development of the data item manager, data migration, inter node load balancing and resilience.
 
 ## Installation
+
+This project is a development project, results will be integrated in the actual AllScale runtime system. Thus, no installation supported.
 
 ### Dependencies
 

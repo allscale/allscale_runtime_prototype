@@ -54,14 +54,19 @@ namespace work {
 		// the rank this worker is running on
 		com::rank_t rank;
 
+		// the node this worker is working on (if there is one)
+		com::Node* node;
+
 		// the number of tasks processed by this worker
 		std::uint32_t taskCounter;
 
 	public:
 
-		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), taskCounter(0) {}
+		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), node(nullptr), taskCounter(0) {}
 
-		Worker(com::Node& node) : Worker(node.getRank()) {}
+		Worker(com::Node& node) : Worker(node.getRank()) {
+			this->node = &node;
+		}
 
 		Worker(const Worker&) = delete;
 		Worker(Worker&&) = delete;

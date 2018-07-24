@@ -3,6 +3,9 @@
 
 #include <thread>
 
+#include "allscale/runtime/com/network.h"
+#include "allscale/runtime/work/scheduler.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -17,7 +20,18 @@ namespace work {
 		assert_true(success) << "Invalid state " << st << ": cannot start non-ready worker.";
 
 		// start processing thread
-		thread = std::thread([&]{ run(); });
+		thread = std::thread([&]{
+			// if there is a node
+			if (node) {
+				// run in node context
+				node->run([&](com::Node&){
+					run();
+				});
+			} else {
+				// else run free
+				run();
+			}
+		});
 
 		// mark as running
 		st = Startup;
@@ -73,11 +87,18 @@ namespace work {
 
 	bool Worker::step() {
 
+		static std::mutex lock;
+
 		// process a task if available
 		if (auto t = queue.dequeueBack()) {
 
 			// TODO: adapt this to the network size
-			if (t->isSplitable() && t->getId().getDepth() < 4) {
+			if (t->isSplitable() && shouldSplit(t)) {
+
+				{
+					std::lock_guard<std::mutex> g(lock);
+//					std::cout << "Splitting " << t->getId() << " on node " << rank << "\n";
+				}
 
 				// in this case we split the task
 				t->split();
@@ -86,7 +107,12 @@ namespace work {
 
 				// in this case we process the task
 				// TODO: add logging support
-				std::cout << "Processing " << t->getId() << " on node " << rank << "\n";
+
+
+				{
+					std::lock_guard<std::mutex> g(lock);
+//					std::cout << "Processing " << t->getId() << " on node " << rank << "\n";
+				}
 				t->process();
 				taskCounter++;
 
@@ -117,9 +143,24 @@ namespace work {
 		Worker* worker = tl_current_worker;
 		assert_true(worker) << "Schedule invoked in non-worker context!";
 
+		// ask scheduler where to schedule task
+		auto localRank = worker->rank;
+		auto targetRank = getScheduleTarget(localRank,task);
+
+		// test whether this is local
+		if (localRank == targetRank) {
+			// => run local
+			worker->schedule(std::move(task));
+		} else {
+			// => send to remote location
+			com::Node::getLocalNode().getNetwork().runOn(targetRank,[&](com::Node& node){
+				node.getService<Worker>().schedule(std::move(task));
+			});
+		}
+
 		// schedule task locally
 		// TODO: move to different locality if required
-		worker->schedule(std::move(task));
+//		worker->schedule(std::move(task));
 	}
 
 } // end of namespace work

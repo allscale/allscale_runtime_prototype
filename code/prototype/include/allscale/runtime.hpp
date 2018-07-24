@@ -143,8 +143,16 @@ namespace allscale {
 	template<typename R>
 	using treeture = allscale::runtime::work::treeture<R>;
 
+	inline treeture<void> make_ready_treeture() {
+		return treeture<void>();
+	}
+
 namespace runtime {
 
+	// ---- utilities ----
+
+	// special marker for returning values that are not used
+	struct unused_type {};
 
 	// ---- dependencies ----
 
@@ -203,6 +211,11 @@ namespace runtime {
 			std::forward<Closure>(closure),std::forward<F>(impl)};
 	}
 
+	// the parallel treeture connector
+	treeture<void> treeture_parallel(const dependencies& /* ignored */, treeture<void>&& a, treeture<void>&& b) {
+		return allscale::runtime::work::treeture_parallel(std::move(a),std::move(b));
+	}
+
 } // end of namespace runtime
 
 	template<typename WorkItemDesc, typename ... Args>
@@ -243,6 +256,7 @@ namespace runtime {
 		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
 
 	}
+
 
 } // end of namespace allscale
 

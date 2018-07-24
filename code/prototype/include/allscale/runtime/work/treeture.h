@@ -111,6 +111,10 @@ namespace work {
 
 		treeture(R&& value) : state(detail::make_complete_state(std::move(value))) {}
 
+		bool valid() const {
+			return (bool)state;
+		}
+
 		bool isDone() const {
 			return !state || state->isDone();
 		}
@@ -141,7 +145,11 @@ namespace work {
 
 		treeture() {}
 
-		treeture(detail::treeture_state_handle<void>& state) : state(state) {}
+		treeture(const detail::treeture_state_handle<void>& state) : state(state) {}
+
+		bool valid() const {
+			return (bool)state;
+		}
 
 		bool isDone() const {
 			return !state || state->isDone();
@@ -153,8 +161,21 @@ namespace work {
 			}
 		}
 
+		treeture<void> get_left_child() const {
+			// TODO: refine this
+			return *this;
+		}
+
+		treeture<void> get_right_child() const {
+			// TODO: refine this
+			return *this;
+		}
 	};
 
+	/**
+	 * A connector for treetures producing a void treeture waiting for the completion of the given treetures.
+	 */
+	treeture<void> treeture_parallel(treeture<void>&& a, treeture<void>&& b);
 
 } // end of namespace com
 } // end of namespace runtime

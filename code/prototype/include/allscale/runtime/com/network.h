@@ -231,6 +231,16 @@ namespace com {
 		}
 
 		/**
+		 * Runs the given operation within each node of the network.
+		 */
+		template<typename Op>
+		void runOnAll(const Op& op) {
+			for(Node& n : nodes) {
+				n.run(op);
+			}
+		}
+
+		/**
 		 * Obtains the network transfer statistics collected so far.
 		 */
 		const Statistics& getStatistics() const {

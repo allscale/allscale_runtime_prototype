@@ -7,6 +7,8 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+	thread_local Worker* tl_current_worker = nullptr;
+
 	void Worker::start() {
 
 		// switch from ready to startup
@@ -49,13 +51,14 @@ namespace work {
 
 	void Worker::run() {
 
+		// set thread-local worker
+		tl_current_worker = this;
+
 		// while running ..
 		while(true) {
 
 			// process all tasks in the queue
-			while(auto t = queue.dequeueBack()) {
-				t->process();
-			}
+			while(step()) {}
 
 			// if terminated => terminate thread
 			if (state != Running) return;
@@ -64,6 +67,33 @@ namespace work {
 			std::this_thread::yield();
 		}
 
+		// reset thread local worker
+		tl_current_worker = nullptr;
+	}
+
+	bool Worker::step() {
+
+		// process a task if available
+		if (auto t = queue.dequeueBack()) {
+			t->process();
+			taskCounter++;
+			return true;
+		}
+
+		// no task was available
+		return false;
+
+	}
+
+
+	void yield() {
+		// attempt to process another task while waiting
+		if (Worker* worker = tl_current_worker) {
+			worker->step();
+		} else {
+			// yield this thread (not a worker)
+			std::this_thread::yield();
+		}
 	}
 
 } // end of namespace work

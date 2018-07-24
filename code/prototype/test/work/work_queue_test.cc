@@ -29,8 +29,8 @@ namespace work {
 		WorkQueue queue;
 
 		// create a number of tasks
-		auto t1 = make_task<NullTask>(TaskID(0));
-		auto t2 = make_task<NullTask>(TaskID(2));
+		TaskPtr t1 = make_task<NullTask>(TaskID(0));
+		TaskPtr t2 = make_task<NullTask>(TaskID(2));
 
 		// save references to tasks
 		Task& tr1 = *t1.get();

@@ -14,6 +14,9 @@
 #include "allscale/utils/assert.h"
 #include "allscale/api/core/impl/reference/task_id.h"
 
+#include "allscale/runtime/work/treeture.h"
+#include "allscale/runtime/work/work_item.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -106,7 +109,7 @@ namespace work {
 	 * A factory function for task pointer.
 	 */
 	template<typename T, typename ... Args>
-	TaskPtr make_task(const TaskID& id, Args&& ... args) {
+	std::unique_ptr<T> make_task(const TaskID& id, Args&& ... args) {
 		return std::make_unique<T>(id,std::forward<Args>(args)...);
 	}
 
@@ -142,6 +145,74 @@ namespace work {
 		virtual bool isSplitable() const override { return false; }
 		virtual void processInternal() override {};
 		virtual void splitInternal() override {};
+	};
+
+	namespace detail {
+
+		// a utility to link the result of an operation to a treeture state
+
+		template<typename R>
+		struct set_result {
+			template<typename Op>
+			void operator()(detail::treeture_state_handle<R>& state, const Op& op) {
+				assert_true(state);
+				state->set(op().get());
+			}
+		};
+
+		template<>
+		struct set_result<void> {
+			template<typename Op>
+			void operator()(detail::treeture_state_handle<void>& state, const Op& op) {
+				assert_true(state);
+				op();
+				state->set();
+			}
+		};
+
+	} // end namespace detail
+
+	/**
+	 * A task derived from a work item description.
+	 */
+	template<typename WorkItemDesc>
+	class WorkItemTask : public Task {
+
+		using closure_type = typename WorkItemDesc::closure_type;
+		using result_type = typename WorkItemDesc::result_type;
+
+		// the closure parameterizing this work item task
+		closure_type closure;
+
+		// the state of the promise - for all handed out treetures
+		detail::treeture_state_handle<result_type> state;
+
+	public:
+
+		WorkItemTask(const TaskID& id, closure_type&& closure)
+			: Task(id), closure(std::move(closure)), state(detail::make_incomplete_state<result_type>()) {}
+
+		virtual bool isSplitable() const override {
+			return WorkItemDesc::can_spit_test::call(closure);
+		}
+
+		virtual void processInternal() override {
+			detail::set_result<result_type>()(state,[&](){
+				return WorkItemDesc::process_variant::execute(closure);
+			});
+		}
+
+		virtual void splitInternal() override {
+			detail::set_result<result_type>()(state,[&](){
+				return WorkItemDesc::split_variant::execute(closure);
+			});
+		}
+
+		// obtains the treeture referencing the value produced by this task
+		treeture<result_type> getTreeture() const {
+			return state;
+		}
+
 	};
 
 } // end of namespace com

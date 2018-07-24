@@ -20,3 +20,14 @@ glob_tests(prototype_tests test)
 foreach(test ${prototype_tests})
 	add_module_unittest(prototype ${test})
 endforeach(test)
+
+# add integration tests
+glob_executables(prototype_integration_tests test)
+foreach(test ${prototype_integration_tests})
+	file_name_parts(${test} test test)
+
+    set(tgt "it_${test_subdir_}${test_name}")
+    add_executable(${tgt} ${test})
+    target_link_libraries(${tgt} prototype)
+    add_test(NAME ${tgt} COMMAND $<TARGET_FILE:${tgt}>)
+endforeach(test)

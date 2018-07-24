@@ -18,6 +18,7 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+
 	/**
 	 * A simple class wrapping a worker thread running within a node.
 	 */
@@ -41,9 +42,12 @@ namespace work {
 		// the thread conducting the actual work
 		std::thread thread;
 
+		// the number of tasks processed by this worker
+		std::uint32_t taskCounter;
+
 	public:
 
-		Worker() : state(Ready) {}
+		Worker() : state(Ready), taskCounter(0) {}
 
 		Worker(com::Node& /* ignored */) : Worker() {}
 
@@ -68,12 +72,30 @@ namespace work {
 		 */
 		void stop();
 
+		/**
+		 * Obtains the number of processed tasks.
+		 */
+		std::uint32_t getNumProcessedTasks() const {
+			return taskCounter;
+		}
+
+		/**
+		 * A function to be called by tasks blocking within a worker.
+		 */
+		friend void yield();
+
 	private:
 
 		/**
 		 * An internal function processing tasks (the one processed by the managed thread).
 		 */
 		void run();
+
+		/**
+		 * An internal function processing zero or one scheduling steps.
+		 * Returns true if a step was processed, false otherwise.
+		 */
+		bool step();
 
 	};
 

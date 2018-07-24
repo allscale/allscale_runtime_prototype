@@ -37,7 +37,9 @@ namespace com {
 		// A handler for services.
 		template<typename S>
 		struct Service : public ServiceBase {
-			Service(S&& s) : service(std::move(s)) {}
+
+			template<typename ... Args>
+			Service(Args&& ... args) : service(std::forward<Args>(args)...) {}
 			~Service() {};
 			S service;
 		};
@@ -69,7 +71,7 @@ namespace com {
 		template<typename S, typename ... Args>
 		S& startService(Args&& ... args) {
 			assert_false(hasService<S>());
-			services[typeid(S)] = std::make_unique<Service<S>>(S(node,std::forward<Args>(args)...));
+			services[typeid(S)] = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
 			return getService<S>();
 		}
 

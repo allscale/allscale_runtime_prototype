@@ -5,6 +5,26 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+	thread_local Task* tl_current_task = nullptr;
+
+	TaskID getNewChildId() {
+		Task* current_task = tl_current_task;
+		assert_true(current_task) << "No current task in active context!";
+
+		// increment number of children
+		auto pos = current_task->num_children++;
+
+		// determine child's id
+		if (pos == 0) {
+			return current_task->getId().getLeftChild();
+		} else if (pos == 1) {
+			return current_task->getId().getRightChild();
+		} else {
+			assert_not_implemented() << "Unsupported number of children: " << pos;
+		}
+		return {};
+	}
+
 
 	void Task::process() {
 
@@ -13,8 +33,15 @@ namespace work {
 		bool success = state.compare_exchange_strong(st,Running);
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
+		// set up current task
+		auto oldTask = tl_current_task;
+		tl_current_task = this;
+
 		// process task
 		processInternal();
+
+		// reset up current task
+		tl_current_task = oldTask;
 
 		// update state done
 		st = Running;
@@ -30,8 +57,15 @@ namespace work {
 		bool success = state.compare_exchange_strong(st,Running);
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
+		// set up current task
+		auto oldTask = tl_current_task;
+		tl_current_task = this;
+
 		// split this task
 		splitInternal();
+
+		// reset up current task
+		tl_current_task = oldTask;
 
 		// update state done
 		st = Running;

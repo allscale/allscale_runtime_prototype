@@ -111,20 +111,19 @@ namespace work {
 
 		treeture(R&& value) : state(detail::make_complete_state(std::move(value))) {}
 
-		bool isDone() {
+		bool isDone() const {
 			return !state || state->isDone();
 		}
 
-		R&& get() && {
+		R&& get_result() const {
 			assert_true(state);
 			wait();
 			return state->getValue();
 		}
 
-		void wait() {
+		void wait() const {
 			while (!isDone()) {
-				// TODO: do something useful
-				std::this_thread::yield();
+				yield();
 			}
 		}
 
@@ -144,11 +143,11 @@ namespace work {
 
 		treeture(detail::treeture_state_handle<void>& state) : state(state) {}
 
-		bool isDone() {
+		bool isDone() const {
 			return !state || state->isDone();
 		}
 
-		void wait() {
+		void wait() const {
 			while (!isDone()) {
 				yield();
 			}

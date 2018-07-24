@@ -75,8 +75,23 @@ namespace work {
 
 		// process a task if available
 		if (auto t = queue.dequeueBack()) {
-			t->process();
-			taskCounter++;
+
+			// TODO: adapt this to the network size
+			if (t->isSplitable() && t->getId().getDepth() < 4) {
+
+				// in this case we split the task
+				t->split();
+
+			} else {
+
+				// in this case we process the task
+				// TODO: add logging support
+				std::cout << "Processing " << t->getId() << " on node " << rank << "\n";
+				t->process();
+				taskCounter++;
+
+			}
+
 			return true;
 		}
 
@@ -94,6 +109,17 @@ namespace work {
 			// yield this thread (not a worker)
 			std::this_thread::yield();
 		}
+	}
+
+	void schedule(TaskPtr&& task) {
+
+		// get local worker
+		Worker* worker = tl_current_worker;
+		assert_true(worker) << "Schedule invoked in non-worker context!";
+
+		// schedule task locally
+		// TODO: move to different locality if required
+		worker->schedule(std::move(task));
 	}
 
 } // end of namespace work

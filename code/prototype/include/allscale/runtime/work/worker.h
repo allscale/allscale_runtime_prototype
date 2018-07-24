@@ -10,7 +10,7 @@
 #include <atomic>
 #include <thread>
 
-#include "allscale/runtime/com/node_service.h"
+#include "allscale/runtime/com/node.h"
 
 #include "allscale/runtime/work/work_queue.h"
 
@@ -18,6 +18,15 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+	/**
+	 * A function to be called by tasks blocking within a worker.
+	 */
+	void yield();
+
+	/**
+	 * A function to schedule.
+	 */
+	void schedule(TaskPtr&&);
 
 	/**
 	 * A simple class wrapping a worker thread running within a node.
@@ -42,14 +51,17 @@ namespace work {
 		// the thread conducting the actual work
 		std::thread thread;
 
+		// the rank this worker is running on
+		com::rank_t rank;
+
 		// the number of tasks processed by this worker
 		std::uint32_t taskCounter;
 
 	public:
 
-		Worker() : state(Ready), taskCounter(0) {}
+		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), taskCounter(0) {}
 
-		Worker(com::Node& /* ignored */) : Worker() {}
+		Worker(com::Node& node) : Worker(node.getRank()) {}
 
 		Worker(const Worker&) = delete;
 		Worker(Worker&&) = delete;
@@ -83,6 +95,11 @@ namespace work {
 		 * A function to be called by tasks blocking within a worker.
 		 */
 		friend void yield();
+
+		/**
+		 * A function to schedule.
+		 */
+		friend void schedule(TaskPtr&&);
 
 	private:
 

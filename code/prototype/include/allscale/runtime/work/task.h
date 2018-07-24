@@ -24,6 +24,9 @@ namespace work {
 	// we are reusing the reference implementations task ID
 	using TaskID = allscale::api::core::impl::reference::TaskID;
 
+	// obtains a child ID for a newly spawned task (only valid if triggered during the execution of a parent task)
+	TaskID getNewChildId();
+
 	/**
 	 * An abstract base class of all tasks.
 	 */
@@ -42,6 +45,11 @@ namespace work {
 
 		// indicates the completion state of this task
 		std::atomic<State> state;
+
+		friend TaskID getNewChildId();
+
+		// a counter for the number of child tasks
+		int num_children = 0;
 
 	public:
 
@@ -156,7 +164,7 @@ namespace work {
 			template<typename Op>
 			void operator()(detail::treeture_state_handle<R>& state, const Op& op) {
 				assert_true(state);
-				state->set(op().get());
+				state->set(op().get_result());
 			}
 		};
 
@@ -175,10 +183,10 @@ namespace work {
 	/**
 	 * A task derived from a work item description.
 	 */
-	template<typename WorkItemDesc>
+	template<typename WorkItemDesc, typename Closure>
 	class WorkItemTask : public Task {
 
-		using closure_type = typename WorkItemDesc::closure_type;
+		using closure_type = Closure;
 		using result_type = typename WorkItemDesc::result_type;
 
 		// the closure parameterizing this work item task

@@ -27,8 +27,6 @@ namespace work {
 		using split_variant = SplitVariant;
 		using process_variant = ProcessVariant;
 		using can_spit_test = CanSplitTest;
-
-		using closure_type = typename allscale::utils::lambda_traits<decltype(&SplitVariant::execute)>::arg1_type;
 	};
 
 } // end of namespace com

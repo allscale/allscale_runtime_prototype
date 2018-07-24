@@ -44,7 +44,7 @@ namespace runtime {
 			//  - create task linked to treeture
 			//  - return treeture
 
-			using task_type = work::WorkItemTask<MainWorkItem>;
+			using task_type = work::WorkItemTask<MainWorkItem,decltype(std::make_tuple(argc,argv))>;
 
 			// create the task
 			auto task = work::make_task<task_type>(0,std::make_tuple(argc,argv));
@@ -60,7 +60,7 @@ namespace runtime {
 		});
 
 		// wait for completion
-		auto res = std::move(treeture).get();
+		auto res = std::move(treeture).get_result();
 
 		// shutdown network
 		std::cout << "Shutting down runtime ...\n";
@@ -143,7 +143,111 @@ namespace allscale {
 	template<typename R>
 	using treeture = allscale::runtime::work::treeture<R>;
 
+namespace runtime {
+
+
+	// ---- dependencies ----
+
+	/**
+	 * A class to model task dependencies.
+	 */
+	struct dependencies {
+		/* not implemented yet */
+	};
+
+	// creates empty dependencies
+	dependencies after() {
+		return dependencies{};
+	}
+
+	// creates dependencies from a list of dependencies
+	template<typename ... TaskRefs>
+	typename std::enable_if<(sizeof...(TaskRefs) > 0), dependencies>::type
+	after(TaskRefs&& ... task_refs) {
+		assert_not_implemented() << "Dependencies not yet supported in prototype!";
+		return after();
+	}
+
+	// ---- a prec operation wrapper ----
+
+	template<typename R, typename Closure, typename F>
+	struct prec_operation
+	{
+		typedef typename std::decay<Closure>::type closure_type;
+		typedef typename std::decay<F>::type f_type;
+
+		closure_type closure;
+		f_type impl;
+
+		template <typename A>
+		treeture<R> operator()(A&& a) {
+			return (*this)(dependencies{}, std::forward<A>(a));
+		}
+
+		template <typename A>
+		treeture<R> operator()(dependencies const& d, A&& a) {
+			return treeture<R>(impl(d,std::tuple_cat(std::make_tuple(std::forward<A>(a)),std::move(closure))));
+		}
+
+		template <typename A>
+		treeture<R> operator()(dependencies && d, A&& a) {
+			return treeture<R>(impl(std::move(d),std::tuple_cat(std::make_tuple(std::forward<A>(a)),std::move(closure))));
+		}
+
+	};
+
+	template<typename A, typename R, typename Closure, typename F>
+	prec_operation<R,Closure, F> make_prec_operation(Closure && closure, F&& impl)
+	{
+		return prec_operation<R, Closure, F>{
+			std::forward<Closure>(closure),std::forward<F>(impl)};
+	}
+
+} // end of namespace runtime
+
+	template<typename WorkItemDesc, typename ... Args>
+	treeture<typename WorkItemDesc::result_type> spawn(const runtime::work::TaskID& id, Args&& ... args) {
+
+		// create task based on work item description
+		using task_type = runtime::work::WorkItemTask<WorkItemDesc,decltype(std::make_tuple(std::forward<Args>(args)...))>;
+
+		// create the task
+		auto task = runtime::work::make_task<task_type>(id,std::make_tuple(std::forward<Args>(args)...));
+
+		// extract treeture
+		auto treeture = task->getTreeture();
+
+		// schedule task
+		runtime::work::schedule(std::move(task));
+
+		// return treeture
+		return std::move(treeture);
+	}
+
+
+	template<typename WorkItemDesc, typename ... Args>
+	treeture<typename WorkItemDesc::result_type> spawn_first_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
+		static std::atomic<int> taskCounter(0);
+
+		runtime::work::TaskID newId(++taskCounter);
+		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
+	}
+
+	template<typename WorkItemDesc, typename ... Args>
+	treeture<typename WorkItemDesc::result_type> spawn_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
+
+		static std::atomic<int> taskCounter(0);
+
+		// get the ID of the child
+		auto newId = runtime::work::getNewChildId();
+		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
+
+	}
+
 } // end of namespace allscale
+
+
+
 
 // --------- Macro definitions ---------
 #define ALLSCALE_REGISTER_TREETURE_TYPE(X)

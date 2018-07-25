@@ -7,6 +7,17 @@ namespace allscale {
 namespace runtime {
 namespace com {
 
+	/**
+	 * A simple ping service.
+	 */
+	struct PingService {
+
+		PingService(com::Node&) {}
+
+		int ping(int x) { return x + 1; };
+
+	};
+
 
 	TEST(Network, Creation) {
 		// just see that it can be instantiated
@@ -42,11 +53,14 @@ namespace com {
 		Network net(2);
 		EXPECT_EQ(2,net.numNodes());
 
+		// install ping service
+		net.installServiceOnNodes<PingService>();
+
 		// run an operation on node 0
 		net.runOn(0,[](Node& node){
 			auto& net = node.getNetwork();
-			auto other = net.getNode(1);
-			EXPECT_EQ(5,other.call(&Node::ping,4));
+			auto ping = net.getRemoteProcedure(1,&PingService::ping);
+			EXPECT_EQ(5,ping(4));
 		});
 
 	}
@@ -56,6 +70,9 @@ namespace com {
 		// create a network with a two nodes
 		Network net(2);
 		EXPECT_EQ(2,net.numNodes());
+
+		// install ping service
+		net.installServiceOnNodes<PingService>();
 
 		// extract references to statistics
 		{
@@ -77,8 +94,8 @@ namespace com {
 		// send a message from 0 to 1
 		net.runOn(0,[](Node& node){
 			auto& net = node.getNetwork();
-			auto other = net.getNode(1);
-			EXPECT_EQ(5,other.call(&Node::ping,4));
+			auto ping = net.getRemoteProcedure(1,&PingService::ping);
+			EXPECT_EQ(5,ping(4));
 		});
 
 		// extract references to statistics
@@ -102,9 +119,9 @@ namespace com {
 		// send two messages from 1 to 0
 		net.runOn(1,[](Node& node){
 			auto& net = node.getNetwork();
-			auto other = net.getNode(0);
-			EXPECT_EQ(5,other.call(&Node::ping,4));
-			EXPECT_EQ(5,other.call(&Node::ping,4));
+			auto ping = net.getRemoteProcedure(0,&PingService::ping);
+			EXPECT_EQ(5,ping(4));
+			EXPECT_EQ(9,ping(8));
 		});
 
 		// extract references to statistics

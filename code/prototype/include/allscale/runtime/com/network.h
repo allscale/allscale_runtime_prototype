@@ -89,77 +89,27 @@ namespace com {
 				return stats[rank];
 			}
 
-			/**
-			 * Support printing of statistics.
-			 */
-			friend std::ostream& operator<<(std::ostream&,const Statistics&);
-
-		};
-
-		/**
-		 * A handle for remote node references.
-		 */
-		class RemoteNode {
-
-			// the targeted node
-			Node& node;
-
-			// the statistics to work with
-			Statistics& stats;
-
-		public:
-
-			/**
-			 * Creates a new remote reference to the provided node.
-			 */
-			RemoteNode(Node& node, Statistics& stats) : node(node), stats(stats) {}
-
-			/**
-			 * The universal interface for remote procedure calls to other nodes.
-			 */
-			template<typename R, typename ... Args>
-			R call(R(Node::*fun)(Args...), Args... args) const {
-				auto src = Node::getLocalRank();
-				auto trg = node.getRank();
-				stats[src].sent_calls += 1;
-				stats[trg].received_calls += 1;
-				return transfer(trg,src,(node.*fun)(transfer(src,trg,args)...));
-			}
-
-			/**
-			 * The universal interface for remote procedure calls to other nodes (const methods).
-			 */
-			template<typename R, typename ... Args>
-			R call(R(Node::*fun)(Args...) const, Args... args) const {
-				auto src = Node::getLocalRank();
-				auto trg = node.getRank();
-				stats[src].sent_calls += 1;
-				stats[trg].received_calls += 1;
-				return transfer(trg,src,(node.*fun)(transfer(src,trg,args)...));
-			}
-
-		private:
 
 			/**
 			 * The function to simulate the transfer of data.
 			 */
 			template<typename T>
-			T transfer(rank_t src, rank_t trg, const T& value) const {
+			T transfer(rank_t src, rank_t trg, const T& value) {
 				static_assert(allscale::utils::is_serializable<T>::value, "Encountered non-serializable data element.");
+
+				// shortcut for local communication
+				if (src == trg) return value;
 
 				// perform serialization
 				auto archive = allscale::utils::serialize(value);
 
 				// record transfer volume
 				auto size = archive.getBuffer().size();
-				stats[src].sent_bytes += size;
-				stats[trg].received_bytes += size;
+				(*this)[src].sent_bytes += size;
+				(*this)[trg].received_bytes += size;
 
 				// de-serialize value
 				auto res = allscale::utils::deserialize<T>(archive);
-
-				// make sure serialization is correct
-				assert_eq(value,res);
 
 				// done (avoid extra copy)
 				return std::move(res);
@@ -170,13 +120,119 @@ namespace com {
 			 */
 			const allscale::utils::Archive& transfer(rank_t src, rank_t trg, const allscale::utils::Archive& a) {
 
+				// shortcut for local communication
+				if (src == trg) return a;
+
 				// record transfer volume
 				auto size = a.getBuffer().size();
-				stats[src].sent_bytes += size;
-				stats[trg].received_bytes += size;
+				(*this)[src].sent_bytes += size;
+				(*this)[trg].received_bytes += size;
 
 				// nothing else to do here
 				return a;
+			}
+
+			/**
+			 * Support printing of statistics.
+			 */
+			friend std::ostream& operator<<(std::ostream&,const Statistics&);
+
+		};
+
+		/**
+		 * A handle for remote procedures.
+		 */
+		template<typename S, typename R, typename ... Args>
+		class RemoteProcedure {
+
+			// the targeted node
+			Node& node;
+
+			// the targeted service function
+			R(S::* fun)(Args...);
+
+			// the statistics to work with
+			Statistics& stats;
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			RemoteProcedure(Node& node, R(S::*fun)(Args...), Statistics& stats)
+				: node(node), fun(fun), stats(stats) {}
+
+			/**
+			 * Realizes the actual remote procedure call.
+			 */
+			R operator()(Args ... args) const {
+				auto src = Node::getLocalRank();
+				auto trg = node.getRank();
+
+				// short-cut for local communication
+				if (src == trg) {
+					return node.run([&](Node&){
+						return (node.getService<S>().*fun)(std::forward<Args>(args)...);
+					});
+				}
+
+				// perform an actual remote call
+				stats[src].sent_calls += 1;
+				stats[trg].received_calls += 1;
+				return node.run([&](Node&){
+					return stats.transfer(trg,src,(node.getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
+				});
+			}
+
+		};
+
+		/**
+		 * A handle for broadcasts.
+		 */
+		template<typename S, typename ... Args>
+		class Broadcast {
+
+			// the nodes to address
+			std::vector<Node>& nodes;
+
+			// the targeted service function
+			void(S::* fun)(Args...);
+
+			// the statistics to work with
+			Statistics& stats;
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			Broadcast(std::vector<Node>& nodes, void(S::*fun)(Args...), Statistics& stats)
+				: nodes(nodes), fun(fun), stats(stats) {}
+
+			/**
+			 * Realizes the actual broadcast.
+			 */
+			void operator()(Args ... args) const {
+				auto src = Node::getLocalRank();
+				for(auto& node : nodes) {
+					auto trg = node.getRank();
+
+					// short-cut for local communication
+					if (src == trg) {
+						node.run([&](Node&){
+							(node.getService<S>().*fun)(std::forward<Args>(args)...);
+						});
+						continue;
+					}
+
+					// perform remote call
+					stats[src].sent_calls += 1;
+					stats[trg].received_calls += 1;
+					node.run([&](Node&){
+						(node.getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+					});
+
+				}
 			}
 
 		};
@@ -211,11 +267,19 @@ namespace com {
 		// -------- remote procedure calls --------
 
 		/**
-		 * Obtains a remote reference to a node of this network.
+		 * Obtains a handle for performing a remote procedure call of a selected service.
 		 */
-		RemoteNode getNode(rank_t rank) {
-			assert_lt(rank,numNodes());
-			return { nodes[rank], stats };
+		template<typename S, typename R, typename ... Args>
+		RemoteProcedure<S,R,Args...> getRemoteProcedure(rank_t rank, R(S::*fun)(Args...)) {
+			return { nodes[rank], fun, stats };
+		}
+
+		/**
+		 * Obtains a handle for performing broad-casts on a selected remote service.
+		 */
+		template<typename S, typename ... Args>
+		Broadcast<S,Args...> broadcast(void(S::*fun)(Args...)) {
+			return { nodes, fun, stats };
 		}
 
 		// -------- development and debugging interface --------
@@ -238,6 +302,16 @@ namespace com {
 			for(Node& n : nodes) {
 				n.run(op);
 			}
+		}
+
+		/**
+		 * Installs a service on all nodes.
+		 */
+		template<typename S, typename ... Args>
+		void installServiceOnNodes(const Args& ... args) {
+			runOnAll([&](Node& n){
+				n.startService<S>(args...);
+			});
 		}
 
 		/**

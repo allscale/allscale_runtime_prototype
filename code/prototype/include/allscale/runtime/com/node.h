@@ -11,6 +11,7 @@
 #include <ostream>
 
 #include "allscale/utils/assert.h"
+#include "allscale/utils/finalize.h"
 #include "allscale/runtime/com/node_service.h"
 
 namespace allscale {
@@ -58,13 +59,6 @@ namespace com {
 		}
 
 		/**
-		 * Obtains the network this node is part of.
-		 */
-		Network& getNetwork() const {
-			return network;
-		}
-
-		/**
 		 * Starts a new service on this node.
 		 */
 		template<typename S, typename ... Args>
@@ -96,8 +90,13 @@ namespace com {
 		template<typename Op>
 		auto run(const Op& op) -> decltype(op(*this)) {
 			// fix the local node
+			auto old = tp_local_node;
 			tp_local_node = this;
-			// just run this operation on this node
+
+			// ensure recovery after execution
+			auto _ = allscale::utils::run_finally([&]{ tp_local_node = old; });
+
+			// run this operation on this node
 			return op(*this);
 		}
 
@@ -108,8 +107,23 @@ namespace com {
 		 * Obtains a reference to the local node instance.
 		 */
 		static Node& getLocalNode() {
-			assert_true(tp_local_node);
+			assert_true(tp_local_node) << "Not processed within a node!";
 			return *tp_local_node;
+		}
+
+		/**
+		 * Obtains a reference to a locally running service instance.
+		 */
+		template<typename S>
+		static S& getLocalService() {
+			return getLocalNode().getService<S>();
+		}
+
+		/**
+		 * Obtains a reference to the network within which the current code is processed.
+		 */
+		static Network& getNetwork() {
+			return getLocalNode().network;
 		}
 
 		/**

@@ -50,10 +50,12 @@ namespace com {
 			 */
 			struct Entry {
 
-				std::uint64_t sent_bytes = 0;			// < number of send bytes
+				std::uint64_t sent_bytes = 0;			// < number of sent bytes
 				std::uint64_t received_bytes = 0;		// < number of received bytes
-				std::uint32_t sent_calls = 0;	  		// < number of send calls
+				std::uint32_t sent_calls = 0;	  		// < number of sent calls
 				std::uint32_t received_calls = 0;		// < number or received calls
+				std::uint32_t sent_bcasts = 0;			// < number of sent broadcasts
+				std::uint32_t received_bcasts = 0;		// < number of received broadcasts
 
 				friend std::ostream& operator<<(std::ostream&,const Entry&);
 
@@ -214,6 +216,7 @@ namespace com {
 			 */
 			void operator()(Args ... args) const {
 				auto src = Node::getLocalRank();
+				stats[src].sent_bcasts += 1;
 				for(auto& node : nodes) {
 					auto trg = node.getRank();
 
@@ -226,8 +229,7 @@ namespace com {
 					}
 
 					// perform remote call
-					stats[src].sent_calls += 1;
-					stats[trg].received_calls += 1;
+					stats[trg].received_bcasts += 1;
 					node.run([&](Node&){
 						(node.getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
 					});

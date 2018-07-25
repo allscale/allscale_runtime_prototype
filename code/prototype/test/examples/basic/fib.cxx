@@ -81,7 +81,7 @@ int32_t IMP_fibEager(int32_t var_0) {
 int32_t IMP_fib_static(int32_t p1);
 
 /* ------- Function Definitions --------- */
-int32_t allscale_fun_5(int32_t var_0, char** var_1) {
+int32_t allscale_fun_5(int32_t, char**) {
     const int32_t var_2 = 10;
     const int32_t var_3 = IMP_fib_static(var_2);
     const int32_t var_4 = IMP_fibEager(var_2);
@@ -108,7 +108,7 @@ allscale::treeture<int32_t > allscale_fun_17(hpx::util::tuple<int32_t > const& v
     return allscale::treeture<int32_t >(rec(var_0));
 }
 /* ------- Function Definitions --------- */
-hpx::util::tuple< > allscale_fun_15(hpx::util::tuple<int32_t > const& var_0) {
+hpx::util::tuple< > allscale_fun_15(hpx::util::tuple<int32_t > const&) {
     return INS_INIT(hpx::util::tuple< >){};
 }
 struct __wi_allscale_wi_1_variant_1 {
@@ -186,7 +186,7 @@ allscale::treeture<int32_t > __wi_main_variant_1::execute(hpx::util::tuple<int32
     return allscale_fun_3(var_0);
 }
 /* ------- Function Definitions --------- */
-bool allscale_fun_34(hpx::util::tuple<int32_t, char** > const& var_0) {
+bool allscale_fun_34(hpx::util::tuple<int32_t, char** > const&) {
     return (bool)false;
 }
 struct __wi_main_can_split {

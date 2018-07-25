@@ -57,7 +57,7 @@ int32_t main(int32_t var_0, char** var_1) {
 }
 
 /* ------- Function Definitions --------- */
-bool allscale_fun_241(hpx::util::tuple<int32_t, char** > const& var_0) {
+bool allscale_fun_241(hpx::util::tuple<int32_t, char** > const&) {
     return (bool)false;
 }
 struct __wi_main_can_split {
@@ -205,7 +205,7 @@ allscale::treeture<void > allscale_fun_223(allscale::runtime::dependencies const
     return allscale::spawn_first_with_dependencies<__wi_allscale_wi_1_work >(var_0, hpx::util::get<0 >(var_1), hpx::util::get<1 >(var_1));
 }
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_reference_int allscale_fun_202(IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_0, IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 const& var_1, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_no_dependencies const& var_2) {
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_reference_int allscale_fun_202(IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_0, IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 const& var_1, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_no_dependencies const&) {
     return {var_0, allscale::runtime::make_prec_operation<IMP_RecArgs_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_api_slash_include_slash_allscale_slash_api_slash_user_slash_algorithm_slash_pfor_dot_h_1115_3, void >((hpx::util::tuple<IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 > const&)INS_INIT(hpx::util::tuple<IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 >){var_1}, &allscale_fun_223)((IMP_RecArgs_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_api_slash_include_slash_allscale_slash_api_slash_user_slash_algorithm_slash_pfor_dot_h_1115_3 const&)INS_INIT(IMP_RecArgs_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_api_slash_include_slash_allscale_slash_api_slash_user_slash_algorithm_slash_pfor_dot_h_1115_3){(uint64_t)0, var_0})};
 }
 /* ------- Function Definitions --------- */
@@ -217,7 +217,7 @@ IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__co
     return (IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_reference_int&&)IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_pfor_int__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_struct_space_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_no_dependencies_returns_detail_colon__colon_loop_reference_lt_int_gt_(var_0, var_1, var_2, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_no_dependencies{});
 }
 /* ------- Function Definitions --------- */
-int32_t allscale_fun_5(int32_t var_0, char** var_1) {
+int32_t allscale_fun_5(int32_t, char**) {
     IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_pfor_int__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_returns_detail_colon__colon_loop_reference_lt_int_gt_(0, 1000, INS_INIT(IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15){});
     return 0;
 }
@@ -237,24 +237,24 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
     assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
 }
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::load(allscale::utils::ArchiveReader& var_0) {
+IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::load(allscale::utils::ArchiveReader&) {
     return {};
 }
 /* ------- Function Definitions --------- */
-void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::store(allscale::utils::ArchiveWriter& var_1) const { }
+void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::store(allscale::utils::ArchiveWriter&) const { }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::operator()(int32_t var_1) const { }
+void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::operator()(int32_t) const { }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-void IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency::store(allscale::utils::ArchiveWriter& var_1) const { }
+void IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency::store(allscale::utils::ArchiveWriter&) const { }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency::load(allscale::utils::ArchiveReader& var_0) {
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_loop_dependency::load(allscale::utils::ArchiveReader&) {
     return {};
 }
 struct IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_SubDependencies_struct_space_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_no_dependencies {
@@ -287,7 +287,7 @@ struct DummyCtorParamType {
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int::IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int(int32_t&& var_1, int32_t&& var_2, DummyCtorParamType var_3) : _begin(var_1), _end(var_2) { }
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int::IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int(int32_t&& var_1, int32_t&& var_2, DummyCtorParamType) : _begin(var_1), _end(var_2) { }
 /* ------- Function Definitions --------- */
 bool IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int::IMP_empty_returns_bool() const {
     return (*this).IMP_size_returns_size_t() == (uint64_t)0;
@@ -297,7 +297,7 @@ IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__co
     return (IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int&&)INS_INIT(IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int){var_0, var_1};
 }
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_spliter_int__static__IMP_split_returns_fragments_lt_int_gt_(uint64_t var_0, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_1) {
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_spliter_int__static__IMP_split_returns_fragments_lt_int_gt_(uint64_t, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_1) {
     int32_t const& var_2 = var_1.begin_returns_constint();
     int32_t const& var_3 = var_1.end_returns_constint();
     int32_t var_4 = var_2 + (var_3 - var_2) / 2;
@@ -380,11 +380,11 @@ uint64_t IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_
 }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool::load(allscale::utils::ArchiveReader& var_0) {
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool::load(allscale::utils::ArchiveReader&) {
     return {};
 }
 /* ------- Function Definitions --------- */
-void IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool::store(allscale::utils::ArchiveWriter& var_1) const { }
+void IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool::store(allscale::utils::ArchiveWriter&) const { }
 /* ------- Function Definitions --------- */
 uint64_t IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_volume_int_bool::operator()(int32_t var_1, int32_t var_2) const {
     return (uint64_t)(var_1 < var_2 ? var_2 - var_1 : 0);
@@ -438,7 +438,7 @@ IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__co
     return (IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int&&)INS_INIT(IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int){var_0, var_1};
 }
 /* ------- Function Definitions --------- */
-IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int allscale_fun_145(uint64_t var_0, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_1) {
+IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_fragments_int allscale_fun_145(uint64_t, IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__colon_detail_colon__colon_range_int const& var_1) {
     int32_t const& var_2 = var_1.begin_returns_constint();
     int32_t const& var_3 = var_1.end_returns_constint();
     int32_t var_4 = var_2 + (var_3 - var_2) / 2;
@@ -506,7 +506,7 @@ allscale::runtime::unused_type allscale_fun_232(hpx::util::tuple<IMP_RecArgs_IML
     return {};
 }
 /* ------- Function Definitions --------- */
-hpx::util::tuple< > allscale_fun_230(hpx::util::tuple<IMP_RecArgs_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_api_slash_include_slash_allscale_slash_api_slash_user_slash_algorithm_slash_pfor_dot_h_1115_3, IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 > const& var_0) {
+hpx::util::tuple< > allscale_fun_230(hpx::util::tuple<IMP_RecArgs_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_api_slash_include_slash_allscale_slash_api_slash_user_slash_algorithm_slash_pfor_dot_h_1115_3, IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 > const&) {
     return INS_INIT(hpx::util::tuple< >){};
 }
 struct __wi_allscale_wi_1_variant_1 {

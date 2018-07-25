@@ -14,6 +14,10 @@
 #include <iomanip>
 #include <tuple>
 
+#include "allscale/runtime/data/data_item_reference.h"
+#include "allscale/runtime/data/data_item_requirement.h"
+#include "allscale/runtime/data/data_item_manager.h"
+
 #include "allscale/runtime/work/task.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
@@ -216,6 +220,25 @@ namespace runtime {
 		return allscale::runtime::work::treeture_parallel(std::move(a),std::move(b));
 	}
 
+	// ---- Data Items ----
+
+	// import data item reference into this namespace
+	template<typename DataItemType>
+	using DataItemReference = data::DataItemReference<DataItemType>;
+
+	// import access modes
+	using allscale::runtime::data::AccessMode;
+
+	// import data item requirements into this namespace
+	template<typename DataItemType>
+	using DataItemRequirement = data::DataItemRequirement<DataItemType>;
+
+	// import requirement factory
+	using allscale::runtime::data::createDataItemRequirement;
+
+	// also import other operations
+	using allscale::runtime::data::DataItemManager;
+
 } // end of namespace runtime
 
 	template<typename WorkItemDesc, typename ... Args>
@@ -265,3 +288,6 @@ namespace runtime {
 
 // --------- Macro definitions ---------
 #define ALLSCALE_REGISTER_TREETURE_TYPE(X)
+#define REGISTER_DATAITEMSERVER_DECLARATION(X)
+#define REGISTER_DATAITEMSERVER(X)
+

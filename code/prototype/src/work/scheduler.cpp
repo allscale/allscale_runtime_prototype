@@ -56,7 +56,7 @@ namespace work {
 		// for very fine-grained tasks => process locally
 		if (t->getId().getDepth() < getCutOffLevel()) return localRank;
 
-		// for all others, determine a rank
+		// for all others, determine a rank by distributing task equally among nodes
 
 		// get the network
 		auto& net = com::Node::getLocalNode().getNetwork();

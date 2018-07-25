@@ -18,23 +18,23 @@ namespace data {
 		// create a network
 		com::Network network(9);
 
-		using mgr_t = DataFragmentManager<Grid<int,2>>;
-		mgr_t* mgr_pointer = nullptr;
-
-		// create a data fragment manager in the first node (option: add a factory for this)
-		network.runOn(0,[&](com::Node& node){
-			// start up data Item Manager;
-			GridSharedData<2> shared_data({20,20});
-			mgr_pointer = &node.startService<mgr_t>(std::move(shared_data));
-		});
-
-		// check that manager could be extracted successfully
-		EXPECT_TRUE(mgr_pointer);
-
-		mgr_t& mgr = *mgr_pointer;
-
-		auto grid = mgr.getDataItem();
-		EXPECT_EQ("[20,20]",toString(grid.size()));
+//		using mgr_t = DataFragmentManager<Grid<int,2>>;
+//		mgr_t* mgr_pointer = nullptr;
+//
+//		// create a data fragment manager in the first node (option: add a factory for this)
+//		network.runOn(0,[&](com::Node& node){
+//			// start up data Item Manager;
+//			GridSharedData<2> shared_data({20,20});
+//			mgr_pointer = &node.startService<mgr_t>(std::move(shared_data));
+//		});
+//
+//		// check that manager could be extracted successfully
+//		EXPECT_TRUE(mgr_pointer);
+//
+//		mgr_t& mgr = *mgr_pointer;
+//
+//		auto grid = mgr.getDataItem();
+//		EXPECT_EQ("[20,20]",toString(grid.size()));
 	}
 
 } // end of namespace data

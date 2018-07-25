@@ -93,16 +93,13 @@ namespace data {
 			}
 		};
 
-		// the node this data item server is associated to
-		com::Node& localNode;
-
 		// a vector of distribution information maintained on this node
 		std::vector<Info> distribution_info;
 
 	public:
 
-		DataFragmentManager(com::Node& localNode, shared_data_type&& shared_data)
-			: shared_data(std::move(shared_data)), fragment(this->shared_data), localNode(localNode) {
+		DataFragmentManager(const shared_data_type& shared_data)
+			: shared_data(shared_data), fragment(this->shared_data) {
 
 			// make sure that nothing is owned yet
 			assert_true(local.shared.empty());
@@ -110,8 +107,8 @@ namespace data {
 			assert_true(fragment.getCoveredRegion().empty());
 
 			// initialize distribution info
-			auto rank = localNode.getRank();
-			auto com_size = localNode.getNetwork().numNodes();
+			auto rank = com::Node::getLocalRank();
+			auto com_size = com::Node::getNetwork().numNodes();
 
 			std::cout << "Initializing fragment at " << rank << " of " << com_size << "\n";
 
@@ -129,6 +126,10 @@ namespace data {
 			distribution_info.resize(c);
 
 		}
+
+		// no copy but move
+		DataFragmentManager(const DataFragmentManager&) = delete;
+		DataFragmentManager(DataFragmentManager&&) = default;
 
 		/**
 		 * Obtains access to the managed fragment through a facade.

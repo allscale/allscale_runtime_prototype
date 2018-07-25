@@ -3,6 +3,7 @@
 
 #include "allscale/runtime/runtime.h"
 
+#include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/worker.h"
 
 namespace allscale {
@@ -10,10 +11,10 @@ namespace runtime {
 
 	Runtime::Runtime(int numNodes) : network(numNodes) {
 
-		// TODO: install data item manager
+		// install data item manager services
+		network.installServiceOnNodes<data::DataItemManagerService>();
 
-
-		// install workers in nodes
+		// install and start workers in nodes
 		network.runOnAll([](com::Node& node){
 
 			// install worker

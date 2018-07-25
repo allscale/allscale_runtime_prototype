@@ -145,7 +145,7 @@ namespace work {
 
 		// ask scheduler where to schedule task
 		auto localRank = worker->rank;
-		auto targetRank = getScheduleTarget(localRank,task);
+		auto targetRank = (task->canBeDistributed()) ? getScheduleTarget(localRank,task) : localRank;
 
 		// test whether this is local
 		if (localRank == targetRank) {

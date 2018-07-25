@@ -14,8 +14,11 @@
 #include "allscale/utils/assert.h"
 #include "allscale/api/core/impl/reference/task_id.h"
 
+#include "allscale/runtime/data/data_item_requirement.h"
+
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
+
 
 namespace allscale {
 namespace runtime {
@@ -81,11 +84,20 @@ namespace work {
 
 		// ----- task interface -----
 
+		// tests whether this task can be distributed among nodes
+		virtual bool canBeDistributed() const { return false; };
+
 		// tests whether the given task is splittable
 		virtual bool isSplitable() const =0;
 
+		// obtain the process dependencies of this task
+		virtual data::DataItemRequirements getProcessRequirements() const;
+
 		// processes this task (non-split variant)
 		void process();
+
+		// obtain the split dependencies of this task
+		virtual data::DataItemRequirements getSplitRequirements() const;
 
 		// processes this task (split variant)
 		void split();
@@ -180,8 +192,9 @@ namespace work {
 
 	} // end namespace detail
 
+
 	/**
-	 * A task derived from a work item description.
+	 * A task derived from a work item description that cannot be distributed.
 	 */
 	template<typename WorkItemDesc, typename Closure>
 	class WorkItemTask : public Task {
@@ -213,6 +226,68 @@ namespace work {
 		virtual void splitInternal() override {
 			detail::set_result<result_type>()(state,[&](){
 				return WorkItemDesc::split_variant::execute(closure);
+			});
+		}
+
+		// obtains the treeture referencing the value produced by this task
+		treeture<result_type> getTreeture() const {
+			return state;
+		}
+
+	};
+
+	/**
+	 * A task derived from a work item description that can be distributed.
+	 */
+	template <
+		typename Result,				// the result type of this work item
+		typename Name,					// a struct producing the name of this work item
+		typename SplitVariant,			// the split variant implementation
+		typename ProcessVariant,		// the process variant implementation
+		typename CanSplitTest,			// the can-split test
+		typename Closure				// the closure of this task
+	>
+	class WorkItemTask<work_item_description<Result, Name, do_serialization, SplitVariant, ProcessVariant, CanSplitTest>,Closure> : public Task {
+
+		using closure_type = Closure;
+		using result_type = Result;
+
+		// the closure parameterizing this work item task
+		closure_type closure;
+
+		// the state of the promise - for all handed out treetures
+		detail::treeture_state_handle<result_type> state;
+
+	public:
+
+		WorkItemTask(const TaskID& id, closure_type&& closure)
+			: Task(id), closure(std::move(closure)), state(detail::make_incomplete_state<result_type>()) {}
+
+		virtual bool canBeDistributed() const override {
+			return true;
+		}
+
+		virtual bool isSplitable() const override {
+			return CanSplitTest::call(closure);
+		}
+
+		virtual data::DataItemRequirements getProcessRequirements() const override {
+			return data::DataItemRequirements::fromTuple(ProcessVariant::get_requirements(closure));
+		}
+
+		virtual void processInternal() override {
+			detail::set_result<result_type>()(state,[&](){
+				return ProcessVariant::execute(closure);
+			});
+		}
+
+		virtual data::DataItemRequirements getSplitRequirements() const override {
+			return data::DataItemRequirements::fromTuple(SplitVariant::get_requirements(closure));
+		}
+
+		virtual void splitInternal() override {
+			detail::set_result<result_type>()(state,[&](){
+				return SplitVariant::execute(closure);
 			});
 		}
 

@@ -53,6 +53,9 @@ namespace work {
 	 */
 	com::rank_t getScheduleTarget(com::rank_t localRank, const TaskPtr& t) {
 
+		// should only be contacted for portable tasks
+		assert_true(t->canBeDistributed());
+
 		// for very fine-grained tasks => process locally
 		if (t->getId().getDepth() < getCutOffLevel()) return localRank;
 

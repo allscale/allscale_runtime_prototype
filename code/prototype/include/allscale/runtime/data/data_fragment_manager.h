@@ -107,10 +107,10 @@ namespace data {
 			assert_true(fragment.getCoveredRegion().empty());
 
 			// initialize distribution info
-			auto rank = com::Node::getLocalRank();
 			auto com_size = com::Node::getNetwork().numNodes();
 
-			std::cout << "Initializing fragment at " << rank << " of " << com_size << "\n";
+//			auto rank = com::Node::getLocalRank();
+//			std::cout << "Initializing fragment at " << rank << " of " << com_size << "\n";
 
 			// compute tree tree height (ceil(log2(com_size)))
 			com::size_t s = 1;
@@ -119,8 +119,8 @@ namespace data {
 				s <<= 1;
 				c++;
 			}
-			std::cout << "Tree size: " << s << "\n";
-			std::cout << "Tree height: " << c << "\n";
+//			std::cout << "Tree size: " << s << "\n";
+//			std::cout << "Tree height: " << c << "\n";
 
 			// allocate memory for management data (for simplicity, the same everywhere)
 			distribution_info.resize(c);

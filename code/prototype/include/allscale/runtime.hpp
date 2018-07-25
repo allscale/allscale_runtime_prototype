@@ -135,10 +135,10 @@ namespace allscale {
 	using work_item_description = allscale::runtime::work::work_item_description<Result,Name,SerializationFlag,SplitVariant,ProcessVariant,CanSplitTest>;
 
 	// a marker for not serializable work items
-	struct no_serialization {};
+	using allscale::runtime::work::no_serialization;
 
 	// a marker for serializable work items
-	struct do_serialization {};
+	using allscale::runtime::work::do_serialization;
 
 	// an empty type for unused types
 	struct unused_type {};

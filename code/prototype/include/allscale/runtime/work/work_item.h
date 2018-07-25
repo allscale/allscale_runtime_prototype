@@ -13,10 +13,16 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+	// a marker for not serializable work items
+	struct no_serialization {};
+
+	// a marker for serializable work items
+	struct do_serialization {};
+
 	template <
 		typename Result,				// the result type of this work item
 		typename Name,					// a struct producing the name of this work item
-		typename SerializationFlag,		// this one is ignored
+		typename DistributionFlag,		// flag to indicate whether a task can be distributed or not
 		typename SplitVariant,			// the split variant implementation
 		typename ProcessVariant,		// the process variant implementation
 		typename CanSplitTest			// the can-split test

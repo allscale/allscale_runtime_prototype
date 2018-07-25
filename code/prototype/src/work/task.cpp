@@ -25,6 +25,9 @@ namespace work {
 		return {};
 	}
 
+	data::DataItemRequirements Task::getProcessRequirements() const {
+		return {};
+	}
 
 	void Task::process() {
 
@@ -48,6 +51,10 @@ namespace work {
 		success = state.compare_exchange_strong(st,Finished);
 		assert_true(success) << "Attempted to finish non-running task, actual state: " << st << "\n";
 
+	}
+
+	data::DataItemRequirements Task::getSplitRequirements() const {
+		return {};
 	}
 
 	void Task::split() {

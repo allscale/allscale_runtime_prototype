@@ -31,15 +31,16 @@ namespace data {
 		// the id of this data item
 		DataItemID id;
 
-		DataItemReference(DataItemID id) : id(id) {}
-
 	public:
+
+		// a constructor to create a data item reference
+		explicit DataItemReference(DataItemID id) : id(id) {}
 
 		/**
 		 * A factory for fresh data item references.
 		 */
 		static DataItemReference getFresh() {
-			return getFreshDataItemID();
+			return DataItemReference(getFreshDataItemID());
 		}
 
 		DataItemID getID() const {
@@ -63,7 +64,7 @@ namespace data {
 		// --- serialization ---
 
 		static DataItemReference load(allscale::utils::ArchiveReader& in) {
-			return in.read<DataItemID>();
+			return DataItemReference(in.read<DataItemID>());
 		}
 
 		void store(allscale::utils::ArchiveWriter& out) const {

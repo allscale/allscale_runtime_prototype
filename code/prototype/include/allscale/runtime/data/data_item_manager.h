@@ -15,6 +15,7 @@
 #include "allscale/utils/assert.h"
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/data/data_item_reference.h"
+#include "allscale/runtime/data/data_item_requirement.h"
 #include "allscale/runtime/data/data_fragment_manager.h"
 
 namespace allscale {
@@ -112,6 +113,19 @@ namespace data {
 		typename DataItem::facade_type get(const DataItemReference<DataItem>& ref) {
 			return getRegister<DataItem>().getFacade(ref);
 		}
+
+
+		/**
+		 * Requests the allocation of the requested data item regions. Blocks until available.
+		 */
+		void allocate(const DataItemRequirements& reqs);
+
+		/**
+		 * Releases the specified data requirements.
+		 * TODO: this could also matched to an allocate call through some handler
+		 */
+		void release(const DataItemRequirements& reqs);
+
 
 		// --- protocol interface ---
 

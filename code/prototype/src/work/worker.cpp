@@ -3,7 +3,9 @@
 
 #include <thread>
 
+#include "allscale/runtime/log/logger.h"
 #include "allscale/runtime/com/network.h"
+#include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
 
 namespace allscale {
@@ -87,33 +89,48 @@ namespace work {
 
 	bool Worker::step() {
 
-		static std::mutex lock;
-
 		// process a task if available
 		if (auto t = queue.dequeueBack()) {
 
-			// TODO: adapt this to the network size
+			// get a reference to the local data item manager
+			auto dim = (node) ? &data::DataItemManagerService::getLocalService() : nullptr;
+
+			// ask the scheduler what to do
 			if (t->isSplitable() && shouldSplit(t)) {
 
-				{
-					std::lock_guard<std::mutex> g(lock);
-//					std::cout << "Splitting " << t->getId() << " on node " << rank << "\n";
-				}
+				// the decision was to split the task, so do so
+				auto reqs = t->getSplitRequirements();
+
+				// log this action
+				DLOG << "Splitting " << t->getId() << " on node " << rank << " with requirements " << reqs << "\n";
+
+				// allocate requirements (blocks till ready)
+				if (dim) dim->allocate(reqs);
 
 				// in this case we split the task
 				t->split();
 
+				// free requirements
+				if (dim) dim->release(reqs);
+
 			} else {
 
 				// in this case we process the task
-				// TODO: add logging support
+				auto reqs = t->getProcessRequirements();
 
+				// log this action
+				DLOG << "Processing " << t->getId() << " on node " << rank << " with requirements " << reqs << "\n";
 
-				{
-					std::lock_guard<std::mutex> g(lock);
-//					std::cout << "Processing " << t->getId() << " on node " << rank << "\n";
-				}
+				// allocate requirements (blocks till ready)
+				if (dim) dim->allocate(reqs);
+
+				// process this task
 				t->process();
+
+				// free requirements
+				if (dim) dim->release(reqs);
+
+				// increment task counter
 				taskCounter++;
 
 			}

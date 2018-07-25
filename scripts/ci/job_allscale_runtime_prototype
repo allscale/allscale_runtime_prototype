@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# This script is executed by the CI server to test the SDK by creating a
+# demo application, building it, and testing it.
+
+set -ex
+
+# -------------------------------------------------- Defaults
+# CMake Build Type (Debug / Release).
+export BUILD_TYPE="${BUILD_TYPE:-Release}"
+
+# Number of cores used for compilation and testing.
+export NPROC="${NPROC:-$(nproc)}"
+
+# Set default nice level.
+export NICE_LEVEL="${NICE_LEVEL:-10}"
+
+# Assume Workspace if not set.
+CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export WORKSPACE="${WORKSPACE:-"$(realpath "$CI_DIR/../..")"}"
+
+# Assume Build Directory if not set.
+export BUILD_DIR="${BUILD_DIR:-$WORKSPACE/build}"
+
+
+# -------------------------------------------------- Configuration
+# Setup build directory.
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+
+# -------------------------------------------------- Clean CMake
+rm -rf CMake* *.cmake
+
+# -------------------------------------------------- Build
+
+cmake "$WORKSPACE/code" \
+	-DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+	"$ALLSCALE_CMAKE"
+
+/usr/bin/time -v nice -n "$NICE_LEVEL" make -j "$NPROC"
+
+# -------------------------------------------------- Run Unit Tests
+ulimit -t 14400
+
+/usr/bin/time -v nice -n "$NICE_LEVEL" /usr/bin/timeout 60s make test ARGS="-j $NPROC"
+

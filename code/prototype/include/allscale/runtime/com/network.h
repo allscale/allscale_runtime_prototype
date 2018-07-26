@@ -142,13 +142,26 @@ namespace com {
 		};
 
 		/**
+		 * A default service selector.
+		 */
+		template<typename S>
+		struct direct_selector {
+			S& operator()(Node& node) const {
+				return node.getService<S>();
+			}
+		};
+
+		/**
 		 * A handle for remote procedures.
 		 */
-		template<typename S, typename R, typename ... Args>
+		template<typename Selector, typename S, typename R, typename ... Args>
 		class RemoteProcedure {
 
 			// the targeted node
 			Node& node;
+
+			// the service selector
+			Selector selector;
 
 			// the targeted service function
 			R(S::* fun)(Args...);
@@ -161,8 +174,8 @@ namespace com {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Node& node, R(S::*fun)(Args...), Statistics& stats)
-				: node(node), fun(fun), stats(stats) {}
+			RemoteProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...), Statistics& stats)
+				: node(node), selector(selector), fun(fun), stats(stats) {}
 
 			/**
 			 * Realizes the actual remote procedure call.
@@ -174,7 +187,7 @@ namespace com {
 				// short-cut for local communication
 				if (src == trg) {
 					return node.run([&](Node&){
-						return (node.getService<S>().*fun)(std::forward<Args>(args)...);
+						return (selector(node).*fun)(std::forward<Args>(args)...);
 					});
 				}
 
@@ -182,7 +195,7 @@ namespace com {
 				stats[src].sent_calls += 1;
 				stats[trg].received_calls += 1;
 				return node.run([&](Node&){
-					return stats.transfer(trg,src,(node.getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
+					return stats.transfer(trg,src,(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
 				});
 			}
 
@@ -271,9 +284,18 @@ namespace com {
 		/**
 		 * Obtains a handle for performing a remote procedure call of a selected service.
 		 */
+		template<typename Selector, typename S, typename R, typename ... Args>
+		RemoteProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...)) {
+			return { nodes[rank], selector, fun, stats };
+		}
+
+
+		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
 		template<typename S, typename R, typename ... Args>
-		RemoteProcedure<S,R,Args...> getRemoteProcedure(rank_t rank, R(S::*fun)(Args...)) {
-			return { nodes[rank], fun, stats };
+		auto getRemoteProcedure(rank_t rank, R(S::*fun)(Args...)) {
+			return getRemoteProcedure(rank,direct_selector<S>(),fun);
 		}
 
 		/**

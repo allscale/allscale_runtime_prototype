@@ -166,7 +166,7 @@ namespace com {
 			auto numServices = HierarchyAddress::getLayersOn(node.getRank(),node.getNetwork().numNodes());
 			services.reserve(numServices);
 			for(layer_t i=0; i<numServices; i++) {
-				services.emplace_back(HierarchyAddress(node.getRank(), i), args...);
+				services.emplace_back(node.getNetwork(), HierarchyAddress(node.getRank(), i), args...);
 			}
 		}
 
@@ -174,6 +174,14 @@ namespace com {
 		Service& get(layer_t layer) {
 			assert_lt(layer,services.size());
 			return services[layer];
+		}
+
+		// applies an operation on all local services
+		template<typename Op>
+		void forAll(const Op& op) {
+			for(auto& cur : services) {
+				op(cur);
+			}
 		}
 
 	};
@@ -193,6 +201,13 @@ namespace com {
 			: network(network) {}
 
 		/**
+		 * Obtains the address of the root node of this overlay network.
+		 */
+		HierarchyAddress getRootAddress() const {
+			return HierarchyAddress::getRootOfNetworkSize(network.numNodes());
+		}
+
+		/**
 		 * Installs a hierarchical service on all virtual nodes.
 		 */
 		template<typename S, typename ... Args>
@@ -208,6 +223,22 @@ namespace com {
 			return network.getRemoteProcedure(addr.getRank(),[addr](Node& node)->S&{
 				return node.getService<HierarchyService<S>>().get(addr.getLayer());
 			},fun);
+		}
+
+		/**
+		 * Obtains a reference to a locally running service instance.
+		 */
+		template<typename S>
+		static S& getLocalService(layer_t layer = 0) {
+			return com::Node::getLocalService<HierarchyService<S>>().get(layer);
+		}
+
+		/**
+		 * Applies the given operation on all local service instances.
+		 */
+		template<typename S, typename Op>
+		static void forAllLocal(const Op& op) {
+			com::Node::getLocalService<HierarchyService<S>>().forAll(op);
 		}
 
 	};

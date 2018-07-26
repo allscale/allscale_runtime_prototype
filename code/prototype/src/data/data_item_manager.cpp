@@ -3,6 +3,9 @@
 
 #include "allscale/runtime/log/logger.h"
 
+#include "allscale/runtime/com/hierarchy.h"
+#include "allscale/runtime/data/data_item_index.h"
+
 namespace allscale {
 namespace runtime {
 namespace data {
@@ -21,10 +24,18 @@ namespace data {
 		// do not wait for empty requirements
 		if (reqs.empty()) return;
 
-		DLOG << "Requested " << reqs;
+		// todo: retrieve read-only data
 
-		// the rest is still missing
-//		assert_not_implemented();
+		// todo: record access locks
+
+//		std::cout << "Running task with " << reqs << "\n";
+
+		// for now, just test that data is available
+		assert_pred2(
+			data::isSubRegion,
+			reqs.getWriteRequirements(),
+			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
+		);
 	}
 
 
@@ -33,10 +44,15 @@ namespace data {
 		// no work required for empty requirements
 		if (reqs.empty()) return;
 
-		DLOG << "Releasing " << reqs;
+		// todo: release access locks
 
-		// the rest is still missing
-//		assert_not_implemented();
+		// for now: check that data is still owned
+		assert_pred2(
+			data::isSubRegion,
+			reqs.getWriteRequirements(),
+			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
+		);
+
 	}
 
 

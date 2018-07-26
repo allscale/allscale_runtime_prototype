@@ -13,65 +13,162 @@
 #include <typeindex>
 
 #include "allscale/utils/assert.h"
+
 #include "allscale/runtime/com/node.h"
+#include "allscale/runtime/com/network.h"
+#include "allscale/runtime/com/hierarchy.h"
+
 #include "allscale/runtime/data/data_item_reference.h"
 #include "allscale/runtime/data/data_item_requirement.h"
-#include "allscale/runtime/data/data_fragment_manager.h"
 
 namespace allscale {
 namespace runtime {
 namespace data {
 
-	/**
-	 * A common base type of all data item registers.
-	 */
-	class DataItemRegisterBase {
-	public:
-		virtual ~DataItemRegisterBase() {};
-	};
+	// --- forward declarations of data index interfaces ---
+
+	class DataItemIndexService;
+
+	template<typename DataItem>
+	void notifyIndexOnCreation(const DataItemReference<DataItem>&);
+
+	// -----------------------------------------------------
+
 
 	/**
-	 * A register for data items of a specific type.
+	 * A fragment manager is managing the locally maintained data of a single data item.
+	 * It thus manages the fragment, its content, and the shared data.
 	 */
 	template<typename DataItem>
-	class DataItemRegister : public DataItemRegisterBase {
+	class DataFragmentHandler {
 
-		using reference_type = DataItemReference<DataItem>;
+		// Test that the passed data item type is valid.
+		static_assert(allscale::api::core::is_data_item<DataItem>::value, "Can only be instantiated for data items!");
+
+		// ------ some type definitions ------
+
 		using shared_data_type = typename DataItem::shared_data_type;
-		using facade_type = typename DataItem::facade_type;
+		using region_type      = typename DataItem::region_type;
+		using fragment_type    = typename DataItem::fragment_type;
+		using facade_type      = typename DataItem::facade_type;
 
-		// the index of registered items
-		std::map<DataItemReference<DataItem>,DataFragmentManager<DataItem>> items;
+
+		/**
+		 * A summary of shared and exclusively managed regions on various levels.
+		 */
+		struct Ownership {
+			// the region maintained, potentially shared
+			region_type shared;
+			// the region maintained, exclusive (subregion of shared)
+			region_type exclusive;
+
+			// checks invariants on this object
+			bool check() const {
+				// only invariant: exclusive <= shared
+				using namespace allscale::api::core;
+				return isSubRegion(exclusive,shared);
+			}
+		};
+
+
+		// -- node-local management information --
+
+		// the management data shared among all instances
+		shared_data_type shared_data;
+
+		// the locally maintained data fragment
+		fragment_type fragment;
+
+		// the locally maintained shared and exclusive regions
+		Ownership local;
 
 	public:
 
-		DataItemRegister() = default;
-		DataItemRegister(const DataItemRegister&) = delete;
-		DataItemRegister(DataItemRegister&&) = delete;
+		DataFragmentHandler(const shared_data_type& shared_data)
+			: shared_data(shared_data), fragment(this->shared_data) {
 
-		// registers a new data item in the local registry
-		void registerItem(const reference_type& ref, const shared_data_type& shared) {
-			assert_not_pred1(contains,ref);
-			items.emplace(ref,DataFragmentManager<DataItem>(shared));
+			// make sure that nothing is owned yet
+			assert_true(local.shared.empty());
+			assert_true(local.exclusive.empty());
+			assert_true(fragment.getCoveredRegion().empty());
 		}
 
-		// obtains access to a locally managed data item
-		facade_type getFacade(const reference_type& ref) {
-			return items.find(ref)->second.getDataItem();
+		// no copy but move
+		DataFragmentHandler(const DataFragmentHandler&) = delete;
+		DataFragmentHandler(DataFragmentHandler&&) = default;
+
+		/**
+		 * Obtains access to the managed fragment through a facade.
+		 * The fragment itself is not exposed to avoid messing with covered regions.
+		 */
+		facade_type getDataItem() {
+			return fragment.mask();
 		}
 
-	private:
+		void resizeExclusive(const region_type& newSize) {
+			// TODO: synchronize, handle exlusive and shared
 
-		bool contains(const reference_type& ref) const {
-			return items.find(ref) != items.end();
+			// resize the fragment
+			fragment.resize(newSize);
+
+			// update the ownership
+			local.exclusive = newSize;
 		}
 
 	};
+
 
 	/**
 	 * The service running on each node for handling data items of various types.
 	 */
 	class DataItemManagerService {
+
+		/**
+		 * A common base type of all data item registers.
+		 */
+		class DataItemRegisterBase {
+		public:
+			virtual ~DataItemRegisterBase() {};
+		};
+
+		/**
+		 * A register for data items of a specific type.
+		 */
+		template<typename DataItem>
+		class DataItemRegister : public DataItemRegisterBase {
+
+			using reference_type = DataItemReference<DataItem>;
+			using shared_data_type = typename DataItem::shared_data_type;
+			using facade_type = typename DataItem::facade_type;
+
+			// the index of registered items
+			std::map<DataItemReference<DataItem>,DataFragmentHandler<DataItem>> items;
+
+		public:
+
+			DataItemRegister() = default;
+			DataItemRegister(const DataItemRegister&) = delete;
+			DataItemRegister(DataItemRegister&&) = delete;
+
+			// registers a new data item in the local registry
+			void registerItem(const reference_type& ref, const shared_data_type& shared) {
+				assert_not_pred1(contains,ref);
+				items.emplace(ref,DataFragmentHandler<DataItem>(shared));
+			}
+
+			// obtains access to a selected fragment handler
+			DataFragmentHandler<DataItem>& get(const reference_type& ref) {
+				assert_pred1(contains,ref);
+				return items.find(ref)->second;
+			}
+
+		private:
+
+			bool contains(const reference_type& ref) const {
+				return items.find(ref) != items.end();
+			}
+
+		};
 
 		// the maintained register of data item registers (type specific)
 		std::map<std::type_index,std::unique_ptr<DataItemRegisterBase>> registers;
@@ -111,7 +208,7 @@ namespace data {
 		 */
 		template<typename DataItem>
 		typename DataItem::facade_type get(const DataItemReference<DataItem>& ref) {
-			return getRegister<DataItem>().getFacade(ref);
+			return getRegister<DataItem>().get(ref).getDataItem();
 		}
 
 
@@ -131,7 +228,18 @@ namespace data {
 
 		template<typename DataItem>
 		void registerDataItem(DataItemReference<DataItem> ref, const typename DataItem::shared_data_type& shared_data) {
+			// register shared data
 			getRegister<DataItem>().registerItem(ref,shared_data);
+
+			// also inform index services
+			notifyIndexOnCreation(ref);
+		}
+
+		// --- local interface ---
+
+		template<typename DataItem>
+		void resizeExclusive(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
+			getRegister<DataItem>().get(ref).resizeExclusive(region);
 		}
 
 	private:
@@ -186,3 +294,6 @@ namespace data {
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale
+
+// todo: merge those two files!
+#include "allscale/runtime/data/data_item_index.h"

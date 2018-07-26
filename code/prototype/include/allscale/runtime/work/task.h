@@ -12,6 +12,8 @@
 #include <ostream>
 
 #include "allscale/utils/assert.h"
+#include "allscale/utils/serializer.h"
+
 #include "allscale/api/core/impl/reference/task_id.h"
 
 #include "allscale/runtime/data/data_item_requirement.h"
@@ -124,6 +126,71 @@ namespace work {
 
 	// a pointer type for tasks
 	using TaskPtr = std::unique_ptr<Task>;
+
+	/**
+	 * A serializable wrapper around task pointer.
+	 *
+	 * Since the prototype here does not (yet) support actual task serialization, this
+	 * wrapper is integrated for that purpose.
+	 *
+	 * The serialization removes ownership, while deserialization acquires it.
+	 * Each instance may only be once serialized and deserialized. Also the
+	 * de-serialization must take place while the original is still alive.
+	 */
+	class TaskReference {
+
+		// the referenced task (in a shared pointer to support value semantic for the reference)
+		std::shared_ptr<TaskPtr> task;
+
+	public:
+
+		// creates a new task reference owning the task
+		TaskReference(TaskPtr&& task) : task(std::make_shared<TaskPtr>(std::move(task))) {
+			assert_true(bool(this->task)) << "Cannot create task reference without actual task.";
+		};
+
+		// make copyable
+		TaskReference(const TaskReference&) = default;
+
+		// make moveable
+		TaskReference(TaskReference&&) = default;
+
+		// provides access to the task
+		Task& operator*() {
+			assert_true(bool(*task)) << "Invalid reference state.";
+			return **task;
+		}
+
+		// provides access to the task
+		Task* operator->() {
+			assert_true(bool(*task)) << "Invalid reference state.";
+			return &**task;
+		}
+
+		// conversion back into a task
+		TaskPtr toTask() && {
+			assert_true(bool(*task)) << "Cannot extract task multiple times.";
+			return std::move(*task);
+		}
+
+		// support implicit conversion to task
+		operator TaskPtr() && {
+			return std::move(*this).toTask();
+		}
+
+		void store(allscale::utils::ArchiveWriter& out) const {
+			// we save a memory location of the shared task pointer
+			out.write<std::intptr_t>(std::intptr_t(task.get()));
+		}
+
+		static TaskReference load(allscale::utils::ArchiveReader& in) {
+			// get the reference to the source
+			TaskPtr* src = (TaskPtr*)in.read<std::intptr_t>();
+			assert_true(bool(*src)) << "Cannot deserialize same object multiple times!";
+			// transfer ownership
+			return std::move(*src);
+		}
+	};
 
 	/**
 	 * A factory function for task pointer.

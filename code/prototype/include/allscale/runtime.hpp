@@ -18,6 +18,7 @@
 #include "allscale/runtime/data/data_item_requirement.h"
 #include "allscale/runtime/data/data_item_manager.h"
 
+#include "allscale/runtime/work/scheduler.h"
 #include "allscale/runtime/work/task.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"

@@ -14,6 +14,11 @@ namespace work {
 
 	thread_local Worker* tl_current_worker = nullptr;
 
+	Worker& Worker::getLocalWorker() {
+		assert_true(tl_current_worker) << "Can not localize worker outside of any worker thread!";
+		return *tl_current_worker;
+	}
+
 	void Worker::start() {
 
 		// switch from ready to startup
@@ -152,32 +157,6 @@ namespace work {
 			// yield this thread (not a worker)
 			std::this_thread::yield();
 		}
-	}
-
-	void schedule(TaskPtr&& task) {
-
-		// get local worker
-		Worker* worker = tl_current_worker;
-		assert_true(worker) << "Schedule invoked in non-worker context!";
-
-		// ask scheduler where to schedule task
-		auto localRank = worker->rank;
-		auto targetRank = (task->canBeDistributed()) ? getScheduleTarget(localRank,task) : localRank;
-
-		// test whether this is local
-		if (localRank == targetRank) {
-			// => run local
-			worker->schedule(std::move(task));
-		} else {
-			// => send to remote location
-			com::Node::getLocalNode().getNetwork().runOn(targetRank,[&](com::Node& node){
-				node.getService<Worker>().schedule(std::move(task));
-			});
-		}
-
-		// schedule task locally
-		// TODO: move to different locality if required
-//		worker->schedule(std::move(task));
 	}
 
 } // end of namespace work

@@ -1,5 +1,5 @@
 /*
- * The prototype implementation of the data item interface.
+ * The prototype implementation of the data item requirements.
  *
  *  Created on: Jul 25, 2018
  *      Author: herbert
@@ -20,6 +20,7 @@
 #include "allscale/api/core/data.h"
 
 #include "allscale/runtime/data/data_item_reference.h"
+#include "allscale/runtime/data/data_item_region.h"
 
 namespace allscale {
 namespace runtime {
@@ -99,76 +100,17 @@ namespace data {
 
 	// --- generic data item requirement handling ---
 
-	namespace detail {
-
-		// a base class for a set of requirement of the same type
-		class RequirementsBase {
-		public:
-			virtual ~RequirementsBase(){};
-
-
-			// support printing requirements
-			friend std::ostream& operator<<(std::ostream& out, const RequirementsBase& base);
-
-			// tests whether this list of requirements is empty
-			virtual bool empty() const =0;
-
-			// requires specializations to be printable
-			virtual void print(std::ostream& out) const=0;
-
-		};
-
-		// a generic derived class for a set of requirements on a given data item type
-		template<typename DataItem>
-		class Requirements : public RequirementsBase {
-
-			using reference_type = DataItemReference<DataItem>;
-			using requirement_type = DataItemRequirement<DataItem>;
-			using region_type = typename DataItem::region_type;
-
-			std::map<reference_type,region_type> readRequirements;
-			std::map<reference_type,region_type> writeRequirements;
-
-		public:
-
-			bool empty() const override {
-				return readRequirements.empty() && writeRequirements.empty();
-			}
-
-			void add(const requirement_type& req) {
-				assert_false(req.empty());
-				auto& map = (req.getMode() == ReadOnly) ? readRequirements : writeRequirements;
-				auto& cur = map[req.getDataItemReference()];
-				cur = allscale::api::core::merge(cur,req.getRegion());
-			}
-
-
-			void print(std::ostream& out) const override {
-				// first the read requirements
-				out << allscale::utils::join("\n\t",readRequirements,[](std::ostream& out, const auto& cur){
-					out << "RO," << cur.first << "," << cur.second;
-				});
-
-				if (!readRequirements.empty() && !writeRequirements.empty()) out << "\n\t";
-
-				// than the write requirements
-				out << allscale::utils::join("\n\t",writeRequirements,[](std::ostream& out, const auto& cur){
-					out << "RW," << cur.first << "," << cur.second;
-				});
-			}
-
-		};
-
-	} // end of namespace detail
-
 
 	/**
 	 * A collection of requirements.
 	 */
 	class DataItemRequirements {
 
-		// the index of all requirements represented by collection
-		std::map<std::type_index,std::unique_ptr<detail::RequirementsBase>> requirements;
+		// all the read requirements
+		DataItemRegions readRequirements;
+
+		// all the write requirements
+		DataItemRegions writeRequirements;
 
 	public:
 
@@ -182,11 +124,22 @@ namespace data {
 		 */
 		template<typename DataItem>
 		void add(const DataItemRequirement<DataItem>& requirement) {
-			// do not add empty requirements
-			if (requirement.empty()) return;
+			// add requirements
+			switch(requirement.getMode()) {
+			case ReadOnly:  readRequirements.add(requirement.getDataItemReference(),requirement.getRegion()); break;
+			case ReadWrite: writeRequirements.add(requirement.getDataItemReference(), requirement.getRegion()); break;
+			default: assert_fail() << "Unsupported mode: " << requirement.getMode();
+			}
+		}
 
-			// add requirement to corresponding sub-list
-			getRequirementsList<DataItem>().add(requirement);
+		// Extracts the read requirements from this set of requirements.
+		const DataItemRegions& getReadRequirements() const {
+			return readRequirements;
+		}
+
+		// Extracts the write requirements from this set of requirements.
+		const DataItemRegions& getWriteRequirements() const {
+			return writeRequirements;
 		}
 
 		/**
@@ -208,23 +161,6 @@ namespace data {
 		// supports printing requirements
 		friend std::ostream& operator<<(std::ostream&, const DataItemRequirements&);
 
-	private:
-
-		template<typename DataItem>
-		detail::Requirements<DataItem>& getRequirementsList() {
-			auto& req_ptr = requirements[typeid(DataItem)];
-			if (!req_ptr) {
-				req_ptr = std::make_unique<detail::Requirements<DataItem>>();
-			}
-			return static_cast<detail::Requirements<DataItem>&>(*req_ptr);
-		}
-
-		template<typename DataItem>
-		const detail::Requirements<DataItem>& getRequirementsList() const {
-			auto pos = requirements.find(typeid(DataItem));
-			assert_true(pos != requirements.end());
-			return static_cast<const detail::Requirements<DataItem>&>(*pos->second);
-		}
 	};
 
 

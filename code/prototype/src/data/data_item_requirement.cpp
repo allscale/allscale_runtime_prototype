@@ -17,31 +17,14 @@ namespace data {
 		return out << "?";
 	}
 
-	namespace detail {
-
-		std::ostream& operator<<(std::ostream& out, const RequirementsBase& base) {
-			base.print(out);
-			return out;
-		}
-
-	} // end of namespace
-
 
 	bool DataItemRequirements::empty() const {
-		return requirements.empty();
+		return readRequirements.empty() && writeRequirements.empty();
 	}
 
 	std::ostream& operator<<(std::ostream& out, const DataItemRequirements& reqs) {
-
-		// special handling of empty requirements
-		if (reqs.empty()) {
-			return out << "Requirements ()";
-		}
-
 		// other requirements get listed
-		return out << "Requirements (\n\t" << join("\n\t",reqs.requirements, [](std::ostream& out, const auto& value) {
-			out << *value.second;
-		}) << "\n)";
+		return out << "Requirements( RO: " << reqs.readRequirements << ", RW: " << reqs.writeRequirements << ")";
 	}
 
 

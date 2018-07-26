@@ -1,5 +1,5 @@
 /*
- * The prototype implementation of the data item interface.
+ * The prototype implementation of the data item reference.
  *
  *  Created on: Jul 25, 2018
  *      Author: herbert

@@ -5,6 +5,7 @@
 
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/worker.h"
+#include "allscale/runtime/work/scheduler.h"
 
 namespace allscale {
 namespace runtime {
@@ -13,6 +14,9 @@ namespace runtime {
 
 		// install data item manager services
 		network.installServiceOnNodes<data::DataItemManagerService>();
+
+		// install scheduler service
+		work::installSchedulerService(network);
 
 		// install and start workers in nodes
 		network.runOnAll([](com::Node& node){

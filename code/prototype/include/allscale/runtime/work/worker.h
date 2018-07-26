@@ -24,11 +24,6 @@ namespace work {
 	void yield();
 
 	/**
-	 * A function to schedule.
-	 */
-	void schedule(TaskPtr&&);
-
-	/**
 	 * A simple class wrapping a worker thread running within a node.
 	 */
 	class Worker {
@@ -70,6 +65,11 @@ namespace work {
 
 		Worker(const Worker&) = delete;
 		Worker(Worker&&) = delete;
+
+		/**
+		 * Obtains a reference to the local worker.
+		 */
+		static Worker& getLocalWorker();
 
 		/**
 		 * Starts this worker. The worker will

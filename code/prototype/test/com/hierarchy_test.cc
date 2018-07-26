@@ -170,7 +170,7 @@ namespace com {
 
 		HierarchyAddress myAddress;
 
-		LayerService(const HierarchyAddress& addr) : myAddress(addr) {}
+		LayerService(Network&, const HierarchyAddress& addr) : myAddress(addr) {}
 
 		HierarchyAddress whereAreYou() { return myAddress; }
 

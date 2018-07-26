@@ -42,19 +42,19 @@ namespace data {
 		reqs.add(createDataItemRequirement(a,region_t(0,10),ReadOnly));
 		EXPECT_FALSE(reqs.empty()) << reqs;
 
-		EXPECT_EQ("Requirements (\n\tRO,DI-1,{[[0] - [10])}\n)",toString(reqs));
+		EXPECT_EQ("Requirements( RO: Regions(DI-1:{[[0] - [10])}), RW: Regions())",toString(reqs));
 
 		// insert another requirement
 		reqs.add(createDataItemRequirement(a,region_t(5,15),ReadOnly));
 		EXPECT_FALSE(reqs.empty()) << reqs;
 
-		EXPECT_EQ("Requirements (\n\tRO,DI-1,{[[0] - [15])}\n)",toString(reqs));
+		EXPECT_EQ("Requirements( RO: Regions(DI-1:{[[0] - [15])}), RW: Regions())",toString(reqs));
 
 		// insert a write requirement
 		reqs.add(createDataItemRequirement(a,region_t(5,10),ReadWrite));
 		EXPECT_FALSE(reqs.empty()) << reqs;
 
-		EXPECT_EQ("Requirements (\n\tRO,DI-1,{[[0] - [15])}\n\tRW,DI-1,{[[5] - [10])}\n)",toString(reqs));
+		EXPECT_EQ("Requirements( RO: Regions(DI-1:{[[0] - [15])}), RW: Regions(DI-1:{[[5] - [10])}))",toString(reqs));
 
 	}
 
@@ -78,7 +78,7 @@ namespace data {
 		auto req1 = DataItemRequirements::fromTuple(tuple1);
 		EXPECT_FALSE(req1.empty());
 
-		EXPECT_EQ("Requirements (\n\tRO,DI-1,{[[0] - [10])}\n)",toString(req1));
+		EXPECT_EQ("Requirements( RO: Regions(DI-1:{[[0] - [10])}), RW: Regions())",toString(req1));
 
 
 		// test multiple requirements
@@ -89,7 +89,7 @@ namespace data {
 		auto req2 = DataItemRequirements::fromTuple(tuple2);
 		EXPECT_FALSE(req2.empty());
 
-		EXPECT_EQ("Requirements (\n\tRO,DI-1,{[[0] - [10])}\n\tRW,DI-2,{[[0] - [10])}\n)",toString(req2));
+		EXPECT_EQ("Requirements( RO: Regions(DI-1:{[[0] - [10])}), RW: Regions(DI-2:{[[0] - [10])}))",toString(req2));
 
 	}
 

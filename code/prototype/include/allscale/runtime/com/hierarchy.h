@@ -201,6 +201,13 @@ namespace com {
 			: network(network) {}
 
 		/**
+		 * Retrieves the number of nodes in this network.
+		 */
+		size_t numNodes() const {
+			return network.numNodes();
+		}
+
+		/**
 		 * Obtains the address of the root node of this overlay network.
 		 */
 		HierarchyAddress getRootAddress() const {

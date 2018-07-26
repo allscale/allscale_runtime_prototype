@@ -247,6 +247,11 @@ namespace work {
 						? myAddr.getLeftChild()
 						: myAddr.getRightChild();
 
+				// reconsider if right is to far right
+				if (next.getRank() >= network.numNodes()) {
+					next = myAddr.getLeftChild();
+				}
+
 				// compute regions
 				auto reqs = task->getProcessRequirements();
 				auto subAllowances = (targetLeft)

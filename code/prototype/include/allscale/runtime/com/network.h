@@ -286,6 +286,7 @@ namespace com {
 		 */
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...)) {
+			assert_lt(rank,nodes.size());
 			return { nodes[rank], selector, fun, stats };
 		}
 
@@ -295,6 +296,7 @@ namespace com {
 		 */
 		template<typename S, typename R, typename ... Args>
 		auto getRemoteProcedure(rank_t rank, R(S::*fun)(Args...)) {
+			assert_lt(rank,nodes.size());
 			return getRemoteProcedure(rank,direct_selector<S>(),fun);
 		}
 

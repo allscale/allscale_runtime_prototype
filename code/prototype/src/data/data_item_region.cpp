@@ -141,6 +141,12 @@ namespace data {
 		return difference(a,b).empty();
 	}
 
+	bool isDisjoint(const DataItemRegions& a, const DataItemRegions& b) {
+		// some quick solutions
+		if (a.empty() || b.empty()) return true;
+		return intersect(a,b).empty();
+	}
+
 } // end of namespace data
 } // end of namespace runtime
 } // end of namespace allscale

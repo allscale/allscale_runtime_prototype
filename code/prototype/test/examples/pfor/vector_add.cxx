@@ -37,6 +37,9 @@
 				#undef _GLIBCXX_HAVE_GETS    // correct broken config
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
 /* ------- Program Code --------- */
 
 struct __wi_main_variant_1;
@@ -948,4 +951,6 @@ struct __wi_main_can_split {
 bool __wi_main_can_split::call(hpx::util::tuple<int32_t, char** > const& var_0) {
     return allscale_fun_375(var_0);
 }
+
+#pragma GCC diagnostic pop
 

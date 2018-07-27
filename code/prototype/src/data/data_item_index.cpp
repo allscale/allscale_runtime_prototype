@@ -123,6 +123,95 @@ namespace data {
 		return res;
 	}
 
+	DataItemLocationInfos DataItemIndexService::locate(const DataItemRegions& regions) {
+
+		// this is algorithm 1 of the runtime paper
+
+		// quick exit - if there is nothing requested
+		if (regions.empty()) return {};
+
+		// create result
+		DataItemLocationInfos res;
+
+		// -- add data for local sub-tree  --
+
+		if (myAddress.isLeaf()) {
+
+			// add local information
+			for(const auto& cur : indices) {
+				cur.second->addLocationInfo(regions,res);
+			}
+
+		} else {
+
+			// for inner nodes, query sub-trees
+			auto remaining = regions;
+			{
+				// start with left
+				auto part = intersect(remaining,getAvailableDataLeft());
+				if (!part.empty()) {
+
+					// query sub-tree
+					auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::locate)(part);
+
+					// consistency check
+					assert_eq(part,subInfo.getCoveredRegions());
+
+					// add to result
+					res.addAll(subInfo);
+
+				}
+
+				// reduce remaining
+				remaining = difference(remaining,part);
+
+			}
+
+			// and if necessary also the right sub-tree
+			if (!remaining.empty()) {
+
+				auto part = intersect(remaining,getAvailableDataRight());
+				if (!part.empty()) {
+
+					// query sub-tree
+					auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::locate)(part);
+
+					// consistency check
+					assert_eq(part,subInfo.getCoveredRegions());
+
+					// add to result
+					res.addAll(subInfo);
+
+				}
+			}
+		}
+
+
+		// -- complete query by escalating if necessary --
+
+		// if this is the root, there is nowhere to escalate any more
+		if (isRoot) return std::move(res);
+
+		// get covered regions
+		auto covered = res.getCoveredRegions();
+
+		// get missing regions
+		auto missing = difference(regions,covered);
+
+		// see whether there is nothing to search for left
+		if (missing.empty()) return std::move(res);
+
+		// ask parent
+		auto extra = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(missing);
+
+		// merge partial results
+		res.addAll(extra);
+
+		// done
+		return std::move(res);
+	}
+
+
 
 
 } // end of namespace data

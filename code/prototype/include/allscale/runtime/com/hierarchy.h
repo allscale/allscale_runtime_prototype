@@ -201,6 +201,13 @@ namespace com {
 			: network(network) {}
 
 		/**
+		 * Provides access to the underlying network instance.
+		 */
+		Network& getNetwork() {
+			return network;
+		}
+
+		/**
 		 * Retrieves the number of nodes in this network.
 		 */
 		size_t numNodes() const {
@@ -226,7 +233,7 @@ namespace com {
 		 * Obtains a handle for performing a remote procedure call of a selected service.
 		 */
 		template<typename S, typename R, typename ... Args>
-		auto getRemoteProcedure(const HierarchyAddress& addr, R(S::*fun)(Args...)) {
+		auto getRemoteProcedure(const HierarchyAddress& addr, R(S::*fun)(Args...)) const {
 			return network.getRemoteProcedure(addr.getRank(),[addr](Node& node)->S&{
 				return node.getService<HierarchyService<S>>().get(addr.getLayer());
 			},fun);

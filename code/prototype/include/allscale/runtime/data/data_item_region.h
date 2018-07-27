@@ -162,7 +162,7 @@ namespace data {
 			}
 
 			bool operator==(const RegionsBase& otherBase) const override {
-				assert_true(static_cast<const Regions*>(&otherBase));
+				assert_true(dynamic_cast<const Regions*>(&otherBase));
 				const auto& other = static_cast<const Regions&>(otherBase);
 				return regions == other.regions;
 			}
@@ -268,10 +268,28 @@ namespace data {
 		// move assign is also as usual
 		DataItemRegions& operator=(DataItemRegions&&) = default;
 
+		// --- observers ---
+
 		/**
 		 * Tests whether the regions are empty.
 		 */
 		bool empty() const;
+
+		/**
+		 * Obtains a pointer to the region of an item covered by this region.
+		 */
+		template<typename DataItem>
+		const typename DataItem::region_type* getRegion(const DataItemReference<DataItem>& ref) const {
+			auto pos = regions.find(typeid(DataItem));
+			if (pos == regions.end()) return nullptr;
+			auto& regions = static_cast<const Regions<DataItem>&>(*pos->second).getRegions();
+			auto pos2 = regions.find(ref);
+			if (pos2 == regions.end()) return nullptr;
+			return &pos2->second;
+		}
+
+
+		// --- mutators ---
 
 		/**
 		 * Add a region to this list of regions.
@@ -363,6 +381,10 @@ namespace data {
 	 */
 	bool isSubRegion(const DataItemRegions& a, const DataItemRegions& b);
 
+	/**
+	 * Determines whether the two given regions are disjoint.
+	 */
+	bool isDisjoint(const DataItemRegions& a, const DataItemRegions& b);
 
 
 } // end of namespace com

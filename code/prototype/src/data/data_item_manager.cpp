@@ -11,7 +11,8 @@ namespace runtime {
 namespace data {
 
 
-	DataItemManagerService::DataItemManagerService(com::Node&) {}
+	DataItemManagerService::DataItemManagerService(com::Node& node)
+		: network(node.getNetwork()), rank(node.getRank()) {}
 
 	// a function to retrieve the local instance of this service
 	DataItemManagerService& DataItemManagerService::getLocalService() {
@@ -24,18 +25,30 @@ namespace data {
 		// do not wait for empty requirements
 		if (reqs.empty()) return;
 
-		// todo: retrieve read-only data
-
 		// todo: record access locks
 
-//		std::cout << "Running task with " << reqs << "\n";
+		// get access to the local data item index service
+		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
 
-		// for now, just test that data is available
+		// for now, just test that write data is available
 		assert_pred2(
 			data::isSubRegion,
 			reqs.getWriteRequirements(),
-			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
+			diis.getAvailableData()
 		);
+
+		// locate all read requirements
+		auto locations = diis.locate(reqs.getReadRequirements());
+
+		// import all read requirements
+		retrieve(locations);
+
+		// check that all read requirements are now covered
+//		assert_pred2(
+//			data::isSubRegion,
+//			reqs.getReadRequirements(),
+//			diis.getAvailableData()
+//		);
 	}
 
 
@@ -53,6 +66,21 @@ namespace data {
 			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
 		);
 
+		// also check read requirements
+//		assert_pred2(
+//			data::isSubRegion,
+//			reqs.getReadRequirements(),
+//			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
+//		);
+	}
+
+	/**
+	 * Instructs the data item manager to retrieve all data listed in the given location summary.
+	 */
+	void DataItemManagerService::retrieve(const DataItemLocationInfos& infos) {
+		for(const auto& cur : registers) {
+			cur.second->retrieve(infos);
+		}
 	}
 
 

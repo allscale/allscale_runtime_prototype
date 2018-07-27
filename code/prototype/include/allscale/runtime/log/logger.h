@@ -35,7 +35,9 @@ namespace log {
 
 	// a macro to log messages in a thread-save manor
 	#define DLOG if(allscale::runtime::log::log_guard g = allscale::runtime::log::g_log_lock) \
-		std::cerr << "Node: " << allscale::runtime::com::Node::getLocalRank() << " - " << __FILE__ << ":" << __LINE__ << ": "
+		std::cerr << "Node: " << allscale::runtime::com::Node::getLocalRank() << ": "
+//		std::cerr << "Node: " << allscale::runtime::com::Node::getLocalRank() << " - " << __FILE__ << ":" << __LINE__ << ": "
+
 
 
 } // end namespace log

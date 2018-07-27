@@ -264,7 +264,17 @@ namespace work {
 						? diis.getMissingRegionsLeft(reqs)
 						: diis.getMissingRegionsRight(reqs);
 
+				// currently miss-aligned regions are not supported
+				if (targetLeft) {
+					assert_pred2(data::isDisjoint,reqs.getWriteRequirements(),diis.getAvailableDataRight())
+						<< "Un-aligned tasks not yet supported!\n";
+				} else {
+					assert_pred2(data::isDisjoint,reqs.getWriteRequirements(),diis.getAvailableDataLeft())
+						<< "Un-aligned tasks not yet supported!\n";
+				}
+
 				// record handout of missing region
+				DLOG << "Adding sub-allowances " << subAllowances << " to " << next << " -- needed: " << reqs << "\n";
 				if (targetLeft) {
 					diis.addRegionsLeft(subAllowances);
 				} else {

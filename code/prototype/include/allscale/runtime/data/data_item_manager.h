@@ -21,6 +21,7 @@
 
 #include "allscale/runtime/data/data_item_reference.h"
 #include "allscale/runtime/data/data_item_requirement.h"
+#include "allscale/runtime/data/data_item_location.h"
 
 namespace allscale {
 namespace runtime {
@@ -54,24 +55,6 @@ namespace data {
 		using facade_type      = typename DataItem::facade_type;
 
 
-		/**
-		 * A summary of shared and exclusively managed regions on various levels.
-		 */
-		struct Ownership {
-			// the region maintained, potentially shared
-			region_type shared;
-			// the region maintained, exclusive (subregion of shared)
-			region_type exclusive;
-
-			// checks invariants on this object
-			bool check() const {
-				// only invariant: exclusive <= shared
-				using namespace allscale::api::core;
-				return isSubRegion(exclusive,shared);
-			}
-		};
-
-
 		// -- node-local management information --
 
 		// the management data shared among all instances
@@ -80,8 +63,11 @@ namespace data {
 		// the locally maintained data fragment
 		fragment_type fragment;
 
-		// the locally maintained shared and exclusive regions
-		Ownership local;
+		// the locally maintained exclusive regions
+		region_type exclusive;
+
+		// the total reserved region (must be a super-set of exclusive)
+		region_type reserved;
 
 		// a lock for operation synchronization
 		mutable std::mutex lock;
@@ -95,8 +81,8 @@ namespace data {
 			: shared_data(shared_data), fragment(this->shared_data) {
 
 			// make sure that nothing is owned yet
-			assert_true(local.shared.empty());
-			assert_true(local.exclusive.empty());
+			assert_true(exclusive.empty());
+			assert_true(reserved.empty());
 			assert_true(fragment.getCoveredRegion().empty());
 		}
 
@@ -113,16 +99,39 @@ namespace data {
 		}
 
 		void resizeExclusive(const region_type& newSize) {
+
+			// reserve the area
+			reserve(newSize);
+
+			// update the ownership
+			guard g(lock);
+			exclusive = newSize;
+		}
+
+		void reserve(const region_type& area) {
 			// lock down this fragment
 			guard g(lock);
 
-			// TODO: handle exlusive and shared
+			// test whether a change is necessary
+			if (allscale::api::core::isSubRegion(area,reserved)) return;
 
-			// resize the fragment
-			fragment.resize(newSize);
+			// grow reserved area
+			reserved = region_type::merge(reserved,area);
 
-			// update the ownership
-			local.exclusive = newSize;
+			// resize fragment
+			fragment.resize(reserved);
+		}
+
+		allscale::utils::Archive extract(const region_type& region) const {
+			allscale::utils::ArchiveWriter out;
+			fragment.extract(out,region);
+			return std::move(out).toArchive();
+
+		}
+
+		void insert(allscale::utils::Archive& data) {
+			allscale::utils::ArchiveReader in(data);
+			fragment.insert(in);
 		}
 
 	};
@@ -139,6 +148,7 @@ namespace data {
 		class DataItemRegisterBase {
 		public:
 			virtual ~DataItemRegisterBase() {};
+			virtual void retrieve(const DataItemLocationInfos&) =0;
 		};
 
 		/**
@@ -148,15 +158,24 @@ namespace data {
 		class DataItemRegister : public DataItemRegisterBase {
 
 			using reference_type = DataItemReference<DataItem>;
+			using region_type = typename DataItem::region_type;
 			using shared_data_type = typename DataItem::shared_data_type;
 			using facade_type = typename DataItem::facade_type;
 
 			// the index of registered items
 			std::map<DataItemReference<DataItem>,std::unique_ptr<DataFragmentHandler<DataItem>>> items;
 
+			// the network this service is a part of
+			com::Network& network;
+
+			// the rank this service is running on
+			com::rank_t rank;
+
 		public:
 
-			DataItemRegister() = default;
+			DataItemRegister(com::Network& network, com::rank_t rank)
+				: network(network), rank(rank) {};
+
 			DataItemRegister(const DataItemRegister&) = delete;
 			DataItemRegister(DataItemRegister&&) = delete;
 
@@ -164,6 +183,31 @@ namespace data {
 			void registerItem(const reference_type& ref, const shared_data_type& shared) {
 				assert_not_pred1(contains,ref);
 				items.emplace(ref,std::make_unique<DataFragmentHandler<DataItem>>(shared));
+			}
+
+			allscale::utils::Archive extract(const reference_type& ref, const region_type& region) {
+				return get(ref).extract(region);
+			}
+
+			void insert(const reference_type& ref, allscale::utils::Archive& archive) {
+				get(ref).insert(archive);
+			}
+
+			void retrieve(const DataItemLocationInfos& infos) override {
+				infos.forEach<DataItem>([&](const reference_type& ref, const region_type& region, com::rank_t loc){
+					// skip if source is local
+					if (loc == rank) return;
+
+					// retrieve data from source
+					auto archive = network.getRemoteProcedure(loc,&DataItemManagerService::extract<DataItem>)(ref,region);
+
+					// ensure space for the new region
+					auto& handler = get(ref);
+					handler.reserve(region);
+
+					// import data
+					handler.insert(archive);
+				});
 			}
 
 			// obtains access to a selected fragment handler
@@ -182,6 +226,12 @@ namespace data {
 
 		// the maintained register of data item registers (type specific)
 		std::map<std::type_index,std::unique_ptr<DataItemRegisterBase>> registers;
+
+		// the network this service is a part of
+		com::Network& network;
+
+		// the rank this service is running on
+		com::rank_t rank;
 
 	public:
 
@@ -233,6 +283,10 @@ namespace data {
 		 */
 		void release(const DataItemRequirements& reqs);
 
+		/**
+		 * Instructs the data item manager to retrieve all data listed in the given location summary.
+		 */
+		void retrieve(const DataItemLocationInfos& data);
 
 		// --- protocol interface ---
 
@@ -243,6 +297,22 @@ namespace data {
 
 			// also inform index services
 			notifyIndexOnCreation(ref);
+		}
+
+		/**
+		 * Retrieves a serialized version of a data item stored at this locality.
+		 */
+		template<typename DataItem>
+		allscale::utils::Archive extract(DataItemReference<DataItem> ref, const typename DataItem::region_type& region) {
+			return getRegister<DataItem>().extract(ref,region);
+		}
+
+		/**
+		 * Retrieves a serialized version of a data item stored at this locality.
+		 */
+		template<typename DataItem>
+		void insert(DataItemReference<DataItem> ref, allscale::utils::Archive& archive) {
+			return getRegister<DataItem>().insert(ref,archive);
 		}
 
 		// --- local interface ---
@@ -261,7 +331,7 @@ namespace data {
 			if (pos != registers.end()) {
 				return *static_cast<DataItemRegister<DataItem>*>(pos->second.get());
 			}
-			auto instance = std::make_unique<DataItemRegister<DataItem>>();
+			auto instance = std::make_unique<DataItemRegister<DataItem>>(network,rank);
 			auto& res = *instance;
 			registers[typeid(DataItem)] = std::move(instance);
 			return res;

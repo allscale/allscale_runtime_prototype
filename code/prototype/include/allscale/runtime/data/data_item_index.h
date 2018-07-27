@@ -22,6 +22,7 @@
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/data/data_item_requirement.h"
+#include "allscale/runtime/data/data_item_location.h"
 
 namespace allscale {
 namespace runtime {
@@ -56,6 +57,9 @@ namespace data {
 		// the area managed by the right child
 		region_type right;
 
+		// the network being a part of
+		com::HierarchicalOverlayNetwork network;
+
 		// the address this index entry is assigned to
 		com::HierarchyAddress myAddr;
 
@@ -76,7 +80,7 @@ namespace data {
 
 		// create a new index entry
 		DataItemIndexEntry(com::Network& net, const com::HierarchyAddress& addr, const data::DataItemReference<DataItem>& ref)
-			: myAddr(addr), isRoot(myAddr == com::HierarchicalOverlayNetwork(net).getRootAddress()), ref(ref) {}
+			: network(net), myAddr(addr), isRoot(myAddr == network.getRootAddress()), ref(ref) {}
 
 		DataItemIndexEntry(const DataItemIndexEntry&) = delete;
 		DataItemIndexEntry(DataItemIndexEntry&& other) = delete;
@@ -114,13 +118,13 @@ namespace data {
 		void addLeft(const DataItemRegion<DataItem>& a) {
 			guard g(left_lock);
 			left = allscale::api::core::merge(left,a.getRegion());
-			assert_true(check()) << "Invariant violated!";
+			check();
 		}
 
 		void addRight(const DataItemRegion<DataItem>& a) {
 			guard g(right_lock);
 			right = allscale::api::core::merge(right,a.getRegion());
-			assert_true(check()) << "Invariant violated!";
+			check();
 		}
 
 		void addTo(DataItemRegions& a) const {
@@ -138,14 +142,38 @@ namespace data {
 			a.add(DataItemRegion<DataItem>(ref,right));
 		}
 
+		void addLocationInfo(const region_type& needed, DataItemLocationInfos& res) const {
+
+			// this must only be called for leaf nodes
+			assert_true(myAddr.isLeaf());
+
+			// fill in local state ..
+
+			// lock local state
+			guard g(full_lock);
+
+			// see whether there is something within the domain of this node
+			auto match = region_type::intersect(needed,full);
+			if (match.empty()) return; // does not seem so
+
+			// we found something
+			res.add(ref,match,myAddr.getRank());
+
+		}
+
+
 	private:
 
 		// checks this entry for consistency
-		bool check() const {
-			// check all the invariants on the areas in this info entry
-			return allscale::api::core::isSubRegion(left,full) &&
-					allscale::api::core::isSubRegion(right,full) &&
-				   region_type::intersect(left,right).empty();
+		void check() const {
+			// check all invariants
+			assert_pred2(allscale::api::core::isSubRegion,left,full);
+			assert_pred2(allscale::api::core::isSubRegion,right,full);
+
+			auto disjoint = [](const auto& a, const auto& b) {
+				return region_type::intersect(a,b).empty();
+			};
+			assert_pred2(disjoint,left,right) << "Overlap: " << region_type::intersect(left,right);
 		}
 
 	};
@@ -172,6 +200,8 @@ namespace data {
 			virtual void addLeft(const DataItemRegions& regions) =0;
 
 			virtual void addRight(const DataItemRegions& regions) =0;
+
+			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const =0;
 
 		};
 
@@ -234,13 +264,24 @@ namespace data {
 				});
 			}
 
+			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const {
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
+					auto pos = indices.find(r.getDataItemReference());
+					if (pos == indices.end()) return;
+					pos->second->addLocationInfo(r.getRegion(),res);
+				});
+			}
+
 		};
 
 		// the network being based on
-		com::Network& network;
+		com::HierarchicalOverlayNetwork network;
 
 		// the address this service is installed on
 		com::HierarchyAddress myAddress;
+
+		// flag to indicate that this is the root service
+		bool isRoot;
 
 		// the set of all maintained indices
 		std::map<std::type_index,std::unique_ptr<IndexBase>> indices;
@@ -249,7 +290,7 @@ namespace data {
 
 		// creates a new instance of this service running on the given address
 		DataItemIndexService(com::Network& net, const com::HierarchyAddress& address)
-			: network(net), myAddress(address) {}
+			: network(net), myAddress(address), isRoot(myAddress == network.getRootAddress()) {}
 
 		template<typename DataItem>
 		void registerDataItem(const DataItemReference<DataItem>& ref) {
@@ -291,13 +332,18 @@ namespace data {
 		// adds the provided regions to the coverage of the right sub tree
 		void addRegionsRight(const DataItemRegions&);
 
+		/**
+		 * Requests information on the location of data in the given regions.
+		 */
+		DataItemLocationInfos locate(const DataItemRegions& regions);
+
 	private:
 
 		// retrieves a type specific index maintained in this service
 		template<typename DataItem>
 		Index<DataItem>& getIndex() {
 			auto& ptr = indices[typeid(DataItem)];
-			if (!ptr) ptr = std::make_unique<Index<DataItem>>(network,myAddress);
+			if (!ptr) ptr = std::make_unique<Index<DataItem>>(network.getNetwork(),myAddress);
 			return static_cast<Index<DataItem>&>(*ptr);
 		}
 

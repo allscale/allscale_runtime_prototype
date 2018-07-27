@@ -170,9 +170,9 @@ namespace data {
 			assert_pred2(allscale::api::core::isSubRegion,left,full);
 			assert_pred2(allscale::api::core::isSubRegion,right,full);
 
-			auto disjoint = [](const auto& a, const auto& b) {
+			assert_decl(auto disjoint = [](const auto& a, const auto& b) {
 				return region_type::intersect(a,b).empty();
-			};
+			});
 			assert_pred2(disjoint,left,right) << "Overlap: " << region_type::intersect(left,right);
 		}
 

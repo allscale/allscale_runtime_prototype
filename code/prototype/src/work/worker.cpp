@@ -3,10 +3,13 @@
 
 #include <thread>
 
+#include "allscale/utils/unused.h"
+
 #include "allscale/runtime/log/logger.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
+
 
 namespace allscale {
 namespace runtime {
@@ -23,7 +26,7 @@ namespace work {
 
 		// switch from ready to startup
 		State st = Ready;
-		bool success = state.compare_exchange_strong(st,Startup);
+		__allscale_unused bool success = state.compare_exchange_strong(st,Startup);
 		assert_true(success) << "Invalid state " << st << ": cannot start non-ready worker.";
 
 		// start processing thread
@@ -57,7 +60,7 @@ namespace work {
 
 		// switch from ready to startup
 		State st = Running;
-		bool success = state.compare_exchange_strong(st,Shutdown);
+		__allscale_unused bool success = state.compare_exchange_strong(st,Shutdown);
 		assert_true(success) << "Invalid state " << st << ": cannot shut down non-running worker.";
 
 		// wait for the thread to finish its work

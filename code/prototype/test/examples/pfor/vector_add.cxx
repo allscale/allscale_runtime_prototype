@@ -431,6 +431,7 @@ struct DummyCtorParamType {
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_data_requirements_slash_vector_add_grid_slash_vector_add_grid_dot_cpp_28_14_allscale_colon__colon_api_colon__colon_user_colon__colon_data_colon__colon_Grid_lt_float_comma__space_2_gt__space__ampersand__void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_data_requirements_slash_vector_add_grid_slash_vector_add_grid_dot_cpp_28_14::operator()(int32_t var_1) const {
     allscale::api::user::data::Grid<float, 2u >&& var_2 = allscale::runtime::DataItemManager::get((allscale::runtime::DataItemReference<allscale::api::user::data::Grid<float, 2u > >&)(*this).capture_c);
     if (var_2.operator[](allscale::utils::Vector<long, 2 >{(int64_t)var_1}) != (float)1000) {
+        std::cout << "Incorrect result at position: " << var_1 << " -- " << var_2.operator[](allscale::utils::Vector<long, 2 >{(int64_t)var_1}) << " != " << (float)1000 << "\n";
         exit(1);
     };
 }

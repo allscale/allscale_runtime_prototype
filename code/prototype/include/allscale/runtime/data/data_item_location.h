@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <typeinfo>
 #include <typeindex>
 
@@ -175,6 +176,35 @@ namespace data {
 			return static_cast<Entry<DataItem>&>(*ptr);
 		}
 
+	};
+
+
+	/**
+	 * A cache for maintaining location information.
+	 */
+	class DataItemLocationCache {
+
+		// most naive version - todo: improve
+		std::vector<std::pair<DataItemRegions,DataItemLocationInfos>> cache;
+
+		// a lock for synchronization
+		std::unique_ptr<std::mutex> lock;
+
+		// the guard type
+		using guard = std::lock_guard<std::mutex>;
+
+	public:
+
+		DataItemLocationCache() : lock(std::make_unique<std::mutex>()) {}
+
+		// clears the cache content
+		void clear();
+
+		// performs a lookup in the cache, fills what is known
+		DataItemLocationInfos lookup(const DataItemRegions& regions) const;
+
+		// updates the cached information
+		void update(const DataItemLocationInfos& infos);
 	};
 
 

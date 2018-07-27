@@ -55,6 +55,30 @@ namespace data {
 	}
 
 
+	// --- Location Cache ---
+
+
+	void DataItemLocationCache::clear() {
+		guard g(*lock);
+		cache.clear();
+	}
+
+	DataItemLocationInfos DataItemLocationCache::lookup(const DataItemRegions& regions) const {
+		guard g(*lock);
+		for(const auto& cur : cache) {
+			if (cur.first == regions) {
+				return cur.second;
+			}
+		}
+		return {};
+	}
+
+	void DataItemLocationCache::update(const DataItemLocationInfos& infos) {
+		guard g(*lock);
+		cache.push_back({infos.getCoveredRegions(),infos});
+	}
+
+
 } // end of namespace data
 } // end of namespace runtime
 } // end of namespace allscale

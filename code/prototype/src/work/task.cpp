@@ -1,6 +1,8 @@
 
 #include "allscale/runtime/work/task.h"
 
+#include "allscale/utils/unused.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -38,7 +40,7 @@ namespace work {
 
 		// update state to running
 		State st = Ready;
-		bool success = state.compare_exchange_strong(st,Running);
+		__allscale_unused bool success = state.compare_exchange_strong(st,Running);
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task
@@ -66,7 +68,7 @@ namespace work {
 
 		// update state to running
 		State st = Ready;
-		bool success = state.compare_exchange_strong(st,Running);
+		__allscale_unused bool success = state.compare_exchange_strong(st,Running);
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task

@@ -130,8 +130,11 @@ namespace data {
 		// quick exit - if there is nothing requested
 		if (regions.empty()) return {};
 
-		// create result
-		DataItemLocationInfos res;
+		// start by taking data from cache
+		auto res = locationCache.lookup(regions);
+
+		// compute set of missing information
+		auto remaining = difference(regions,res.getCoveredRegions());
 
 		// -- add data for local sub-tree  --
 
@@ -139,13 +142,12 @@ namespace data {
 
 			// add local information
 			for(const auto& cur : indices) {
-				cur.second->addLocationInfo(regions,res);
+				cur.second->addLocationInfo(remaining,res);
 			}
 
 		} else {
 
 			// for inner nodes, query sub-trees
-			auto remaining = regions;
 			{
 				// start with left
 				auto part = intersect(remaining,getAvailableDataLeft());
@@ -206,6 +208,9 @@ namespace data {
 
 		// merge partial results
 		res.addAll(extra);
+
+		// cache result
+		locationCache.update(res);
 
 		// done
 		return std::move(res);

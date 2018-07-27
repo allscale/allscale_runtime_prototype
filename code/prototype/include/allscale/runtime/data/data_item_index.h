@@ -286,6 +286,9 @@ namespace data {
 		// the set of all maintained indices
 		std::map<std::type_index,std::unique_ptr<IndexBase>> indices;
 
+		// a cache for location information
+		mutable DataItemLocationCache locationCache;
+
 	public:
 
 		// creates a new instance of this service running on the given address

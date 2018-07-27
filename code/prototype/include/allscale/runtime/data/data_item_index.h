@@ -10,6 +10,7 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 
 #include "allscale/api/core/data.h"
 
@@ -64,30 +65,43 @@ namespace data {
 		// the data item managing
 		data::DataItemReference<DataItem> ref;
 
+		// locks
+		mutable std::mutex full_lock;
+		mutable std::mutex left_lock;
+		mutable std::mutex right_lock;
+
+		using guard = std::lock_guard<std::mutex>;
+
 	public:
 
 		// create a new index entry
 		DataItemIndexEntry(com::Network& net, const com::HierarchyAddress& addr, const data::DataItemReference<DataItem>& ref)
 			: myAddr(addr), isRoot(myAddr == com::HierarchicalOverlayNetwork(net).getRootAddress()), ref(ref) {}
 
+		DataItemIndexEntry(const DataItemIndexEntry&) = delete;
+		DataItemIndexEntry(DataItemIndexEntry&& other) = delete;
 
 		// test whether the given requirement is covered by the current region of influence
 		bool isCovered(const DataItemRequirement<DataItem>& req) const {
 			assert_eq(ReadWrite, req.getMode());
+			guard g(full_lock);
 			return allscale::api::core::isSubRegion(req.getRegion(),full);
 		}
 
 		bool isCoveredByLeft(const DataItemRequirement<DataItem>& req) const {
 			assert_eq(ReadWrite, req.getMode());
+			guard g(left_lock);
 			return allscale::api::core::isSubRegion(req.getRegion(),left);
 		}
 
 		bool isCoveredByRight(const DataItemRequirement<DataItem>& req) const {
 			assert_eq(ReadWrite, req.getMode());
+			guard g(right_lock);
 			return allscale::api::core::isSubRegion(req.getRegion(),right);
 		}
 
 		void add(const DataItemRegion<DataItem>& a) {
+			guard g(full_lock);
 			full = allscale::api::core::merge(full,a.getRegion());
 
 			// if this is not a leaf we are done
@@ -98,24 +112,29 @@ namespace data {
 		}
 
 		void addLeft(const DataItemRegion<DataItem>& a) {
+			guard g(left_lock);
 			left = allscale::api::core::merge(left,a.getRegion());
 			assert_true(check()) << "Invariant violated!";
 		}
 
 		void addRight(const DataItemRegion<DataItem>& a) {
+			guard g(right_lock);
 			right = allscale::api::core::merge(right,a.getRegion());
 			assert_true(check()) << "Invariant violated!";
 		}
 
 		void addTo(DataItemRegions& a) const {
+			guard g(full_lock);
 			a.add(DataItemRegion<DataItem>(ref,full));
 		}
 
 		void addLeftTo(DataItemRegions& a) const {
+			guard g(left_lock);
 			a.add(DataItemRegion<DataItem>(ref,left));
 		}
 
 		void addRightTo(DataItemRegions& a) const {
+			guard g(right_lock);
 			a.add(DataItemRegion<DataItem>(ref,right));
 		}
 
@@ -164,7 +183,7 @@ namespace data {
 			com::Network& net;
 
 			// the index of the maintained data item entries
-			std::map<DataItemReference<DataItem>,DataItemIndexEntry<DataItem>> indices;
+			std::map<DataItemReference<DataItem>,std::unique_ptr<DataItemIndexEntry<DataItem>>> indices;
 
 			// the address of the node this index is installed on
 			com::HierarchyAddress myAddress;
@@ -175,25 +194,25 @@ namespace data {
 
 			DataItemIndexEntry<DataItem>& get(const DataItemReference<DataItem>& ref) {
 				auto pos = indices.find(ref);
-				if (pos != indices.end()) return pos->second;
-				return indices.emplace(ref,DataItemIndexEntry<DataItem>(net,myAddress,ref)).first->second;
+				if (pos != indices.end()) return *pos->second;
+				return *indices.emplace(ref,std::make_unique<DataItemIndexEntry<DataItem>>(net,myAddress,ref)).first->second;
 			}
 
 			void addAvailable(DataItemRegions& res) const override {
 				for(const auto& cur : indices) {
-					cur.second.addTo(res);
+					cur.second->addTo(res);
 				}
 			}
 
 			void addAvailableLeft(DataItemRegions& res) const override {
 				for(const auto& cur : indices) {
-					cur.second.addLeftTo(res);
+					cur.second->addLeftTo(res);
 				}
 			}
 
 			void addAvailableRight(DataItemRegions& res) const override {
 				for(const auto& cur : indices) {
-					cur.second.addRightTo(res);
+					cur.second->addRightTo(res);
 				}
 			}
 

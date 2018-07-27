@@ -9,6 +9,7 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 #include <typeinfo>
 #include <typeindex>
 
@@ -82,6 +83,12 @@ namespace data {
 		// the locally maintained shared and exclusive regions
 		Ownership local;
 
+		// a lock for operation synchronization
+		mutable std::mutex lock;
+
+		// the kind of gurad used for synchronization
+		using guard = std::lock_guard<std::mutex>;
+
 	public:
 
 		DataFragmentHandler(const shared_data_type& shared_data)
@@ -106,7 +113,10 @@ namespace data {
 		}
 
 		void resizeExclusive(const region_type& newSize) {
-			// TODO: synchronize, handle exlusive and shared
+			// lock down this fragment
+			guard g(lock);
+
+			// TODO: handle exlusive and shared
 
 			// resize the fragment
 			fragment.resize(newSize);
@@ -142,7 +152,7 @@ namespace data {
 			using facade_type = typename DataItem::facade_type;
 
 			// the index of registered items
-			std::map<DataItemReference<DataItem>,DataFragmentHandler<DataItem>> items;
+			std::map<DataItemReference<DataItem>,std::unique_ptr<DataFragmentHandler<DataItem>>> items;
 
 		public:
 
@@ -153,13 +163,13 @@ namespace data {
 			// registers a new data item in the local registry
 			void registerItem(const reference_type& ref, const shared_data_type& shared) {
 				assert_not_pred1(contains,ref);
-				items.emplace(ref,DataFragmentHandler<DataItem>(shared));
+				items.emplace(ref,std::make_unique<DataFragmentHandler<DataItem>>(shared));
 			}
 
 			// obtains access to a selected fragment handler
 			DataFragmentHandler<DataItem>& get(const reference_type& ref) {
 				assert_pred1(contains,ref);
-				return items.find(ref)->second;
+				return *items.find(ref)->second;
 			}
 
 		private:

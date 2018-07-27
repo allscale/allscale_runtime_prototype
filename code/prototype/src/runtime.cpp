@@ -43,7 +43,7 @@ namespace runtime {
 	Runtime Runtime::create() {
 
 		// get the number of nodes
-		int num_nodes = 2;	// < by default we use two nodes
+		int num_nodes = 4;	// < by default we use four nodes
 		if (auto val = std::getenv("ART_NUM_NODES")) {
 			num_nodes = std::atoi(val);
 			if (num_nodes < 1) num_nodes = 1;

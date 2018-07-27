@@ -264,17 +264,13 @@ namespace runtime {
 
 	template<typename WorkItemDesc, typename ... Args>
 	treeture<typename WorkItemDesc::result_type> spawn_first_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
-		static std::atomic<int> taskCounter(0);
-
-		runtime::work::TaskID newId(++taskCounter);
+		// get a fresh ID
+		runtime::work::TaskID newId = allscale::runtime::work::getFreshId();
 		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
 	}
 
 	template<typename WorkItemDesc, typename ... Args>
 	treeture<typename WorkItemDesc::result_type> spawn_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
-
-		static std::atomic<int> taskCounter(0);
-
 		// get the ID of the child
 		auto newId = runtime::work::getNewChildId();
 		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);

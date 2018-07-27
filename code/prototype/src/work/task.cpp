@@ -7,6 +7,11 @@ namespace work {
 
 	thread_local Task* tl_current_task = nullptr;
 
+	TaskID getFreshId() {
+		static std::atomic<int> taskCounter(0);
+		return ++taskCounter;
+	}
+
 	TaskID getNewChildId() {
 		Task* current_task = tl_current_task;
 		assert_true(current_task) << "No current task in active context!";

@@ -21,6 +21,7 @@
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
 
+#include "allscale/runtime/log/logger.h"
 
 namespace allscale {
 namespace runtime {
@@ -28,6 +29,9 @@ namespace work {
 
 	// we are reusing the reference implementations task ID
 	using TaskID = allscale::api::core::impl::reference::TaskID;
+
+	// obtains a new, fresh id
+	TaskID getFreshId();
 
 	// obtains a child ID for a newly spawned task (only valid if triggered during the execution of a parent task)
 	TaskID getNewChildId();
@@ -346,6 +350,7 @@ namespace work {
 			detail::set_result<result_type>()(state,[&](){
 				return ProcessVariant::execute(closure);
 			});
+			DLOG << "Task " << getId() << " processing completed!\n";
 		}
 
 		virtual data::DataItemRequirements getSplitRequirements() const override {
@@ -356,6 +361,7 @@ namespace work {
 			detail::set_result<result_type>()(state,[&](){
 				return SplitVariant::execute(closure);
 			});
+			DLOG << "Task " << getId() << " splitting completed!\n";
 		}
 
 		// obtains the treeture referencing the value produced by this task

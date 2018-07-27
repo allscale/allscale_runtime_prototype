@@ -118,6 +118,8 @@ namespace work {
 				// free requirements
 				if (dim) dim->release(reqs);
 
+				DLOG << "Splitting " << t->getId() << " on node " << rank << " completed\n";
+
 			} else {
 
 				// in this case we process the task
@@ -134,6 +136,8 @@ namespace work {
 
 				// free requirements
 				if (dim) dim->release(reqs);
+
+				DLOG << "Processing " << t->getId() << " on node " << rank << " completed\n";
 
 				// increment task counter
 				taskCounter++;

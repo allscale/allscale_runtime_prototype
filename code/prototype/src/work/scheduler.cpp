@@ -133,6 +133,8 @@ namespace work {
 		// process the task
 		bool scheduleLocal(TaskPtr&& task) {
 
+			DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
+
 			// assign to local worker
 			com::Node::getLocalService<Worker>().schedule(std::move(task));
 
@@ -182,11 +184,18 @@ namespace work {
 			bool schedule(TaskReference task) {
 
 				// Phase 1: locate virtual node allowed to perform the scheduling
-				//   needed: a node owning all the data required for the processing
+				DLOG << "Start Scheduling " << task->getId() << " on " << myAddr << " ... \n";
+				assert_true(task->isReady());
 
-				// TODO: actually search for node that can handle request
+				// check whether current node is allowed to make autonomous scheduling decisions
+				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
+				if (!isRoot && task->getId().getDepth() > depth && diis.coversWriteRequirements(task->getProcessRequirements())) {
+					// we can schedule it right here!
+					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
+					return scheduleDown(std::move(task),{});
+				}
 
-				// for now: just jump to root
+				// propagate to parent
 				if (!isRoot) {
 					// forward call to parent node
 					return network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
@@ -195,7 +204,6 @@ namespace work {
 				// Phase 2: propagate task down the hierarchy
 
 				// compute unallocated data item regions
-				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
 				auto missing = diis.getMissingRegions(task->getProcessRequirements());
 
 				// pass those along with the scheduling process
@@ -222,14 +230,12 @@ namespace work {
 
 				// on leaf level, schedule locally
 				if (myAddr.isLeaf()) {
-					DLOG << "Running " << task->getId() << " on " << myAddr << " ... \n";
 					return scheduleLocal(std::move(task));
 				}
 
 				// schedule locally if not sufficiently refined yet
 				auto id = task->getId();
 				if (id.getDepth() <= depth) {
-					DLOG << "Running " << id << " on " << myAddr << " ... \n";
 					return scheduleLocal(std::move(task));
 				}
 
@@ -257,6 +263,13 @@ namespace work {
 				auto subAllowances = (targetLeft)
 						? diis.getMissingRegionsLeft(reqs)
 						: diis.getMissingRegionsRight(reqs);
+
+				// record handout of missing region
+				if (targetLeft) {
+					diis.addRegionsLeft(subAllowances);
+				} else {
+					diis.addRegionsRight(subAllowances);
+				}
 
 				DLOG << "Dispatching " << id << " on " << myAddr << " to " << next << " with " << subAllowances << " ... \n";
 

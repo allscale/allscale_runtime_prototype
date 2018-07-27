@@ -178,7 +178,7 @@ namespace data {
 			}
 
 			virtual std::unique_ptr<RegionsBase> merge(const RegionsBase& otherBase) const override {
-				assert_true(static_cast<const Regions*>(&otherBase));
+				assert_true(dynamic_cast<const Regions*>(&otherBase));
 				const auto& other = static_cast<const Regions&>(otherBase);
 				auto res = std::make_unique<Regions>(*this);
 				for(const auto& cur : other.regions) {
@@ -188,7 +188,7 @@ namespace data {
 			}
 
 			virtual std::unique_ptr<RegionsBase> intersect(const RegionsBase& otherBase) const override {
-				assert_true(static_cast<const Regions*>(&otherBase));
+				assert_true(dynamic_cast<const Regions*>(&otherBase));
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute intersection of sets
@@ -217,7 +217,7 @@ namespace data {
 			}
 
 			virtual std::unique_ptr<RegionsBase> difference(const RegionsBase& otherBase) const override {
-				assert_true(static_cast<const Regions*>(&otherBase));
+				assert_true(dynamic_cast<const Regions*>(&otherBase));
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute differences of sets

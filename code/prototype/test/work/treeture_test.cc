@@ -14,6 +14,12 @@ namespace work {
 
 	}
 
+	TEST(Treeture, Serializable) {
+
+		EXPECT_TRUE(allscale::utils::is_serializable<treeture<void>>::value);
+		EXPECT_TRUE(allscale::utils::is_serializable<treeture<int>>::value);
+	}
+
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

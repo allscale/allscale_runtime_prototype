@@ -31,3 +31,6 @@ foreach(test ${prototype_integration_tests})
     target_link_libraries(${tgt} prototype)
     add_test(NAME ${tgt} COMMAND $<TARGET_FILE:${tgt}>)
 endforeach(test)
+
+# copy amdados config file
+configure_file(${PROJECT_SOURCE_DIR}/prototype/test/examples/pilot/amdados.conf ${CMAKE_CURRENT_BINARY_DIR}/amdados.conf COPYONLY)

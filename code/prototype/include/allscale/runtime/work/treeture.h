@@ -11,6 +11,8 @@
 #include <memory>
 #include <thread>
 
+#include "allscale/utils/serializer.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -131,6 +133,16 @@ namespace work {
 			}
 		}
 
+		void store(allscale::utils::ArchiveWriter& out) const {
+			// here we cheat
+			// TODO: make this really serializable
+			out.write<std::intptr_t>(std::intptr_t(this));
+		}
+
+		static treeture<R> load(allscale::utils::ArchiveReader& in) {
+			return *static_cast<treeture<R>*>((void*)in.read<std::intptr_t>());
+		}
+
 	};
 
 	/**
@@ -170,6 +182,17 @@ namespace work {
 			// TODO: refine this
 			return *this;
 		}
+
+		void store(allscale::utils::ArchiveWriter& out) const {
+			// here we cheat
+			// TODO: make this really serializable
+			out.write<std::intptr_t>(std::intptr_t(this));
+		}
+
+		static treeture<void> load(allscale::utils::ArchiveReader& in) {
+			return *static_cast<treeture<void>*>((void*)in.read<std::intptr_t>());
+		}
+
 	};
 
 	/**

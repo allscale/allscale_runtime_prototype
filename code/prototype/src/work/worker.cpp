@@ -123,6 +123,9 @@ namespace work {
 
 				DLOG << "Splitting " << t->getId() << " on node " << rank << " completed\n";
 
+				// increment split counter
+				splitCounter++;
+
 			} else {
 
 				// in this case we process the task
@@ -142,8 +145,8 @@ namespace work {
 
 				DLOG << "Processing " << t->getId() << " on node " << rank << " completed\n";
 
-				// increment task counter
-				taskCounter++;
+				// increment processed counter
+				processedCounter++;
 
 			}
 

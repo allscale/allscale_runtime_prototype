@@ -52,12 +52,15 @@ namespace work {
 		// the node this worker is working on (if there is one)
 		com::Node* node;
 
+		// the number of tasks split by this worker
+		std::uint32_t splitCounter = 0;
+
 		// the number of tasks processed by this worker
-		std::uint32_t taskCounter;
+		std::uint32_t processedCounter = 0;
 
 	public:
 
-		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), node(nullptr), taskCounter(0) {}
+		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), node(nullptr) {}
 
 		Worker(com::Node& node) : Worker(node.getRank()) {
 			this->node = &node;
@@ -90,10 +93,17 @@ namespace work {
 		void stop();
 
 		/**
+		 * Obtains the number of split tasks.
+		 */
+		std::uint32_t getNumSplitTasks() const {
+			return splitCounter;
+		}
+
+		/**
 		 * Obtains the number of processed tasks.
 		 */
 		std::uint32_t getNumProcessedTasks() const {
-			return taskCounter;
+			return processedCounter;
 		}
 
 		/**

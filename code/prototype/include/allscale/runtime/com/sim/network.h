@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
@@ -270,9 +271,10 @@ namespace com {
 		Network(const Network&) = delete;
 
 		// but allow moving
-		Network(Network&&) = default;
+		Network(Network&&) = delete;
 
-		static Network create();
+		// factory method for environment based issues
+		static std::unique_ptr<Network> create();
 
 		/**
 		 * Obtains the number

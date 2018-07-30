@@ -40,7 +40,7 @@ namespace runtime {
 		// create the processing network
 		std::cout << "Starting up runtime ...\n";
 		auto net = com::Network::create();
-		Runtime rt(net);
+		Runtime rt(*net);
 
 		// process the entry point on root node (rank 0)
 		auto treeture = rt.getNetwork().runOn(0,[&](com::Node& node){

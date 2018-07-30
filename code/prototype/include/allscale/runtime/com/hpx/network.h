@@ -270,7 +270,7 @@ namespace com {
 		Network(const Network&) = delete;
 
 		// but allow moving
-		Network(Network&&) = default;
+		Network(Network&&) = delete;
 
 		/**
 		 * Obtains the number

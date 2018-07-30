@@ -18,19 +18,14 @@ namespace runtime {
 	class Runtime {
 
 		// the network of nodes to be included
-		com::Network network;
+		com::Network& network;
 
 	public:
 
 		/**
 		 * Creates a new runtime instance with the given number of nodes.
 		 */
-		Runtime(int num_nodes = 1);
-
-		/**
-		 * A factory function creating a runtime based on some environment setup.
-		 */
-		static Runtime create();
+		Runtime(com::Network&);
 
 		// --- interaction ---
 

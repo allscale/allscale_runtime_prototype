@@ -13,6 +13,16 @@ namespace com {
 		}
 	}
 
+	Network Network::create() {
+		// get the number of nodes
+		int num_nodes = 4;	// < by default we use four nodes
+		if (auto val = std::getenv("ART_NUM_NODES")) {
+			num_nodes = std::atoi(val);
+			if (num_nodes < 1) num_nodes = 1;
+		}
+		return num_nodes;
+	}
+
 	std::ostream& operator<<(std::ostream& out, const Network::Statistics::Entry& entry) {
 		return out
 				<< std::setw(15) << entry.received_bytes << ','

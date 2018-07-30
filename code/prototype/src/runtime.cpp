@@ -10,7 +10,7 @@
 namespace allscale {
 namespace runtime {
 
-	Runtime::Runtime(int numNodes) : network(numNodes) {
+	Runtime::Runtime(com::Network& net) : network(net) {
 
 		// install data item manager services
 		network.installServiceOnNodes<data::DataItemManagerService>();
@@ -38,19 +38,6 @@ namespace runtime {
 			node.getService<work::Worker>().stop();
 		});
 
-	}
-
-	Runtime Runtime::create() {
-
-		// get the number of nodes
-		int num_nodes = 4;	// < by default we use four nodes
-		if (auto val = std::getenv("ART_NUM_NODES")) {
-			num_nodes = std::atoi(val);
-			if (num_nodes < 1) num_nodes = 1;
-		}
-
-		// create and return the runtime
-		return Runtime(num_nodes);
 	}
 
 } // end of namespace runtime

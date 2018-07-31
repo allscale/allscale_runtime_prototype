@@ -31,7 +31,20 @@ namespace data {
 	class DataItemLocationInfos {
 
 		class EntryBase {
+
 		public:
+
+			using load_res_t = std::pair<std::type_index,std::unique_ptr<EntryBase>>;
+			using load_fun_t = load_res_t(*)(allscale::utils::ArchiveReader&);
+
+		private:
+
+			load_fun_t load_fun;
+
+		public:
+
+			EntryBase(load_fun_t load_fun) : load_fun(load_fun) {}
+
 			virtual ~EntryBase() {}
 			virtual void addCoveredRegions(DataItemRegions& res) const =0;
 			virtual std::unique_ptr<EntryBase> clone() const =0;
@@ -41,6 +54,20 @@ namespace data {
 				entry.print(out);
 				return out;
 			}
+
+			// provide serialization support
+			void store(allscale::utils::ArchiveWriter& out) const {
+				out.write<std::intptr_t>(intptr_t(load_fun));
+				storeInternal(out);
+			}
+
+			static load_res_t load(allscale::utils::ArchiveReader& in) {
+				load_fun_t load = load_fun_t(in.read<std::intptr_t>());
+				return load(in);
+			}
+
+			virtual void storeInternal(allscale::utils::ArchiveWriter&) const =0;
+
 		};
 
 
@@ -53,11 +80,27 @@ namespace data {
 			struct Part {
 				region_type region;
 				com::rank_t location;
+
+				void store(allscale::utils::ArchiveWriter& out) const {
+					out.write(region);
+					out.write(location);
+				}
+
+				static Part load(allscale::utils::ArchiveReader& in) {
+					region_type r = in.read<region_type>();
+					com::rank_t l = in.read<com::rank_t>();
+					return { std::move(r), l };
+				}
 			};
 
-			std::map<ref_type,std::vector<Part>> elements;
+			using location_map = std::map<ref_type,std::vector<Part>>;
+
+			location_map elements;
 
 		public:
+
+			Entry() : EntryBase(&load) {}
+			Entry(location_map&& map) : EntryBase(&load), elements(std::move(map)) {}
 
 			void addCoveredRegions(DataItemRegions& res) const override {
 				for(const auto& cur : elements) {
@@ -86,6 +129,17 @@ namespace data {
 
 			virtual std::unique_ptr<EntryBase> clone() const override {
 				return std::make_unique<Entry>(*this);
+			}
+
+			virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
+				out.write<location_map>(elements);
+			}
+
+			static load_res_t load(allscale::utils::ArchiveReader& in) {
+				return std::make_pair(
+					std::type_index(typeid(DataItem)),
+					std::make_unique<Entry>(in.read<location_map>())
+				);
 			}
 
 			virtual void merge(const EntryBase& base) override {

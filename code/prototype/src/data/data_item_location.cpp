@@ -38,13 +38,22 @@ namespace data {
 	}
 
 	void DataItemLocationInfos::store(allscale::utils::ArchiveWriter& out) const {
-		// here we cheat for the prototype
-		// todo: provide an actual implementation
-		out.write<std::intptr_t>(std::intptr_t(this));
+		// we need to write out all elements
+		out.write<std::size_t>(entries.size());
+		for(const auto& cur : entries) {
+			cur.second->store(out);
+		}
 	}
 
 	DataItemLocationInfos DataItemLocationInfos::load(allscale::utils::ArchiveReader& in) {
-		return *static_cast<const DataItemLocationInfos*>((void*)in.read<std::intptr_t>());
+		// restore entries
+		auto num = in.read<std::size_t>();
+		DataItemLocationInfos res;
+		for(std::size_t i=0; i<num; i++) {
+			auto cur = EntryBase::load(in);
+			res.entries[cur.first] = std::move(cur.second);
+		}
+		return std::move(res);
 	}
 
 

@@ -37,14 +37,22 @@ namespace data {
 
 
 	void DataItemRegions::store(allscale::utils::ArchiveWriter& out) const {
-		// here we are also transferring a reference for simplicity
-		// TODO: implement an actual serialization
-		out.write<std::intptr_t>(std::intptr_t(this));
+		// we need to serialize the contained map-content (type_indices are note serializable)
+		out.write<std::size_t>(regions.size());
+		for(const auto& cur : regions) {
+			cur.second->store(out);
+		}
 	}
 
 	DataItemRegions DataItemRegions::load(allscale::utils::ArchiveReader& in) {
-		const DataItemRegions& src = *static_cast<const DataItemRegions*>((void*)in.read<std::intptr_t>());
-		return src;	// copy source here
+		DataItemRegions res;
+		// we re-load the content, one by one
+		auto num = in.read<std::size_t>();
+		for(std::size_t i=0; i<num; i++) {
+			auto cur = RegionsBase::load(in);
+			res.regions[cur.first] = std::move(cur.second);
+		}
+		return res;
 	}
 
 

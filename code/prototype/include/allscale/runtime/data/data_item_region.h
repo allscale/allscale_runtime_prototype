@@ -15,6 +15,7 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
+#include "allscale/utils/serializer/maps.h"
 #include "allscale/utils/printer/join.h"
 
 #include "allscale/api/core/data.h"
@@ -100,7 +101,20 @@ namespace data {
 
 		// a base class for a set of region of the same type
 		class RegionsBase {
+
 		public:
+
+			using load_res_t = std::pair<std::type_index,std::unique_ptr<RegionsBase>>;
+			using load_fun_t = load_res_t(*)(allscale::utils::ArchiveReader&);
+
+		private:
+
+			load_fun_t load_fun;
+
+		public:
+
+			RegionsBase(load_fun_t load_fun) : load_fun(load_fun) {}
+
 			virtual ~RegionsBase(){};
 
 			// support printing Regions
@@ -126,6 +140,20 @@ namespace data {
 			virtual std::unique_ptr<RegionsBase> intersect(const RegionsBase& other) const =0;
 
 			virtual std::unique_ptr<RegionsBase> difference(const RegionsBase& other) const =0;
+
+			// provide serialization support
+			void store(allscale::utils::ArchiveWriter& out) const {
+				out.write<std::intptr_t>(intptr_t(load_fun));
+				storeInternal(out);
+			}
+
+			static load_res_t load(allscale::utils::ArchiveReader& in) {
+				load_fun_t load = load_fun_t(in.read<std::intptr_t>());
+				return load(in);
+			}
+
+			virtual void storeInternal(allscale::utils::ArchiveWriter&) const =0;
+
 		};
 
 		// support printing
@@ -137,15 +165,16 @@ namespace data {
 
 			using reference_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
+			using regions_map_type = std::map<reference_type,region_type>;
 
-			std::map<reference_type,region_type> regions;
+			regions_map_type regions;
 
 		public:
 
-			Regions() = default;
+			Regions() : RegionsBase(&load) {};
 			Regions(const Regions&) = default;
 
-			Regions(std::map<reference_type,region_type>&& map) : regions(std::move(map)) {}
+			Regions(std::map<reference_type,region_type>&& map) : RegionsBase(&load), regions(std::move(map)) {}
 
 			bool empty() const override {
 				return regions.empty();
@@ -175,6 +204,17 @@ namespace data {
 
 			virtual std::unique_ptr<RegionsBase> clone() const override {
 				return std::make_unique<Regions>(*this);
+			}
+
+			virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
+				out.write<regions_map_type>(regions);
+			}
+
+			static load_res_t load(allscale::utils::ArchiveReader& in) {
+				return std::make_pair(
+					std::type_index(typeid(DataItem)),
+					std::make_unique<Regions>(in.read<regions_map_type>())
+				);
 			}
 
 			virtual std::unique_ptr<RegionsBase> merge(const RegionsBase& otherBase) const override {

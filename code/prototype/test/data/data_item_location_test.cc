@@ -31,6 +31,31 @@ namespace data {
 	}
 
 
+	TEST(DataItemLocationsInfos, Serialization) {
+		// regions need to be serializable too
+		EXPECT_TRUE(allscale::utils::is_serializable<DataItemLocationInfos>::value);
+
+		using data_item = Grid<float,1>;
+		using ref_t = DataItemReference<data_item>;
+
+		// create a data item location info and store it in an archive
+		allscale::utils::Archive a = allscale::utils::serialize(1);
+		{
+			DataItemLocationInfos infos;
+			infos.add(ref_t(1),{0,10},2);
+			EXPECT_EQ("Locations(DI-1:{[[0] - [10])}@2,)",toString(infos));
+			a = allscale::utils::serialize(infos);
+		}
+
+		// now the original info is gone, only the copy in the archive survived
+		// => restore this one
+		{
+			auto infos = allscale::utils::deserialize<DataItemLocationInfos>(a);
+			EXPECT_EQ("Locations(DI-1:{[[0] - [10])}@2,)",toString(infos));
+		}
+
+	}
+
 } // end of namespace data
 } // end of namespace runtime
 } // end of namespace allscale

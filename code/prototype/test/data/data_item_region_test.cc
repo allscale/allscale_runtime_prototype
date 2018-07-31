@@ -29,6 +29,26 @@ namespace data {
 	TEST(DataItemRegions, Serialization) {
 		// regions need to be serializable too
 		EXPECT_TRUE(allscale::utils::is_serializable<DataItemRegions>::value);
+
+		using data_item = Grid<float,1>;
+		using ref_t = DataItemReference<data_item>;
+		using region = DataItemRegion<data_item>;
+
+		// create a data item region and store it in an archive
+		allscale::utils::Archive a = allscale::utils::serialize(1);
+		{
+			DataItemRegions regions;
+			regions.add(region{ref_t(1),{0,10}});
+			a = allscale::utils::serialize(regions);
+		}
+
+		// now the original region is gone, only the copy in the archive survived
+		// => restore this one
+		{
+			auto regions = allscale::utils::deserialize<DataItemRegions>(a);
+			EXPECT_EQ("Regions(DI-1:{[[0] - [10])})",toString(regions));
+		}
+
 	}
 
 	TEST(DataItemRegions, Merge) {

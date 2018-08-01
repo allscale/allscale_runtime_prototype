@@ -1,15 +1,16 @@
 #include <iomanip>
 
-#include "allscale/runtime/com/network.h"
+#include "allscale/runtime/com/sim/network.h"
 
 namespace allscale {
 namespace runtime {
 namespace com {
+namespace sim {
 
 	Network::Network(size_t size) : stats(size) {
 		nodes.reserve(size);
 		for(size_t i=0; i<size; i++) {
-			nodes.emplace_back(*this,i);
+			nodes.emplace_back(i);
 		}
 	}
 
@@ -42,7 +43,27 @@ namespace com {
 		return out;
  	}
 
+	static thread_local Network* tl_current_network;
 
+
+	// obtains the enclosing network instance
+	Network& Network::getNetwork() {
+		assert_true(tl_current_network) << "No local network!";
+		return *tl_current_network;
+	}
+
+	void Network::setLocalNetwork() const {
+		assert_false(tl_current_network);
+		tl_current_network = const_cast<Network*>(this);
+	}
+
+	void Network::resetLocalNetwork() const {
+		assert_true(tl_current_network);
+		tl_current_network = nullptr;
+	}
+
+
+} // end of namespace sim
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

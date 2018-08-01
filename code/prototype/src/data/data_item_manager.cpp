@@ -18,7 +18,7 @@ namespace data {
 
 
 	DataItemManagerService::DataItemManagerService(com::Node& node)
-		: network(node.getNetwork()), rank(node.getRank()) {}
+		: network(com::Network::getNetwork()), rank(node.getRank()) {}
 
 	// a function to retrieve the local instance of this service
 	DataItemManagerService& DataItemManagerService::getLocalService() {

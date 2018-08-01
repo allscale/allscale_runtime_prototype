@@ -1,12 +1,13 @@
 /*
- * network.h
+ * An MPI based implementation of the network interface.
  *
- *  Created on: Jul 23, 2018
+ *  Created on: Aug 1, 2018
  *      Author: herbert
  */
 
 #pragma once
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@
 namespace allscale {
 namespace runtime {
 namespace com {
+namespace mpi {
 
 	// The type used for the size of networks.
 	using size_t = rank_t;
@@ -202,6 +204,57 @@ namespace com {
 		};
 
 		/**
+		 * A handle for remote procedures.
+		 */
+		template<typename Selector, typename S, typename ... Args>
+		class RemoteProcedure<Selector,S,void,Args...> {
+
+			// the targeted node
+			Node& node;
+
+			// the service selector
+			Selector selector;
+
+			// the targeted service function
+			void(S::* fun)(Args...);
+
+			// the statistics to work with
+			Statistics& stats;
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			RemoteProcedure(Node& node, const Selector& selector, void(S::*fun)(Args...), Statistics& stats)
+				: node(node), selector(selector), fun(fun), stats(stats) {}
+
+			/**
+			 * Realizes the actual remote procedure call.
+			 */
+			void operator()(Args ... args) const {
+				auto src = Node::getLocalRank();
+				auto trg = node.getRank();
+
+				// short-cut for local communication
+				if (src == trg) {
+					node.run([&](Node&){
+						(selector(node).*fun)(std::forward<Args>(args)...);
+					});
+					return;
+				}
+
+				// perform an actual remote call
+				stats[src].sent_calls += 1;
+				stats[trg].received_calls += 1;
+				node.run([&](Node&){
+					(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+				});
+			}
+
+		};
+
+		/**
 		 * A handle for broadcasts.
 		 */
 		template<typename S, typename ... Args>
@@ -271,6 +324,9 @@ namespace com {
 
 		// but allow moving
 		Network(Network&&) = delete;
+
+		// factory method for environment based issues
+		static std::unique_ptr<Network> create();
 
 		/**
 		 * Obtains the number
@@ -363,7 +419,7 @@ namespace com {
 
 	};
 
-
+} // end of namespace mpi
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

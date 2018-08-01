@@ -50,18 +50,18 @@ namespace work {
 		assert_true(success) << "Invalid state " << st << ": cannot start non-ready worker.";
 
 		// start processing thread
-		thread = std::thread([&]{
-			// if there is a node
-			if (node) {
-				// run in node context
-				node->run([&](com::Node&){
+		if (node) {
+			// run in proper network and node context node context
+			auto& network = com::Network::getNetwork();
+			thread = std::thread([&]{
+				network.runOn(node->getRank(),[&](com::Node&){
 					run();
 				});
-			} else {
-				// else run free
-				run();
-			}
-		});
+			});
+		} else {
+			// run without node context
+			thread = std::thread([&]{ run(); });
+		}
 
 		// mark as running
 		st = Startup;

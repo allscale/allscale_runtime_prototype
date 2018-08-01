@@ -37,7 +37,7 @@ namespace work {
 		 */
 		int getCutOffLevel() {
 			// get the network
-			auto& net = com::Node::getLocalNode().getNetwork();
+			auto& net = com::Network::getNetwork();
 			auto numNodes = net.numNodes();
 
 			// the cut-off level for "forced" distribution
@@ -80,7 +80,7 @@ namespace work {
 			// for all others, determine a rank by distributing task equally among nodes
 
 			// get the network
-			auto& net = com::Node::getLocalNode().getNetwork();
+			auto& net = com::Network::getNetwork();
 			auto numNodes = net.numNodes();
 
 			int pow2 = getCutOffLevel();
@@ -119,7 +119,7 @@ namespace work {
 			} else {
 				// => send to remote location
 				// TODO: realize this as a remote method call
-				com::Node::getLocalNode().getNetwork().runOn(targetRank,[&](com::Node& node){
+				com::Network::getNetwork().runOn(targetRank,[&](com::Node& node){
 					node.getService<Worker>().schedule(std::move(task));
 				});
 			}

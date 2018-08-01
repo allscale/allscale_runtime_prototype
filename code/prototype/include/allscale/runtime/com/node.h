@@ -21,19 +21,11 @@ namespace com {
 	// The type used for identifying ranks in networks.
 	using rank_t = std::uint32_t;
 
-	// forward declaration of the underlying communication network.
-	class Network;
-
 	/**
 	 * An instance of a node (process) in the AllScale runtime prototype environment.
 	 * A node is the entity running once within each process, managing the processes data and tasks.
 	 */
 	class Node {
-
-		/**
-		 * A reference to the network this node belongs to, for communication.
-		 */
-		Network& network;
 
 		/**
 		 * The rank of this node within it's network.
@@ -47,7 +39,7 @@ namespace com {
 
 	public:
 
-		Node(Network& network, rank_t rank) : network(network), rank(rank), services(*this) {};
+		Node(rank_t rank) : rank(rank), services(*this) {};
 
 		// -------- observer --------
 
@@ -117,13 +109,6 @@ namespace com {
 		template<typename S>
 		static S& getLocalService() {
 			return getLocalNode().getService<S>();
-		}
-
-		/**
-		 * Obtains a reference to the network within which the current code is processed.
-		 */
-		static Network& getNetwork() {
-			return getLocalNode().network;
 		}
 
 		/**

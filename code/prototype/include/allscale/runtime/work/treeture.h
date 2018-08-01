@@ -140,7 +140,7 @@ namespace work {
 
 		// the service constructor
 		TreetureStateService(com::Node& node)
-			: network(node.getNetwork()), myRank(node.getRank()) {}
+			: network(com::Network::getNetwork()), myRank(node.getRank()) {}
 
 		static TreetureStateService& getLocal() {
 			return com::Node::getLocalService<TreetureStateService>();

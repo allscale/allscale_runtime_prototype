@@ -163,10 +163,11 @@ namespace com {
 		template<typename ... Args>
 		HierarchyService(Node& node, const Args& ... args) {
 			// start up services
-			auto numServices = HierarchyAddress::getLayersOn(node.getRank(),node.getNetwork().numNodes());
+			auto& network = Network::getNetwork();
+			auto numServices = HierarchyAddress::getLayersOn(node.getRank(),network.numNodes());
 			services.reserve(numServices);
 			for(layer_t i=0; i<numServices; i++) {
-				services.emplace_back(node.getNetwork(), HierarchyAddress(node.getRank(), i), args...);
+				services.emplace_back(network, HierarchyAddress(node.getRank(), i), args...);
 			}
 		}
 

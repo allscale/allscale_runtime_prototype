@@ -1,5 +1,5 @@
 /*
- * network.h
+ * A shared-memory prototype implementation of the network interface.
  *
  *  Created on: Jul 23, 2018
  *      Author: herbert
@@ -20,9 +20,7 @@
 namespace allscale {
 namespace runtime {
 namespace com {
-
-	// The type used for the size of networks.
-	using size_t = rank_t;
+namespace sim {
 
 	/**
 	 * The simulated network for this prototype implementation.
@@ -334,6 +332,9 @@ namespace com {
 			return nodes.size();
 		}
 
+		// obtains the enclosing network instance
+		static Network& getNetwork();
+
 		// -------- remote procedure calls --------
 
 		/**
@@ -372,6 +373,8 @@ namespace com {
 		template<typename Op>
 		auto runOn(rank_t rank, const Op& op) -> decltype(op(std::declval<Node&>())) {
 			assert_lt(rank,numNodes());
+			setLocalNetwork();
+			auto f = allscale::utils::run_finally([&]{ resetLocalNetwork(); });
 			return nodes[rank].run(op);
 		}
 
@@ -380,9 +383,11 @@ namespace com {
 		 */
 		template<typename Op>
 		void runOnAll(const Op& op) {
+			setLocalNetwork();
 			for(Node& n : nodes) {
 				n.run(op);
 			}
+			resetLocalNetwork();
 		}
 
 		/**
@@ -416,8 +421,15 @@ namespace com {
 		 */
 		friend std::ostream& operator<<(std::ostream&,const Node&);
 
+	private:
+
+		void setLocalNetwork() const;
+
+		void resetLocalNetwork() const;
+
 	};
 
+} // end of namespace sim
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

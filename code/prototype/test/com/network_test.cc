@@ -37,13 +37,11 @@ namespace com {
 		// run an operation on node 0
 		net.runOn(0,[&](Node& node){
 			EXPECT_EQ(0,node.getRank());
-			EXPECT_EQ(&net,&node.getNetwork());
 		});
 
 		// run an operation on node 1
 		net.runOn(1,[&](Node& node){
 			EXPECT_EQ(1,node.getRank());
-			EXPECT_EQ(&net,&node.getNetwork());
 		});
 	}
 
@@ -57,8 +55,8 @@ namespace com {
 		net.installServiceOnNodes<PingService>();
 
 		// run an operation on node 0
-		net.runOn(0,[](Node& node){
-			auto& net = node.getNetwork();
+		net.runOn(0,[](Node&){
+			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(1,&PingService::ping);
 			EXPECT_EQ(5,ping(4));
 		});
@@ -92,8 +90,8 @@ namespace com {
 		}
 
 		// send a message from 0 to 1
-		net.runOn(0,[](Node& node){
-			auto& net = node.getNetwork();
+		net.runOn(0,[](Node&){
+			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(1,&PingService::ping);
 			EXPECT_EQ(5,ping(4));
 		});
@@ -117,8 +115,8 @@ namespace com {
 
 
 		// send two messages from 1 to 0
-		net.runOn(1,[](Node& node){
-			auto& net = node.getNetwork();
+		net.runOn(1,[](Node&){
+			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(0,&PingService::ping);
 			EXPECT_EQ(5,ping(4));
 			EXPECT_EQ(9,ping(8));

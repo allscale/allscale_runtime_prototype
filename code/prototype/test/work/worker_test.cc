@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "allscale/runtime/com/network.h"
+#include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/worker.h"
 
 
@@ -25,22 +27,24 @@ namespace work {
 
 		int x = 0;
 
-		// create a worker
-		Worker worker;
+		// start a worker
+		com::Network net(1);
+		installTreetureStateService(net);
+		data::installDataItemManagerService(net);
+		startWorker(net);
 
-		// start the worker
-		worker.start();
+		net.runOn(0,[&](com::Node& node){
+			node.getService<Worker>().schedule(make_lambda_task(TaskID(1),[&]{
+				x = 1;
+			}));
+		});
 
-		// schedule a task
-		worker.schedule(make_lambda_task(TaskID(1),[&]{
-			x = 1;
-		}));
-
-		// stop the worker
-		worker.stop();
+		// stop worker
+		stopWorker(net);
 
 		// now x should be one
 		EXPECT_EQ(1,x);
+
 	}
 
 	TEST(Worker, ProcessingLoop) {
@@ -48,21 +52,26 @@ namespace work {
 		int N = 100;
 		int x = 0;
 
-		// create a worker
-		Worker worker;
+		// create the network
+		com::Network net(1);
+		installTreetureStateService(net);
+		data::installDataItemManagerService(net);
 
 		// start the worker
-		worker.start();
+		startWorker(net);
 
-		// schedule a tasks
-		for(int i=0; i<N; i++) {
-			worker.schedule(make_lambda_task(TaskID(1),[&]{
-				x++;
-			}));
-		}
+		// schedule N tasks
+		net.runOn(0,[&](com::Node& node){
+			auto& worker = node.getService<Worker>();
+			for(int i=0; i<N; i++) {
+				worker.schedule(make_lambda_task(TaskID(i),[&]{
+					x++;
+				}));
+			}
+		});
 
 		// stop the worker
-		worker.stop();
+		stopWorker(net);
 
 		// now x should be one
 		EXPECT_EQ(N,x);

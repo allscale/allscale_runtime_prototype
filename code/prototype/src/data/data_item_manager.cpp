@@ -11,6 +11,12 @@ namespace runtime {
 namespace data {
 
 
+	// start up the treeture service within the given network
+	void installDataItemManagerService(com::Network& network) {
+		network.installServiceOnNodes<DataItemManagerService>();
+	}
+
+
 	DataItemManagerService::DataItemManagerService(com::Node& node)
 		: network(node.getNetwork()), rank(node.getRank()) {}
 

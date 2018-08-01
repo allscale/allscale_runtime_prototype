@@ -24,6 +24,16 @@ namespace work {
 	void yield();
 
 	/**
+	 * Installs and starts worker on the given network.
+	 */
+	void startWorker(com::Network&);
+
+	/**
+	 * Stops all worker on the given network (shutdown).
+	 */
+	void stopWorker(com::Network&);
+
+	/**
 	 * A simple class wrapping a worker thread running within a node.
 	 */
 	class Worker {

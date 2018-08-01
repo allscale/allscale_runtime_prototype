@@ -4,8 +4,9 @@
 #include "allscale/runtime/runtime.h"
 
 #include "allscale/runtime/data/data_item_manager.h"
-#include "allscale/runtime/work/worker.h"
 #include "allscale/runtime/work/scheduler.h"
+#include "allscale/runtime/work/treeture.h"
+#include "allscale/runtime/work/worker.h"
 
 namespace allscale {
 namespace runtime {
@@ -15,28 +16,21 @@ namespace runtime {
 		// install data item manager services
 		network.installServiceOnNodes<data::DataItemManagerService>();
 
+		// install treeture service
+		work::installTreetureStateService(network);
+
 		// install scheduler service
 		work::installSchedulerService(network);
 
 		// install and start workers in nodes
-		network.runOnAll([](com::Node& node){
-
-			// install worker
-			auto& worker = node.startService<work::Worker>();
-
-			// start worker
-			worker.start();
-
-		});
+		work::startWorker(network);
 
 	}
 
 	void Runtime::shutdown() {
 
 		// shut down workers
-		network.runOnAll([](com::Node& node){
-			node.getService<work::Worker>().stop();
-		});
+		work::stopWorker(network);
 
 	}
 

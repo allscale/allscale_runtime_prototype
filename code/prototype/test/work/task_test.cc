@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "allscale/runtime/com/network.h"
 #include "allscale/runtime/work/task.h"
 
 namespace allscale {
@@ -19,7 +20,7 @@ namespace work {
 
 	}
 
-	TEST(TaskReference,Serialization) {
+	TEST(DISABLED_TaskReference,Serialization) {
 
 		// create a task
 		TaskPtr task = make_lambda_task(0,[]{});
@@ -34,8 +35,6 @@ namespace work {
 		// serialize task
 		auto a = allscale::utils::serialize(ref);
 
-		// now the task should still be owned by the original ref
-
 		// deserialize task
 		TaskReference trg = allscale::utils::deserialize<TaskReference>(a);
 
@@ -47,6 +46,60 @@ namespace work {
 
 		// run task (before it gets destructed)
 		t.process();
+	}
+
+	template<typename Op>
+	void runInNode(const Op& op) {
+
+		com::Network net(1);
+		installTreetureStateService(net);
+
+		net.runOn(0,[&](com::Node&){
+			op();
+		});
+	}
+
+	TEST(Task, Execution) {
+
+		runInNode([]{
+
+			// let's create a task
+			auto task = make_lambda_task(0,[]{ return 1; });
+
+			// retrieve treeture
+			auto t = task->getTreeture();
+
+			EXPECT_FALSE(t.isDone());
+
+			task->process();
+
+			EXPECT_TRUE(t.isDone());
+			EXPECT_EQ(1,t.get_result());
+
+		});
+
+	}
+
+	TEST(Task, ExecutionVoid) {
+
+		runInNode([]{
+
+			int x = 0;
+
+			// let's create a task
+			auto task = make_lambda_task(0,[&]{ x = 1; });
+
+			// retrieve treeture
+			auto t = task->getTreeture();
+
+			EXPECT_FALSE(t.isDone());
+
+			task->process();
+
+			EXPECT_TRUE(t.isDone());
+
+		});
+
 	}
 
 } // end of namespace com

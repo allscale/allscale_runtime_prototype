@@ -27,6 +27,12 @@ namespace allscale {
 namespace runtime {
 namespace data {
 
+	// -- setup --
+
+	// start up the treeture service within the given network
+	void installDataItemManagerService(com::Network&);
+
+
 	// --- forward declarations of data index interfaces ---
 
 	class DataItemIndexService;

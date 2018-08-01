@@ -9,29 +9,6 @@ namespace work {
 
 	thread_local Task* tl_current_task = nullptr;
 
-	TaskID getFreshId() {
-		static std::atomic<int> taskCounter(0);
-		return ++taskCounter;
-	}
-
-	TaskID getNewChildId() {
-		Task* current_task = tl_current_task;
-		assert_true(current_task) << "No current task in active context!";
-
-		// increment number of children
-		auto pos = current_task->num_children++;
-
-		// determine child's id
-		if (pos == 0) {
-			return current_task->getId().getLeftChild();
-		} else if (pos == 1) {
-			return current_task->getId().getRightChild();
-		} else {
-			assert_not_implemented() << "Unsupported number of children: " << pos;
-		}
-		return {};
-	}
-
 	data::DataItemRequirements Task::getProcessRequirements() const {
 		return {};
 	}
@@ -103,6 +80,9 @@ namespace work {
 		return out << task.getId() << ":" << task.state;
 	}
 
+	Task* Task::getCurrent() {
+		return tl_current_task;
+	}
 
 } // end of namespace com
 } // end of namespace runtime

@@ -10,14 +10,15 @@
 #include <atomic>
 #include <memory>
 #include <ostream>
+#include <type_traits>
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
-
-#include "allscale/api/core/impl/reference/task_id.h"
+#include "allscale/utils/serializer/tuple.h"
 
 #include "allscale/runtime/data/data_item_requirement.h"
 
+#include "allscale/runtime/work/task_id.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
 
@@ -26,15 +27,6 @@
 namespace allscale {
 namespace runtime {
 namespace work {
-
-	// we are reusing the reference implementations task ID
-	using TaskID = allscale::api::core::impl::reference::TaskID;
-
-	// obtains a new, fresh id
-	TaskID getFreshId();
-
-	// obtains a child ID for a newly spawned task (only valid if triggered during the execution of a parent task)
-	TaskID getNewChildId();
 
 	/**
 	 * An abstract base class of all tasks.
@@ -52,6 +44,9 @@ namespace work {
 		// the id of this task
 		TaskID id;
 
+		// the owner of this task, handling the synchronization
+		com::rank_t owner;
+
 		// indicates the completion state of this task
 		std::atomic<State> state;
 
@@ -63,7 +58,7 @@ namespace work {
 	public:
 
 		// creates a new task, not completed yet
-		Task(TaskID id) : id(id), state(Ready) {}
+		Task(TaskID id, com::rank_t owner) : id(id), owner(owner), state(Ready) {}
 
 		// tasks are not copy nor moveable
 		Task(const Task&) = delete;
@@ -80,12 +75,21 @@ namespace work {
 			return id;
 		}
 
+		com::rank_t getOwner() const {
+			return owner;
+		}
+
 		bool isReady() const {
 			return state == Ready;
 		}
 
 		bool isDone() const {
 			return state == Finished;
+		}
+
+		void cancel() {
+			assert_eq(Ready,state);
+			state = Finished;
 		}
 
 		// ----- task interface -----
@@ -112,11 +116,33 @@ namespace work {
 
 		// ----- utilities -----
 
+		// obtains a pointer to the currently processed task, or null if there is none
+		static Task* getCurrent();
+
 		// support printing of task states
 		friend std::ostream& operator<<(std::ostream&,const State&);
 
 		// support printing of tasks
 		friend std::ostream& operator<<(std::ostream&,const Task&);
+
+		// ----- serialization -----
+
+		// the type of the load function to be provided by implementations
+		using load_fun_t = std::unique_ptr<Task>(*)(const TaskID&,com::rank_t,allscale::utils::ArchiveReader&);
+
+		void store(allscale::utils::ArchiveWriter& out) const {
+			out.write(getId());
+			out.write(getOwner());
+			out.write(std::intptr_t(getLoadFunction()));
+			storeInternal(out);
+		}
+
+		static std::unique_ptr<Task> load(allscale::utils::ArchiveReader& in) {
+			auto id = in.read<TaskID>();
+			auto owner = in.read<com::rank_t>();
+			load_fun_t load = load_fun_t(in.read<std::intptr_t>());
+			return load(id,owner,in);
+		}
 
 	protected:
 
@@ -126,6 +152,12 @@ namespace work {
 		// the split variant to be overloaded by task implementations
 		virtual void splitInternal() =0;
 
+		// saves a copy of the task to the given stream
+		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const =0;
+
+		// retrieves the function capable of de-serializing a task instance
+		virtual load_fun_t getLoadFunction() const =0;
+
 	};
 
 	// a pointer type for tasks
@@ -134,12 +166,9 @@ namespace work {
 	/**
 	 * A serializable wrapper around task pointer.
 	 *
-	 * Since the prototype here does not (yet) support actual task serialization, this
-	 * wrapper is integrated for that purpose.
-	 *
-	 * The serialization removes ownership, while deserialization acquires it.
-	 * Each instance may only be once serialized and deserialized. Also the
-	 * de-serialization must take place while the original is still alive.
+	 * Typically, tasks are passed around using task pointer, yet those are not serializable.
+	 * Task references take ownership of a task and can be serialized. By doing so, ownership is lost.
+	 * Through de-serialization, ownership is gained on a new instance.
 	 */
 	class TaskReference {
 
@@ -184,15 +213,13 @@ namespace work {
 
 		void store(allscale::utils::ArchiveWriter& out) const {
 			// we save a memory location of the shared task pointer
-			out.write<std::intptr_t>(std::intptr_t(task.get()));
+			(*task)->store(out);
+			(*task)->cancel();
 		}
 
 		static TaskReference load(allscale::utils::ArchiveReader& in) {
-			// get the reference to the source
-			TaskPtr* src = (TaskPtr*)in.read<std::intptr_t>();
-			assert_true(bool(*src)) << "Cannot deserialize same object multiple times!";
-			// transfer ownership
-			return std::move(*src);
+			// restore task
+			return Task::load(in);
 		}
 	};
 
@@ -201,42 +228,59 @@ namespace work {
 	 */
 	template<typename T, typename ... Args>
 	std::unique_ptr<T> make_task(const TaskID& id, Args&& ... args) {
-		return std::make_unique<T>(id,std::forward<Args>(args)...);
+		return std::make_unique<T>(id,com::Node::getLocalRank(),std::forward<Args>(args)...);
 	}
 
 	/**
-	 * A simple task wrapping up a lambda for processing some task asynchronously.
+	 * An abstract task type computing a value.
 	 */
-	template<typename Op>
-	class LambdaTask : public Task {
-		Op op;
+	template<typename R>
+	class ComputeTask : public Task {
+
+		using Task::load_fun_t;
+
 	public:
-		LambdaTask(const TaskID& id, Op&& op) : Task(id), op(std::forward<Op>(op)) {}
-		virtual bool isSplitable() const override { return false; }
-		virtual void processInternal() override { op(); };
-		virtual void splitInternal() override {
-			assert_fail() << "Invalid call!";
-		};
+
+		ComputeTask(const TaskID& id, com::rank_t owner) : Task(id,owner) {
+			// register this task for the treeture service
+			TreetureStateService::getLocal().registerTask<R>(id);
+		}
+
+		// obtains the treeture referencing the value produced by this task
+		treeture<R> getTreeture() const {
+			return { getOwner(), getId() };
+		}
+
+		void setResult(R&& value) {
+			// mark this task as done
+			TreetureStateService::getLocal().setDone<R>(getOwner(),getId(),std::move(value));
+		}
 	};
 
-	/**
-	 * A factory function for a lambda task pointer.
-	 */
-	template<typename Op>
-	TaskPtr make_lambda_task(const TaskID& id, Op&& op) {
-		return make_task<LambdaTask<Op>>(id,std::forward<Op>(op));
-	}
+	// a specialization for void
+	template<>
+	class ComputeTask<void> : public Task {
 
-	/**
-	 * A no-op task for testing.
-	 */
-	class NullTask : public Task {
+		using Task::load_fun_t;
+
 	public:
-		NullTask(const TaskID& id) : Task(id) {}
-		virtual bool isSplitable() const override { return false; }
-		virtual void processInternal() override {};
-		virtual void splitInternal() override {};
+
+		ComputeTask(const TaskID& id, com::rank_t owner) : Task(id,owner) {
+			// register this task for the treeture service
+			TreetureStateService::getLocal().registerTask<void>(id);
+		}
+
+		// obtains the treeture referencing the value produced by this task
+		treeture<void> getTreeture() const {
+			return { getOwner(), getId() };
+		}
+
+		void setDone() {
+			// mark this task as done
+			TreetureStateService::getLocal().setDone(getOwner(),getId());
+		}
 	};
+
 
 	namespace detail {
 
@@ -245,19 +289,17 @@ namespace work {
 		template<typename R>
 		struct set_result {
 			template<typename Op>
-			void operator()(detail::treeture_state_handle<R>& state, const Op& op) {
-				assert_true(state);
-				state->set(op().get_result());
+			void operator()(ComputeTask<R>& task, const Op& op) {
+				task.setResult(op().get_result());
 			}
 		};
 
 		template<>
 		struct set_result<void> {
 			template<typename Op>
-			void operator()(detail::treeture_state_handle<void>& state, const Op& op) {
-				assert_true(state);
+			void operator()(ComputeTask<void>& task, const Op& op) {
 				op();
-				state->set();
+				task.setDone();
 			}
 		};
 
@@ -268,41 +310,49 @@ namespace work {
 	 * A task derived from a work item description that cannot be distributed.
 	 */
 	template<typename WorkItemDesc, typename Closure>
-	class WorkItemTask : public Task {
+	class WorkItemTask : public ComputeTask<typename WorkItemDesc::result_type> {
 
 		using closure_type = Closure;
 		using result_type = typename WorkItemDesc::result_type;
+		using load_fun_t = Task::load_fun_t;
 
 		// the closure parameterizing this work item task
 		closure_type closure;
 
-		// the state of the promise - for all handed out treetures
-		detail::treeture_state_handle<result_type> state;
-
 	public:
 
-		WorkItemTask(const TaskID& id, closure_type&& closure)
-			: Task(id), closure(std::move(closure)), state(detail::make_incomplete_state<result_type>()) {}
+		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure)
+			: ComputeTask<result_type>(id,owner), closure(std::move(closure)) {}
 
 		virtual bool isSplitable() const override {
 			return WorkItemDesc::can_spit_test::call(closure);
 		}
 
 		virtual void processInternal() override {
-			detail::set_result<result_type>()(state,[&](){
+			detail::set_result<result_type>()(*this,[&](){
 				return WorkItemDesc::process_variant::execute(closure);
 			});
 		}
 
 		virtual void splitInternal() override {
-			detail::set_result<result_type>()(state,[&](){
+			detail::set_result<result_type>()(*this,[&](){
 				return WorkItemDesc::split_variant::execute(closure);
 			});
 		}
 
-		// obtains the treeture referencing the value produced by this task
-		treeture<result_type> getTreeture() const {
-			return state;
+		// saves a copy of the task to the given stream
+		virtual void storeInternal(allscale::utils::ArchiveWriter&) const {
+			assert_fail() << "No serialization supported for this task.";
+		}
+
+		static std::unique_ptr<Task> load(const TaskID&, com::rank_t, allscale::utils::ArchiveReader&) {
+			assert_fail() << "No serialization supported for this task.";
+			return {};
+		}
+
+		// retrieves the function capable of de-serializing a task instance
+		virtual load_fun_t getLoadFunction() const {
+			return &load;
 		}
 
 	};
@@ -316,23 +366,21 @@ namespace work {
 		typename SplitVariant,			// the split variant implementation
 		typename ProcessVariant,		// the process variant implementation
 		typename CanSplitTest,			// the can-split test
-		typename Closure				// the closure of this task
+		typename ... ClosureArgs		// the elements of the closure
 	>
-	class WorkItemTask<work_item_description<Result, Name, do_serialization, SplitVariant, ProcessVariant, CanSplitTest>,Closure> : public Task {
+	class WorkItemTask<work_item_description<Result, Name, do_serialization, SplitVariant, ProcessVariant, CanSplitTest>,std::tuple<ClosureArgs...>> : public ComputeTask<Result> {
 
-		using closure_type = Closure;
+		using closure_type = std::tuple<ClosureArgs...>;
 		using result_type = Result;
+		using load_fun_t = Task::load_fun_t;
 
 		// the closure parameterizing this work item task
 		closure_type closure;
 
-		// the state of the promise - for all handed out treetures
-		detail::treeture_state_handle<result_type> state;
-
 	public:
 
-		WorkItemTask(const TaskID& id, closure_type&& closure)
-			: Task(id), closure(std::move(closure)), state(detail::make_incomplete_state<result_type>()) {}
+		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure)
+			: ComputeTask<result_type>(id,owner), closure(std::move(closure)) {}
 
 		virtual bool canBeDistributed() const override {
 			return true;
@@ -347,10 +395,10 @@ namespace work {
 		}
 
 		virtual void processInternal() override {
-			detail::set_result<result_type>()(state,[&](){
+			detail::set_result<result_type>()(*this,[&](){
 				return ProcessVariant::execute(closure);
 			});
-			DLOG << "Task " << getId() << " processing completed!\n";
+			DLOG << "Task " << this->getId() << " processing completed!\n";
 		}
 
 		virtual data::DataItemRequirements getSplitRequirements() const override {
@@ -358,18 +406,115 @@ namespace work {
 		}
 
 		virtual void splitInternal() override {
-			detail::set_result<result_type>()(state,[&](){
+			detail::set_result<result_type>()(*this,[&](){
 				return SplitVariant::execute(closure);
 			});
-			DLOG << "Task " << getId() << " splitting completed!\n";
+			DLOG << "Task " << this->getId() << " splitting completed!\n";
 		}
 
-		// obtains the treeture referencing the value produced by this task
-		treeture<result_type> getTreeture() const {
-			return state;
+		// saves a copy of the task to the given stream
+		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const {
+			out.write<closure_type>(closure);
+		}
+
+		static std::unique_ptr<Task> load(const TaskID& id, com::rank_t owner, allscale::utils::ArchiveReader& in) {
+			return std::make_unique<WorkItemTask>(id,owner,in.read<closure_type>());
+		}
+
+		// retrieves the function capable of de-serializing a task instance
+		virtual load_fun_t getLoadFunction() const {
+			return &load;
 		}
 
 	};
+
+
+	/**
+	 * A factory function for a lambda task pointer.
+	 */
+	template<typename Op>
+	std::enable_if_t<!std::is_void<std::result_of_t<Op()>>::value,std::unique_ptr<ComputeTask<std::result_of_t<Op()>>>>
+	make_lambda_task(const TaskID& id, Op&& op) {
+
+		using result_type = std::result_of_t<Op()>;
+		using treeture_type = treeture<result_type>;
+
+		struct name {};
+
+		struct split {
+			static treeture_type execute(const Op& op) {
+				assert_fail();
+				return op();
+			}
+		};
+
+		struct process {
+			static treeture_type execute(const Op& op) {
+				return op();
+			}
+		};
+
+		struct no_split {
+			static bool call(const Op&) {
+				return false;
+			}
+		};
+
+		using desc = work_item_description<
+			std::result_of_t<Op()>,
+			name,
+			no_serialization,
+			split,
+			process,
+			no_split
+		>;
+
+		return std::make_unique<WorkItemTask<desc,Op>>(id,com::Node::getLocalRank(),std::forward<Op>(op));
+	}
+
+	/**
+	 * A factory function for a lambda task pointer producing a void.
+	 */
+	template<typename Op>
+	std::enable_if_t<std::is_void<std::result_of_t<Op()>>::value,std::unique_ptr<ComputeTask<void>>>
+	make_lambda_task(const TaskID& id, Op&& op) {
+
+		using treeture_type = treeture<void>;
+
+		struct name {};
+
+		struct split {
+			static treeture_type execute(const Op& op) {
+				assert_fail();
+				op();
+				return true;
+			}
+		};
+
+		struct process {
+			static treeture_type execute(const Op& op) {
+				op();
+				return true;
+			}
+		};
+
+		struct no_split {
+			static bool call(const Op&) {
+				return false;
+			}
+		};
+
+		using desc = work_item_description<
+			void,
+			name,
+			no_serialization,
+			split,
+			process,
+			no_split
+		>;
+
+		return std::make_unique<WorkItemTask<desc,Op>>(id,com::Node::getLocalRank(),std::forward<Op>(op));
+	}
 
 } // end of namespace com
 } // end of namespace runtime

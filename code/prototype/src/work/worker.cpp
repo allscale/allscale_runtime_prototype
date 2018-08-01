@@ -17,6 +17,26 @@ namespace work {
 
 	thread_local Worker* tl_current_worker = nullptr;
 
+	void startWorker(com::Network& net) {
+
+		net.runOnAll([](com::Node& node){
+
+			// install worker
+			auto& worker = node.startService<work::Worker>();
+
+			// start worker
+			worker.start();
+
+		});
+
+	}
+
+	void stopWorker(com::Network& net) {
+		net.runOnAll([](com::Node& node){
+			node.getService<work::Worker>().stop();
+		});
+	}
+
 	Worker& Worker::getLocalWorker() {
 		assert_true(tl_current_worker) << "Can not localize worker outside of any worker thread!";
 		return *tl_current_worker;

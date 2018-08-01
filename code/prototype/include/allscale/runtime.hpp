@@ -61,8 +61,11 @@ namespace runtime {
 			// schedule task
 			node.getService<work::Worker>().schedule(std::move(task));
 
+			// wait for completion
+			treeture.wait();
+
 			// done
-			return treeture;
+			return std::move(treeture);
 		});
 
 		// wait for completion
@@ -151,7 +154,7 @@ namespace allscale {
 	using treeture = allscale::runtime::work::treeture<R>;
 
 	inline treeture<void> make_ready_treeture() {
-		return treeture<void>();
+		return treeture<void>(true);
 	}
 
 namespace runtime {

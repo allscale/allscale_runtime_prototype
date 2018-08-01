@@ -11,7 +11,11 @@ namespace work {
 	template<typename Op>
 	void testInNode(const Op& op) {
 
-		com::Network net(1);
+		// get some network of any size
+		auto network = com::Network::create();
+		assert_true(network);
+
+		auto& net = *network;
 		net.installServiceOnNodes<TreetureStateService>();
 
 		net.runOn(0,[&](com::Node&){

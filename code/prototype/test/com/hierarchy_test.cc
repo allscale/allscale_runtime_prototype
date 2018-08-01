@@ -181,7 +181,12 @@ namespace com {
 		int N = 11;
 
 		// create a network of 8 nodes
-		Network net(N);
+		auto network = Network::create(N);
+		if (!network) {
+			std::cout << "WARNING: could not create a network of N nodes!\n";
+			return;
+		}
+		auto& net = *network;
 
 		// create a overlay network
 		HierarchicalOverlayNetwork hierarchy(net);

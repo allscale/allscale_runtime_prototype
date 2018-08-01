@@ -322,8 +322,11 @@ namespace sim {
 		// but allow moving
 		Network(Network&&) = delete;
 
-		// factory method for environment based issues
+		// factory method for a new network, using an externally determined number of nodes
 		static std::unique_ptr<Network> create();
+
+		// factory creating the given number of nodes, or null if not possible (always possible)
+		static std::unique_ptr<Network> create(size_t size);
 
 		/**
 		 * Obtains the number

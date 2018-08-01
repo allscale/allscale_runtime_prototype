@@ -9,7 +9,11 @@ namespace work {
 
 	template<typename Op>
 	void runOnNode(const Op& op) {
-		com::Network net(1);
+		// get some network of any size
+		auto network = com::Network::create();
+		assert_true(network);
+
+		auto& net = *network;
 		installTreetureStateService(net);
 		net.runOn(0,[&](com::Node&){op();});
 	}

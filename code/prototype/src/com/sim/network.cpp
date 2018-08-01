@@ -21,6 +21,10 @@ namespace sim {
 			num_nodes = std::atoi(val);
 			if (num_nodes < 1) num_nodes = 1;
 		}
+		return create(num_nodes);
+	}
+
+	std::unique_ptr<Network> Network::create(size_t num_nodes) {
 		return std::make_unique<Network>(num_nodes);
 	}
 

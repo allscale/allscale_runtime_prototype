@@ -1,4 +1,8 @@
-#include <iomanip>
+
+#ifdef ENABLE_MPI
+
+#include <mpi.h>
+//#include <mpi/mpi.h>
 
 #include "allscale/runtime/com/mpi/network.h"
 
@@ -7,43 +11,48 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
-	Network::Network(size_t size) : stats(size) {
-		nodes.reserve(size);
-		for(size_t i=0; i<size; i++) {
-			nodes.emplace_back(i);
-		}
+	std::ostream& operator<<(std::ostream& out, const Network::Statistics&) {
+		return out << " -- nothing to report --";
 	}
 
-	std::unique_ptr<Network> Network::create() {
+
+	// the singleton network instance
+	Network Network::instance;
+
+	Network::Network() : num_nodes(1) {
+		// start up MPI environment
+		MPI_Init(nullptr,nullptr);
+
 		// get the number of nodes
-		int num_nodes = 4;	// < by default we use four nodes
-		if (auto val = std::getenv("ART_NUM_NODES")) {
-			num_nodes = std::atoi(val);
-			if (num_nodes < 1) num_nodes = 1;
-		}
-		return std::make_unique<Network>(num_nodes);
+		int size;
+		MPI_Comm_size(MPI_COMM_WORLD,&size);
+		num_nodes = size;
+
+		// startup local node
+		int rank;
+		MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+		localNode = std::make_unique<Node>(rank);
 	}
 
-	std::ostream& operator<<(std::ostream& out, const Network::Statistics::Entry& entry) {
-		return out
-				<< std::setw(15) << entry.received_bytes << ','
-				<< std::setw(11) << entry.sent_bytes << ','
-				<< std::setw(15) << entry.received_calls << ','
-				<< std::setw(11) << entry.sent_calls
-				<< std::setw(17) << entry.received_bcasts << ','
-				<< std::setw(12) << entry.sent_bcasts;
- 	}
+	Network::~Network() {
+		// shut down environment
+		MPI_Finalize();
+	}
 
-	std::ostream& operator<<(std::ostream& out, const Network::Statistics& stats) {
-		out << std::setw(10);
-		out << "rank, bytes_received, bytes_sent, received_calls, sent_calls, received_bcasts, send_bcasts\n";
-		for(std::size_t i=0; i<stats.stats.size(); i++) {
-			out << std::setw(4) << i << "," << stats.stats[i] << "\n";
-		}
-		return out;
- 	}
+	Network* Network::create() {
+		return &instance;
+	}
+
+	Network* Network::create(size_t size) {
+		return (instance.numNodes() == size) ? &instance : nullptr;
+	}
+
+	Network& Network::getNetwork() {
+		return instance;
+	}
 
 } // end of namespace mpi
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale
+#endif

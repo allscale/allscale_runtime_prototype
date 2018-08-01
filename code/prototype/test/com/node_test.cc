@@ -19,7 +19,13 @@ namespace com {
 	TEST(Node, Service) {
 
 		// create a network (implicit node creation)
-		Network net(2);
+		auto network = Network::create(2);
+		if (!network) {
+			std::cout << "WARNING: could not get a network of size 2!\n";
+			return;
+		}
+
+		auto& net = *network;
 
 		// create a service
 		net.runOn(0,[](Node& node){

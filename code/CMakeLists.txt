@@ -19,6 +19,7 @@ include(dependencies/pthread)
 include(dependencies/googletest)
 #include(dependencies/boost)
 include(dependencies/valgrind)
+include(dependencies/mpi)
 
 # -- CMake Modules
 include(add_module)

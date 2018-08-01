@@ -11,6 +11,12 @@ target_include_directories(prototype PUBLIC ${PROJECT_SOURCE_DIR}/../api/code/ut
 target_link_libraries(prototype Threads::Threads)
 
 
+# MPI
+target_include_directories(prototype PUBLIC ${MPI_CXX_INCLUDE_PATH})
+target_compile_options(prototype PUBLIC ${MPI_CXX_COMPILE_FLAGS})
+target_link_libraries(prototype ${MPI_CXX_LIBRARIES})
+
+
 glob_executables(prototype_exes src)
 foreach(exe ${prototype_exes})
 	add_module_executable(prototype ${exe})

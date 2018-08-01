@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
 
-#include "allscale/runtime/com/network.h"
+#include "allscale/runtime/com/sim/network.h"
 
 
 namespace allscale {
 namespace runtime {
 namespace com {
+namespace sim {
 
 	/**
 	 * A simple ping service.
@@ -161,6 +162,7 @@ namespace com {
 
 	}
 
+} // end of namespace sim
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

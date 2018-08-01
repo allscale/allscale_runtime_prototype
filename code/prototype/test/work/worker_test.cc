@@ -27,8 +27,11 @@ namespace work {
 
 		int x = 0;
 
-		// start a worker
-		com::Network net(1);
+		// get some network of any size
+		auto network = com::Network::create();
+		assert_true(network);
+
+		auto& net = *network;
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 		startWorker(net);
@@ -53,7 +56,10 @@ namespace work {
 		int x = 0;
 
 		// create the network
-		com::Network net(1);
+		auto network = com::Network::create();
+		assert_true(network);
+
+		auto& net = *network;
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 

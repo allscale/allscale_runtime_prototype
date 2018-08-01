@@ -22,7 +22,7 @@ namespace work {
 		net.runOnAll([](com::Node& node){
 
 			// install worker
-			auto& worker = node.startService<work::Worker>();
+			auto& worker = node.startService<Worker>();
 
 			// start worker
 			worker.start();
@@ -33,7 +33,8 @@ namespace work {
 
 	void stopWorker(com::Network& net) {
 		net.runOnAll([](com::Node& node){
-			node.getService<work::Worker>().stop();
+			node.getService<Worker>().stop();
+			node.stopService<Worker>();
 		});
 	}
 

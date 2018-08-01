@@ -70,8 +70,10 @@ namespace com {
 		 */
 		template<typename S, typename ... Args>
 		S& startService(Args&& ... args) {
-			assert_false(hasService<S>());
-			services[typeid(S)] = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
+			// only start service at most once
+			if (!hasService<S>()) {
+				services[typeid(S)] = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
+			}
 			return getService<S>();
 		}
 
@@ -84,6 +86,14 @@ namespace com {
 			return static_cast<Service<S>&>(*services.find(typeid(S))->second).service;
 		}
 
+		/**
+		 * Removes the corresponding service from this node.
+		 */
+		template<typename S>
+		void stopService() {
+			assert_true(hasService<S>());
+			services.erase(typeid(S));
+		}
 	};
 
 

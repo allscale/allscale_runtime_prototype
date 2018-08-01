@@ -12,7 +12,7 @@ namespace com {
 namespace mpi {
 
 	std::ostream& operator<<(std::ostream& out, const Network::Statistics&) {
-		return out << " -- nothing to report --";
+		return out << " -- reporting for MPI not implemented yet --\n";
 	}
 
 

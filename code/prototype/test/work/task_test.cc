@@ -68,7 +68,7 @@ namespace work {
 		runInNode([]{
 
 			// let's create a task
-			auto task = make_lambda_task(0,[]{ return 1; });
+			auto task = make_lambda_task(getFreshId(),[]{ return 1; });
 
 			// retrieve treeture
 			auto t = task->getTreeture();
@@ -91,7 +91,7 @@ namespace work {
 			int x = 0;
 
 			// let's create a task
-			auto task = make_lambda_task(0,[&]{ x = 1; });
+			auto task = make_lambda_task(getFreshId(),[&]{ x = 1; });
 
 			// retrieve treeture
 			auto t = task->getTreeture();

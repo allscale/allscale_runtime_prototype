@@ -404,6 +404,16 @@ namespace sim {
 		}
 
 		/**
+		 * Removes a service from all nodes.
+		 */
+		template<typename S>
+		void removeServiceOnNodes() {
+			runOnAll([&](Node& n){
+				n.stopService<S>();
+			});
+		}
+
+		/**
 		 * Obtains the network transfer statistics collected so far.
 		 */
 		const Statistics& getStatistics() const {

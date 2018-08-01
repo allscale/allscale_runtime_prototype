@@ -66,6 +66,14 @@ namespace com {
 			return services.getService<S>();
 		}
 
+		/**
+		 * Removes the given service from this node.
+		 */
+		template<typename S>
+		void stopService() {
+			services.stopService<S>();
+		}
+
 		// -------- protocol --------
 
 		/**

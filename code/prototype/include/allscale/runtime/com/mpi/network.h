@@ -83,7 +83,13 @@ namespace mpi {
 				auto src = Node::getLocalRank();
 				auto trg = target;
 
+				// short-cut for local communication
+				if (src == trg) {
+					auto& node = com::Node::getLocalNode();
+					return (selector(node).*fun)(std::forward<Args>(args)...);
+				}
 
+				// the rest is not supported yet
 				assert_not_implemented();
 
 				Node& node = *(Node*)nullptr;
@@ -135,22 +141,19 @@ namespace mpi {
 				auto src = Node::getLocalRank();
 				auto trg = target;
 
+				// short-cut for local communication
+				if (src == trg) {
+					auto& node = com::Node::getLocalNode();
+					(selector(node).*fun)(std::forward<Args>(args)...);
+					return;
+				}
+
+				// the rest is not supported yet
 				assert_not_implemented();
 
-//				// short-cut for local communication
-//				if (src == trg) {
-//					node.run([&](Node&){
-//						(selector(node).*fun)(std::forward<Args>(args)...);
-//					});
-//					return;
-//				}
-//
-//				// perform an actual remote call
-//				stats[src].sent_calls += 1;
-//				stats[trg].received_calls += 1;
-//				node.run([&](Node&){
-//					(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
-//				});
+//				Node& node = *(Node*)nullptr;
+//				return (selector(node).*fun)(std::forward<Args>(args)...);
+
 			}
 
 		};
@@ -177,7 +180,11 @@ namespace mpi {
 			 */
 			void operator()(Args ... args) const {
 
-				assert_not_implemented();
+				// send one-by-one to each other node
+				auto& net = Network::getNetwork();
+				for(rank_t r = 0; r<net.numNodes(); r++) {
+					net.getRemoteProcedure(r,fun)(args...);
+				}
 
 //				auto src = Node::getLocalRank();
 //				stats[src].sent_bcasts += 1;
@@ -316,10 +323,17 @@ namespace mpi {
 		 */
 		template<typename S, typename ... Args>
 		void installServiceOnNodes(const Args& ... args) {
-			assert_not_implemented();
-//			runOnAll([&](Node& n){
-//				n.startService<S>(args...);
-//			});
+			// just install service locally
+			localNode->startService<S>(args...);
+		}
+
+		/**
+		 * Removes a service from all nodes.
+		 */
+		template<typename S>
+		void removeServiceOnNodes() {
+			// just remove service locally
+			localNode->stopService<S>();
 		}
 
 		/**

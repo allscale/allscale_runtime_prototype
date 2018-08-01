@@ -71,9 +71,7 @@ namespace runtime {
 		// wait for completion
 		auto res = std::move(treeture).get_result();
 
-		// shutdown network
-		std::cout << "Shutting down runtime ...\n";
-		rt.shutdown();
+		std::cout << "Comutation done, collecting statistics ...\n";
 
 		// print statistics
 		std::cout << "\n";
@@ -95,6 +93,11 @@ namespace runtime {
 		std::cout << "------------------------------------------------------------------------------------------\n";
 		std::cout << rt.getNetwork().getStatistics();
 		std::cout << "------------------------------------------------------------------------------------------\n";
+		std::cout << "\n";
+
+		// shutdown network
+		std::cout << "Shutting down runtime ...\n";
+		rt.shutdown();
 
 		// return result
 		return res;

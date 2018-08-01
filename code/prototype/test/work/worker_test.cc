@@ -37,7 +37,7 @@ namespace work {
 		startWorker(net);
 
 		net.runOn(0,[&](com::Node& node){
-			node.getService<Worker>().schedule(make_lambda_task(TaskID(1),[&]{
+			node.getService<Worker>().schedule(make_lambda_task(getFreshId(),[&]{
 				x = 1;
 			}));
 		});
@@ -70,7 +70,7 @@ namespace work {
 		net.runOn(0,[&](com::Node& node){
 			auto& worker = node.getService<Worker>();
 			for(int i=0; i<N; i++) {
-				worker.schedule(make_lambda_task(TaskID(i),[&]{
+				worker.schedule(make_lambda_task(getFreshId(),[&]{
 					x++;
 				}));
 			}

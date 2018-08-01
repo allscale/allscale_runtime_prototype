@@ -77,7 +77,7 @@ namespace work {
 		testInNode([]{
 
 			// simulate the creation of a task
-			TaskID id(12);
+			TaskID id = getFreshId();
 			TreetureStateService::getLocal().registerTask<int>(id);
 
 			auto rank = com::Node::getLocalRank();
@@ -114,7 +114,7 @@ namespace work {
 		testInNode([]{
 
 			// simulate the creation of a task
-			TaskID id(12);
+			TaskID id = getFreshId();
 			TreetureStateService::getLocal().registerTask<int>(id);
 
 			auto rank = com::Node::getLocalRank();
@@ -160,7 +160,7 @@ namespace work {
 			auto rank = com::Node::getLocalRank();
 
 			// simulate the creation of a task
-			TaskID id(12);
+			TaskID id = getFreshId();
 			TreetureStateService::getLocal().registerTask<void>(id);
 
 			// and the attempt to get the result
@@ -179,7 +179,6 @@ namespace work {
 
 
 	TEST(Treeture_Void, SerializationNotOwning) {
-		TaskID id(12);
 		treeture<void> x;
 
 		EXPECT_FALSE(x.valid());
@@ -196,7 +195,7 @@ namespace work {
 		testInNode([]{
 
 			// simulate the creation of a task
-			TaskID id(12);
+			TaskID id = getFreshId();
 			TreetureStateService::getLocal().registerTask<void>(id);
 
 			auto rank = com::Node::getLocalRank();
@@ -232,7 +231,7 @@ namespace work {
 		testInNode([]{
 
 			// simulate the creation of a task
-			TaskID id(12);
+			TaskID id = getFreshId();
 			TreetureStateService::getLocal().registerTask<void>(id);
 
 			auto rank = com::Node::getLocalRank();

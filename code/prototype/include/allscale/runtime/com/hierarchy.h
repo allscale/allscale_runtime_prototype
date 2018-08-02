@@ -231,6 +231,14 @@ namespace com {
 		}
 
 		/**
+		 * Removes a hierarchical service on all virtual nodes.
+		 */
+		template<typename S>
+		void removeServiceOnNodes() {
+			network.removeServiceOnNodes<HierarchyService<S>>();
+		}
+
+		/**
 		 * Obtains a handle for performing a remote procedure call of a selected service.
 		 */
 		template<typename S, typename R, typename ... Args>

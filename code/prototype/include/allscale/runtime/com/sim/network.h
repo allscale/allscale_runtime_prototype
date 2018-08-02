@@ -34,7 +34,7 @@ namespace sim {
 		 * The list of nodes on the network.
 		 * To ensure that there are no side channels, this list of nodes is never exposed.
 		 */
-		std::vector<Node> nodes;
+		std::vector<std::unique_ptr<Node>> nodes;
 
 	public:
 
@@ -258,7 +258,7 @@ namespace sim {
 		class Broadcast {
 
 			// the nodes to address
-			std::vector<Node>& nodes;
+			std::vector<std::unique_ptr<Node>>& nodes;
 
 			// the targeted service function
 			void(S::* fun)(Args...);
@@ -271,7 +271,7 @@ namespace sim {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			Broadcast(std::vector<Node>& nodes, void(S::*fun)(Args...), Statistics& stats)
+			Broadcast(std::vector<std::unique_ptr<Node>>& nodes, void(S::*fun)(Args...), Statistics& stats)
 				: nodes(nodes), fun(fun), stats(stats) {}
 
 			/**
@@ -281,20 +281,20 @@ namespace sim {
 				auto src = Node::getLocalRank();
 				stats[src].sent_bcasts += 1;
 				for(auto& node : nodes) {
-					auto trg = node.getRank();
+					auto trg = node->getRank();
 
 					// short-cut for local communication
 					if (src == trg) {
-						node.run([&](Node&){
-							(node.getService<S>().*fun)(std::forward<Args>(args)...);
+						node->run([&](Node&){
+							(node->getService<S>().*fun)(std::forward<Args>(args)...);
 						});
 						continue;
 					}
 
 					// perform remote call
 					stats[trg].received_bcasts += 1;
-					node.run([&](Node&){
-						(node.getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+					node->run([&](Node&){
+						(node->getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
 					});
 
 				}
@@ -346,7 +346,7 @@ namespace sim {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...)) {
 			assert_lt(rank,nodes.size());
-			return { nodes[rank], selector, fun, stats };
+			return { *(nodes[rank]), selector, fun, stats };
 		}
 
 
@@ -378,7 +378,7 @@ namespace sim {
 			assert_lt(rank,numNodes());
 			setLocalNetwork();
 			auto f = allscale::utils::run_finally([&]{ resetLocalNetwork(); });
-			return nodes[rank].run(op);
+			return nodes[rank]->run(op);
 		}
 
 		/**
@@ -387,8 +387,8 @@ namespace sim {
 		template<typename Op>
 		void runOnAll(const Op& op) {
 			setLocalNetwork();
-			for(Node& n : nodes) {
-				n.run(op);
+			for(auto& n : nodes) {
+				n->run(op);
 			}
 			resetLocalNetwork();
 		}

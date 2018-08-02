@@ -13,16 +13,16 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
-//	/**
-//	 * A simple ping service.
-//	 */
-//	struct PingService {
-//
-//		PingService(com::Node&) {}
-//
-//		int ping(int x) { return x + 1; };
-//
-//	};
+	/**
+	 * A simple ping service.
+	 */
+	struct PingService {
+
+		PingService(com::Node&) {}
+
+		int ping(int x) { return x + 1; };
+
+	};
 
 
 	TEST(Network, Retrieval) {
@@ -47,141 +47,58 @@ namespace mpi {
 			EXPECT_EQ(&net,&Network::getNetwork());
 		});
 
-		EXPECT_EQ(net.numNodes(),counter);
+		// it is only run locally
+		EXPECT_EQ(1,counter);
 	}
 
 
-//	TEST(Network, RunOperation) {
-//		// create a network with a two nodes
-//		Network net(2);
-//		EXPECT_EQ(2,net.numNodes());
-//
-//		// run an operation on node 0
-//		net.runOn(0,[&](Node& node){
-//			EXPECT_EQ(0,node.getRank());
-//		});
-//
-//		// run an operation on node 1
-//		net.runOn(1,[&](Node& node){
-//			EXPECT_EQ(1,node.getRank());
-//		});
-//	}
-//
-//	TEST(Network, Ping) {
-//
-//		// create a network with a two nodes
-//		Network net(2);
-//		EXPECT_EQ(2,net.numNodes());
-//
-//		// install ping service
-//		net.installServiceOnNodes<PingService>();
-//
-//		// run an operation on node 0
-//		net.runOn(0,[](Node&){
-//			auto& net = Network::getNetwork();
-//			auto ping = net.getRemoteProcedure(1,&PingService::ping);
-//			EXPECT_EQ(5,ping(4));
-//		});
-//
-//	}
-//
-//	TEST(Network, Stats) {
-//
-//		// create a network with a two nodes
-//		Network net(2);
-//		EXPECT_EQ(2,net.numNodes());
-//
-//		// install ping service
-//		net.installServiceOnNodes<PingService>();
-//
-//		// extract references to statistics
-//		{
-//			auto stats = net.getStatistics();
-//			auto stats0 = stats[0];
-//			auto stats1 = stats[1];
-//
-//			EXPECT_EQ(0,stats0.received_bytes);
-//			EXPECT_EQ(0,stats0.sent_bytes);
-//			EXPECT_EQ(0,stats0.received_calls);
-//			EXPECT_EQ(0,stats0.sent_calls);
-//
-//			EXPECT_EQ(0,stats1.received_bytes);
-//			EXPECT_EQ(0,stats1.sent_bytes);
-//			EXPECT_EQ(0,stats1.received_calls);
-//			EXPECT_EQ(0,stats1.sent_calls);
-//		}
-//
-//		// send a message from 0 to 1
-//		net.runOn(0,[](Node&){
-//			auto& net = Network::getNetwork();
-//			auto ping = net.getRemoteProcedure(1,&PingService::ping);
-//			EXPECT_EQ(5,ping(4));
-//		});
-//
-//		// extract references to statistics
-//		{
-//			auto stats = net.getStatistics();
-//			auto stats0 = stats[0];
-//			auto stats1 = stats[1];
-//
-//			EXPECT_EQ(4,stats0.received_bytes);
-//			EXPECT_EQ(4,stats0.sent_bytes);
-//			EXPECT_EQ(0,stats0.received_calls);
-//			EXPECT_EQ(1,stats0.sent_calls);
-//
-//			EXPECT_EQ(4,stats1.received_bytes);
-//			EXPECT_EQ(4,stats1.sent_bytes);
-//			EXPECT_EQ(1,stats1.received_calls);
-//			EXPECT_EQ(0,stats1.sent_calls);
-//		}
-//
-//
-//		// send two messages from 1 to 0
-//		net.runOn(1,[](Node&){
-//			auto& net = Network::getNetwork();
-//			auto ping = net.getRemoteProcedure(0,&PingService::ping);
-//			EXPECT_EQ(5,ping(4));
-//			EXPECT_EQ(9,ping(8));
-//		});
-//
-//		// extract references to statistics
-//		{
-//			auto stats = net.getStatistics();
-//			auto stats0 = stats[0];
-//			auto stats1 = stats[1];
-//
-//			EXPECT_EQ(12,stats0.received_bytes);
-//			EXPECT_EQ(12,stats0.sent_bytes);
-//			EXPECT_EQ(2,stats0.received_calls);
-//			EXPECT_EQ(1,stats0.sent_calls);
-//
-//			EXPECT_EQ(12,stats1.received_bytes);
-//			EXPECT_EQ(12,stats1.sent_bytes);
-//			EXPECT_EQ(1,stats1.received_calls);
-//			EXPECT_EQ(2,stats1.sent_calls);
-//		}
-//
-//		// reset the network statistics
-//		net.resetStatistics();
-//
-//		// extract references to statistics
-//		{
-//			auto stats = net.getStatistics();
-//			auto stats0 = stats[0];
-//			auto stats1 = stats[1];
-//
-//			EXPECT_EQ(0,stats0.received_bytes);
-//			EXPECT_EQ(0,stats0.sent_bytes);
-//			EXPECT_EQ(0,stats0.received_calls);
-//			EXPECT_EQ(0,stats0.sent_calls);
-//
-//			EXPECT_EQ(0,stats1.received_bytes);
-//			EXPECT_EQ(0,stats1.sent_bytes);
-//			EXPECT_EQ(0,stats1.received_calls);
-//			EXPECT_EQ(0,stats1.sent_calls);
-//		}
-//
-//	}
+	TEST(Network, RunOperation) {
+		// retrieve the network
+		auto network = Network::create();
+		Network& net = *network;
+
+		for(rank_t i=0; i<net.numNodes(); i++) {
+
+			// run an operation on node i
+			net.runOn(i,[&](Node& node){
+				EXPECT_EQ(i,node.getRank());
+			});
+
+		}
+	}
+
+	TEST(Network, Ping) {
+
+		// retrieve the network
+		auto network = Network::create();
+		ASSERT_TRUE(network);
+		Network& net = *network;
+
+		if(net.numNodes() < 2) {
+			std::cout << "WARNING: test can only be conducted with 2 or more nodes.\n";
+			return;
+		}
+
+		// install ping service
+		net.installServiceOnNodes<PingService>();
+
+		// barrier at the end of the setup
+		net.sync();
+
+		// run an operation on node 0
+		net.runOn(0,[](Node&){
+			auto& net = Network::getNetwork();
+			auto ping = net.getRemoteProcedure(1,&PingService::ping);
+			EXPECT_EQ(5,ping(4));
+		});
+
+		// barrier before removing services
+		net.sync();
+
+		// remove the service
+		net.removeServiceOnNodes<PingService>();
+
+	}
 
 } // end of namespace mpi
 } // end of namespace com

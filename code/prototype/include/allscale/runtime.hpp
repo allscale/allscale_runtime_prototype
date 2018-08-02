@@ -71,7 +71,7 @@ namespace runtime {
 		// wait for completion
 		auto res = std::move(treeture).get_result();
 
-		std::cout << "Comutation done, collecting statistics ...\n";
+		std::cout << "Computation done, collecting statistics ...\n";
 
 		// print statistics
 		std::cout << "\n";

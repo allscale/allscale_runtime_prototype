@@ -11,6 +11,8 @@
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/data/data_item_index.h"
 
+#include "allscale/runtime/work/schedule_policy.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -41,7 +43,7 @@ namespace work {
 			auto numNodes = net.numNodes();
 
 			// the cut-off level for "forced" distribution
-			return ceilLog2(numNodes) + 2;
+			return ceilLog2(numNodes) + 3;
 		}
 
 	}
@@ -163,6 +165,9 @@ namespace work {
 			// the depth of this node in the tree, counted from the root
 			std::size_t depth;
 
+			// the scheduling policy to follow
+			SchedulingPolicy policy;
+
 		public:
 
 			ScheduleService(com::Network& net, const com::HierarchyAddress& addr)
@@ -170,7 +175,8 @@ namespace work {
 				  myAddr(addr),
 				  rootAddr(network.getRootAddress()),
 				  isRoot(myAddr == rootAddr),
-				  depth(rootAddr.getLayer()-myAddr.getLayer()) {}
+				  depth(rootAddr.getLayer()-myAddr.getLayer()),
+				  policy(SchedulingPolicy::createUniform(net.numNodes())) {}
 
 			/**
 			 * The following two methods are the central element of the scheduling process.
@@ -245,6 +251,14 @@ namespace work {
 				}
 
 				// TODO: check whether left or right node covers all write requirements
+
+//				// ask the scheduling policy what to do with this task
+//				auto d = policy.decide(id.getPath());
+//
+//				// if it should stay, process it here
+//				if (d == Decision::Stay) {
+//					return scheduleLocal(std::move(task));
+//				}
 
 				bool targetLeft = (id.getParent().getLeftChild() == id);
 

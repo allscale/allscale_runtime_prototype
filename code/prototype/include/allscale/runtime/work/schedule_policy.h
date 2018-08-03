@@ -49,6 +49,9 @@ namespace work {
 		// retrieves the decision for a given path
 		Decision get(const TaskPath& path) const;
 
+		// provide a printer for debugging
+		friend std::ostream& operator<<(std::ostream& out, const DecisionTree& tree);
+
 	};
 
 
@@ -74,6 +77,11 @@ namespace work {
 		// create a balanced work distribution based on the given load distribution
 		static SchedulingPolicy createBalanced(const std::vector<float>& loadDistribution, int extraDepth = 3);
 
+		// --- observer ---
+
+		const DecisionTree& getDecisionTree() const {
+			return tree;
+		}
 
 		// --- the main interface for the scheduler ---
 
@@ -86,6 +94,13 @@ namespace work {
 		static SchedulingPolicy load(allscale::utils::ArchiveReader&);
 
 		void store(allscale::utils::ArchiveWriter&) const;
+
+		// --- printing ---
+
+		// provide a printer for debugging
+		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p) {
+			return out << p.tree;
+		}
 
 	};
 

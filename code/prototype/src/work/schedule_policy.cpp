@@ -47,18 +47,18 @@ namespace work {
 
 		void fillTree(DecisionTree& tree, TaskPath p, std::size_t range_min, std::size_t range_max, const com::rank_t* min, const com::rank_t* max) {
 
-//			std::cout << "\n";
+			std::cout << "\n";
 
 			// the center of the task id range
 			std::size_t center = range_min + (range_max - range_min)/2;
 
-//			std::cout << "Covering range " << range_min << " - " << range_max << " : " << center << "\n";
+			std::cout << "Covering range " << range_min << " - " << range_max << " : " << center << "\n";
 
 			// process current
 			auto cur_min = *min;
 			auto cur_max = *(max-1);
 
-//			std::cout << "\tRange: " << cur_min << " - " << cur_max << "\n";
+			std::cout << "\tRange: " << cur_min << " - " << cur_max << "\n";
 
 
 			// the min/max forwarded to the nested call
@@ -141,19 +141,45 @@ namespace work {
 		return Decision(res);
 	}
 
+	namespace {
+
+		void collectPaths(const TaskPath& cur, std::vector<TaskPath>& res, int depth) {
+			if (depth < 0) return;
+			res.push_back(cur);
+			collectPaths(cur.getLeftChildPath(),res,depth-1);
+			collectPaths(cur.getRightChildPath(),res,depth-1);
+		}
+
+		std::vector<TaskPath> getAll(int depth) {
+			std::vector<TaskPath> res;
+			collectPaths(TaskPath::root(),res,depth);
+			return res;
+		}
+
+	}
+
+	std::ostream& operator<<(std::ostream& out, const DecisionTree& tree) {
+		auto height = ceilLog2(tree.encoded.size()/4);
+		for(const auto& cur : getAll(height)) {
+			out << "T" << cur << " => " << tree.get(cur) << "\n";
+		}
+		return out;
+
+	}
+
 
 
 	// create a uniform distributing policy for N nodes
 	SchedulingPolicy SchedulingPolicy::createUniform(int N, int extraDepth) {
 		assert_lt(0,N);
-		assert_le(0,extraDepth);
+		assert_le(1,extraDepth) << "Needs some slack to compute solution.";
 		return createBalanced(std::vector<float>(N,1.0),extraDepth);
 	}
 
 	// create a balanced work distribution based on the given load distribution
 	SchedulingPolicy SchedulingPolicy::createBalanced(const std::vector<float>& loadDistribution, int extraDepth) {
 		assert_lt(0,loadDistribution.size());
-		assert_le(0,extraDepth);
+		assert_le(1,extraDepth) << "Needs some slack to compute solution.";;
 
 		// get the number of nodes to be filled
 		int N = loadDistribution.size();

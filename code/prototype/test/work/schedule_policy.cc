@@ -2,6 +2,9 @@
 
 #include <type_traits>
 
+#include "allscale/utils/string_utils.h"
+#include "allscale/utils/printer/vectors.h"
+
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/hierarchy.h"
 #include "allscale/runtime/work/schedule_policy.h"
@@ -102,39 +105,111 @@ namespace work {
 	}
 
 
-	TEST(SchedulePolicy, Uniform) {
+	namespace {
 
-		SchedulingPolicy u = SchedulingPolicy::createUniform(3,1);
-
-		// test paths:
-		auto paths = getAll(3);
-//		for(const auto& cur : paths) {
-//			std::cout << cur << " => " << u.decide(cur) << "\n";
-//		}
-
-		for(const auto& cur : paths) {
-			auto target = getTarget(3,u,cur);
-			if (!target.isLeaf()) continue;
-			std::cout << cur << " : " << getTarget(3,u,cur) << "\n";
+		constexpr int ceilLog2(int x) {
+			int i = 0;
+			int c = 1;
+			while (c<x) {
+				c = c << 1;
+				i++;
+			}
+			return i;
 		}
-
-
 
 	}
 
-	TEST(SchedulePolicy, Uniform_N3_deeper) {
 
-		SchedulingPolicy u = SchedulingPolicy::createUniform(3,3);
+	TEST(SchedulePolicy, UniformFixed) {
 
-		auto paths = getAll(6);
-//		for(const auto& cur : paths) {
-//			std::cout << cur << " => " << u.decide(cur) << "\n";
-//		}
+		constexpr int NUM_NODES = 3;
+		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
+		constexpr int EXTRA_LEVELS = 1;
 
+		// get uniform distributed policy
+		auto u = SchedulingPolicy::createUniform(NUM_NODES,EXTRA_LEVELS);
+
+		// get the list of all paths down to the given level
+		auto max_length = CEIL_LOG_2_NUM_NODES + EXTRA_LEVELS;
+		auto paths = getAll(max_length);
+
+		// collect scheduling target on lowest level
+		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
-			auto target = getTarget(3,u,cur);
-			if (!target.isLeaf()) continue;
-			std::cout << cur << " : " << getTarget(3,u,cur) << "\n";
+			if (cur.getLength() != max_length) continue;
+			auto target = getTarget(NUM_NODES,u,cur);
+			EXPECT_EQ(0,target.getLayer());
+			targets.push_back(target.getRank());
+		}
+
+		EXPECT_EQ("[0,0,0,1,1,1,2,2]",toString(targets));
+
+	}
+
+
+	TEST(DISABLED_SchedulePolicy, Uniform_N3_deeper) {
+
+		// check larger combination of nodes and extra levels
+		for(int n=1; n<16; n++) {
+			for(int e = 1; e<=3; e++) {
+
+				SCOPED_TRACE("n=" + toString(n) + ",e=" + toString(e));
+
+				int NUM_NODES = n;
+				int CEIL_LOG_2_NUM_NODES = ceilLog2(n);
+				int EXTRA_LEVELS = CEIL_LOG_2_NUM_NODES+1; //e;
+
+				// get uniform distributed policy
+				auto u = SchedulingPolicy::createUniform(NUM_NODES,EXTRA_LEVELS);
+
+				std::cout << u << "\n";
+
+				// get the list of all paths down to the given level
+				auto max_length = CEIL_LOG_2_NUM_NODES + EXTRA_LEVELS;
+				auto paths = getAll(max_length);
+
+				// collect scheduling target on lowest level
+				std::vector<com::rank_t> targets;
+				for(const auto& cur : paths) {
+					if (cur.getLength() != max_length) continue;
+					auto target = getTarget(NUM_NODES,u,cur);
+					EXPECT_EQ(0,target.getLayer()) << cur;
+					targets.push_back(target.getRank());
+				}
+
+				std::cout << toString(targets) << "\n";
+
+				// check number of entries
+				EXPECT_EQ((1<<max_length),targets.size());
+
+				// check that ranks are in range
+				for(const auto& cur : targets) {
+					EXPECT_LE(0,cur);
+					EXPECT_LT(cur,n);
+				}
+
+				// check that ranks are growing monotone
+				for(std::size_t i=0; i<targets.size()-1; i++) {
+					EXPECT_LE(targets[i],targets[i+1]);
+				}
+
+				// compute a histogram
+				std::vector<std::size_t> hist(n,0);
+				for(const auto& cur : targets) {
+					hist[cur]++;
+				}
+
+				// expect distribution +/-1
+				auto share = targets.size() / n;
+				for(int i=0; i<n; i++) {
+					EXPECT_TRUE(hist[i]==share || hist[i] == share+1)
+							<< "Node:   " << i << "\n"
+							<< "Share:  " << share << "\n"
+							<< "Actual: " << hist[i] << "\n";
+				}
+
+
+			}
 		}
 
 

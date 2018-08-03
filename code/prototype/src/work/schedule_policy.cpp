@@ -2,6 +2,8 @@
 #include "allscale/utils/assert.h"
 #include "allscale/utils/printer/vectors.h"
 
+#include "allscale/utils/serializer/vectors.h"
+
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/work/schedule_policy.h"
 
@@ -45,20 +47,16 @@ namespace work {
 			return (1 << p.getLength()) | p.getPath();
 		}
 
-		void fillTree(DecisionTree& tree, TaskPath p, std::size_t range_min, std::size_t range_max, const com::rank_t* min, const com::rank_t* max) {
+		void fillTree(DecisionTree& tree, TaskPath p, int depth, int max_depth, std::size_t range_min, std::size_t range_max, const com::rank_t* min, const com::rank_t* max) {
 
-			std::cout << "\n";
+			if (depth >= max_depth) return;
 
 			// the center of the task id range
 			std::size_t center = range_min + (range_max - range_min)/2;
 
-			std::cout << "Covering range " << range_min << " - " << range_max << " : " << center << "\n";
-
 			// process current
 			auto cur_min = *min;
-			auto cur_max = *(max-1);
-
-			std::cout << "\tRange: " << cur_min << " - " << cur_max << "\n";
+			auto cur_max = (min == max) ? cur_min : *(max-1);
 
 
 			// the min/max forwarded to the nested call
@@ -67,9 +65,11 @@ namespace work {
 
 			// make decision
 			if (cur_max < center) {
+				depth++;
 				tree.set(p,Decision::Left);
 				nested_range_max = center;
 			} else if (center <= cur_min) {
+				depth++;
 				tree.set(p,Decision::Right);
 				nested_range_min = center;
 			} else {
@@ -77,7 +77,7 @@ namespace work {
 			}
 
 			// check whether we are done
-			if (min + 1 >= max) return;
+			if (depth >= max_depth && min + 1 >= max) return;
 
 			// fill current node
 
@@ -85,10 +85,10 @@ namespace work {
 			auto mid = min + (max - min)/2;
 
 			// fill left
-			fillTree(tree,p.getLeftChildPath(),nested_range_min,nested_range_max,min,mid);
+			fillTree(tree,p.getLeftChildPath(),depth,max_depth,nested_range_min,nested_range_max,min,mid);
 
 			// fill right
-			fillTree(tree,p.getRightChildPath(),nested_range_min,nested_range_max,mid,max);
+			fillTree(tree,p.getRightChildPath(),depth,max_depth,nested_range_min,nested_range_max,mid,max);
 
 		}
 
@@ -96,10 +96,14 @@ namespace work {
 		DecisionTree toDecisionTree(com::rank_t num_nodes, const std::vector<com::rank_t>& map) {
 
 			// create the resulting decision tree
-			DecisionTree res(map.size());
+			auto log2 = ceilLog2(map.size());
+			assert_eq((1<<log2),map.size()) << "Input map is not of power-of-two size: " << map.size();
+
+			// the resulting (unbalanced) tree has to be at most 2x as deep
+			DecisionTree res((1<<(2*log2)));
 
 			// fill in decisions recursively
-			fillTree(res,TaskPath::root(), 0, num_nodes, &*map.begin(),&*map.end());
+			fillTree(res,TaskPath::root(), 0, ceilLog2(num_nodes), 0, num_nodes, &*map.begin(),&*map.end());
 
 			// done
 			return std::move(res);
@@ -110,6 +114,7 @@ namespace work {
 
 	std::ostream& operator<<(std::ostream& out, Decision d) {
 		switch(d) {
+		case Decision::Done:  return out << "Done";
 		case Decision::Stay:  return out << "Stay";
 		case Decision::Left:  return out << "Left";
 		case Decision::Right: return out << "Right";
@@ -121,9 +126,10 @@ namespace work {
 	// updates a decision for a given path
 	void DecisionTree::set(const TaskPath& path, Decision decision) {
 		int pos = getPosition(path);
-		assert_lt(2*pos,encoded.size());
-		encoded[2*pos]     = int(decision) & 0x2;
-		encoded[2*pos + 1] = int(decision) & 0x1;
+		assert_lt(pos/4,encoded.size());
+		int byte_pos = 2*pos / 8;
+		int bit_pos = (2*pos) % 8;
+		encoded[byte_pos] = (encoded[byte_pos] & ~(0x3 << bit_pos)) | (int(decision) << bit_pos);
 	}
 
 	// retrieves the decision for a given path
@@ -131,14 +137,21 @@ namespace work {
 
 		// check path length
 		int pos = getPosition(path);
+		int byte_pos = 2*pos / 8;
+		int bit_pos = (2*pos) % 8;
 
-		if (2*pos > encoded.size()) return Decision::Stay;
+		if (byte_pos > encoded.size()) return Decision::Done;
 
 		// extract encoded value
-		int res = 0;
-		if (encoded[2*pos  ]) res |= 0x2;
-		if (encoded[2*pos+1]) res |= 0x1;
-		return Decision(res);
+		return Decision((encoded[byte_pos] >> bit_pos) & 0x3);
+	}
+
+	DecisionTree DecisionTree::load(allscale::utils::ArchiveReader& in) {
+		return in.read<std::vector<uint8_t>>();
+	}
+
+	void DecisionTree::store(allscale::utils::ArchiveWriter& out) const {
+		out.write(encoded);
 	}
 
 	namespace {
@@ -156,59 +169,62 @@ namespace work {
 			return res;
 		}
 
+		void printHelper(std::ostream& out, const DecisionTree& tree, const TaskPath& path) {
+			auto d = tree.get(path);
+			switch(d) {
+			case Decision::Done: return;
+			case Decision::Stay:
+			case Decision::Left:
+			case Decision::Right:
+				out << path << " => " << d << "\n";
+			}
+			printHelper(out,tree,path.getLeftChildPath());
+			printHelper(out,tree,path.getRightChildPath());
+		}
+
 	}
 
 	std::ostream& operator<<(std::ostream& out, const DecisionTree& tree) {
-		auto height = ceilLog2(tree.encoded.size()/4);
-		for(const auto& cur : getAll(height)) {
-			out << "T" << cur << " => " << tree.get(cur) << "\n";
-		}
+		printHelper(out,tree,TaskPath::root());
 		return out;
 
 	}
 
 
-
 	// create a uniform distributing policy for N nodes
-	SchedulingPolicy SchedulingPolicy::createUniform(int N, int extraDepth) {
+	SchedulingPolicy SchedulingPolicy::createUniform(int N, int granularity) {
+		// some sanity checks
 		assert_lt(0,N);
-		assert_le(1,extraDepth) << "Needs some slack to compute solution.";
-		return createBalanced(std::vector<float>(N,1.0),extraDepth);
-	}
-
-	// create a balanced work distribution based on the given load distribution
-	SchedulingPolicy SchedulingPolicy::createBalanced(const std::vector<float>& loadDistribution, int extraDepth) {
-		assert_lt(0,loadDistribution.size());
-		assert_le(1,extraDepth) << "Needs some slack to compute solution.";;
-
-		// get the number of nodes to be filled
-		int N = loadDistribution.size();
-		std::cout << "\tNumber of nodes: " << N << "\n";
 
 		// compute number of levels to be scheduled
 		auto log2 = ceilLog2(N);
-		auto levels = log2 + extraDepth;
-		std::cout << "\tNumber of task levels: " << levels << "\n";
+		auto levels = log2 + granularity;
 
 		// create initial task to node mapping
 		int numTasks = (1<<levels);
 		std::vector<std::uint32_t> mapping = getEqualDistribution(N,numTasks);
-		std::cout << "\tTask mapping: " << mapping << "\n";
-
-		// balance load in mapping
-		// TODO: implement
 
 		// convert mapping in decision tree
 		return toDecisionTree((1<<log2),mapping);
 	}
 
 
-	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader&) {
+
+
+	// create a balanced work distribution based on the given load distribution
+	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>&) {
+		assert_not_implemented();
+		return p;
 
 	}
 
-	void SchedulingPolicy::store(allscale::utils::ArchiveWriter&) const {
 
+	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader& in) {
+		return in.read<DecisionTree>();
+	}
+
+	void SchedulingPolicy::store(allscale::utils::ArchiveWriter& out) const {
+		out.write(tree);
 	}
 
 

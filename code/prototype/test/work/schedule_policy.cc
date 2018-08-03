@@ -20,6 +20,9 @@ namespace work {
 		TaskPath r = TaskPath::root();
 		EXPECT_TRUE(r.isRoot());
 
+		// the default should be Done
+		EXPECT_EQ(Decision::Done,tree.get(r));
+
 		tree.set(r,Decision::Stay);
 		EXPECT_EQ(Decision::Stay,tree.get(r));
 
@@ -29,11 +32,14 @@ namespace work {
 		tree.set(r,Decision::Right);
 		EXPECT_EQ(Decision::Right,tree.get(r));
 
+		tree.set(r,Decision::Done);
+		EXPECT_EQ(Decision::Done,tree.get(r));
+
 		// try also another position
 		auto p = r.getLeftChildPath().getRightChildPath();
 
-		// default should be stay
-		EXPECT_EQ(Decision::Stay,tree.get(p));
+		// the default should be Done
+		EXPECT_EQ(Decision::Done,tree.get(p));
 
 		tree.set(p,Decision::Stay);
 		EXPECT_EQ(Decision::Stay,tree.get(p));
@@ -44,9 +50,12 @@ namespace work {
 		tree.set(p,Decision::Right);
 		EXPECT_EQ(Decision::Right,tree.get(p));
 
+		tree.set(p,Decision::Done);
+		EXPECT_EQ(Decision::Done,tree.get(p));
+
 		// something deeper
 		p = p.getLeftChildPath().getRightChildPath();
-		EXPECT_EQ(Decision::Stay,tree.get(p));
+		EXPECT_EQ(Decision::Done,tree.get(p));
 
 	}
 
@@ -82,18 +91,19 @@ namespace work {
 		}
 
 
-		com::HierarchyAddress getTarget(int netSize, const SchedulingPolicy& policy, const TaskPath& path) {
+		com::HierarchyAddress traceTarget(int netSize, const SchedulingPolicy& policy, const TaskPath& path) {
 			// for roots it is easy
 			if (path.isRoot()) return com::HierarchyAddress::getRootOfNetworkSize(netSize);
 
 			// for everything else, we walk recursive
-			auto res = getTarget(netSize,policy,path.getParentPath());
+			auto res = traceTarget(netSize,policy,path.getParentPath());
 
 			// test whether there is any deeper level
-			if (res.isLeaf()) return res;
+//			if (res.isLeaf()) return res;
 
 			// simulate scheduling
 			switch(policy.decide(path)) {
+			case Decision::Done  : return res;
 			case Decision::Stay  : return res;
 			case Decision::Left  : return res.getLeftChild();
 			case Decision::Right : return res.getRightChild();
@@ -101,6 +111,34 @@ namespace work {
 			assert_fail();
 			return res;
 		}
+
+		com::HierarchyAddress getTarget(int netSize, const SchedulingPolicy& policy, const TaskPath& path) {
+
+			// trace current path
+			auto res = traceTarget(netSize,policy,path);
+
+			// check if this is a leaf-level node
+			if (res.isLeaf()) return res.getRank();
+
+			// otherwise, this task is not fully scheduled yet, but its child-tasks will be, and they should all end up at the same point
+			std::vector<TaskPath> children;
+			collectPaths(path,children,path.getLength());
+
+			// retrieve position of all children, make sure they all reach the same rank
+			com::rank_t pos = -1;
+			for(const auto& cur : children) {
+				if (cur.getLength() != path.getLength()*2) continue;
+				auto childTarget = traceTarget(netSize,policy,cur);
+				EXPECT_TRUE(childTarget.isLeaf()) << cur;
+				if (pos == -1) pos = childTarget.getRank();
+				else EXPECT_EQ(pos,childTarget.getRank()) << "Parent: " << path << ", Child: " << cur;
+			}
+			return pos;
+
+
+		}
+
+
 
 	}
 
@@ -124,13 +162,15 @@ namespace work {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
-		constexpr int EXTRA_LEVELS = 1;
+		constexpr int GRANULARITY = 1;
 
 		// get uniform distributed policy
-		auto u = SchedulingPolicy::createUniform(NUM_NODES,EXTRA_LEVELS);
+		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+
+//		std::cout << u << "\n";
 
 		// get the list of all paths down to the given level
-		auto max_length = CEIL_LOG_2_NUM_NODES + EXTRA_LEVELS;
+		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
 		auto paths = getAll(max_length);
 
 		// collect scheduling target on lowest level
@@ -146,8 +186,64 @@ namespace work {
 
 	}
 
+	TEST(SchedulePolicy, UniformFixedCoarse) {
 
-	TEST(DISABLED_SchedulePolicy, Uniform_N3_deeper) {
+		constexpr int NUM_NODES = 3;
+		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
+		constexpr int GRANULARITY = 0;
+
+		// get uniform distributed policy
+		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+
+//		std::cout << u << "\n";
+
+		// get the list of all paths down to the given level
+		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+		auto paths = getAll(max_length);
+
+		// collect scheduling target on lowest level
+		std::vector<com::rank_t> targets;
+		for(const auto& cur : paths) {
+			if (cur.getLength() != max_length) continue;
+			auto target = getTarget(NUM_NODES,u,cur);
+			EXPECT_EQ(0,target.getLayer());
+			targets.push_back(target.getRank());
+		}
+
+		EXPECT_EQ("[0,0,1,2]",toString(targets));
+
+	}
+
+	TEST(SchedulePolicy, UniformFixedFine) {
+
+		constexpr int NUM_NODES = 3;
+		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
+		constexpr int GRANULARITY = 3;
+
+		// get uniform distributed policy
+		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+
+//		std::cout << u << "\n";
+
+		// get the list of all paths down to the given level
+		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+		auto paths = getAll(max_length);
+
+		// collect scheduling target on lowest level
+		std::vector<com::rank_t> targets;
+		for(const auto& cur : paths) {
+			if (cur.getLength() != max_length) continue;
+			auto target = getTarget(NUM_NODES,u,cur);
+			EXPECT_EQ(0,target.getLayer());
+			targets.push_back(target.getRank());
+		}
+
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2]",toString(targets));
+
+	}
+
+
+	TEST(SchedulePolicy, Uniform_N3_deeper) {
 
 		// check larger combination of nodes and extra levels
 		for(int n=1; n<16; n++) {
@@ -157,15 +253,13 @@ namespace work {
 
 				int NUM_NODES = n;
 				int CEIL_LOG_2_NUM_NODES = ceilLog2(n);
-				int EXTRA_LEVELS = CEIL_LOG_2_NUM_NODES+1; //e;
+				int GRANULARITY = e;
 
 				// get uniform distributed policy
-				auto u = SchedulingPolicy::createUniform(NUM_NODES,EXTRA_LEVELS);
-
-				std::cout << u << "\n";
+				auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 				// get the list of all paths down to the given level
-				auto max_length = CEIL_LOG_2_NUM_NODES + EXTRA_LEVELS;
+				auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
 				auto paths = getAll(max_length);
 
 				// collect scheduling target on lowest level
@@ -176,8 +270,6 @@ namespace work {
 					EXPECT_EQ(0,target.getLayer()) << cur;
 					targets.push_back(target.getRank());
 				}
-
-				std::cout << toString(targets) << "\n";
 
 				// check number of entries
 				EXPECT_EQ((1<<max_length),targets.size());

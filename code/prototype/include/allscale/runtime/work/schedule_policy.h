@@ -23,9 +23,10 @@ namespace work {
 
 
 	enum class Decision {
-		Stay =  0,		// < stay on current virtual node
-		Left =  1, 		// < send to left child
-		Right = 2		// < send to right child
+		Done =  0,		// < this task has reached its destination
+		Stay =  1,		// < stay on current virtual node
+		Left =  2, 		// < send to left child
+		Right = 3		// < send to right child
 	};
 
 
@@ -37,11 +38,13 @@ namespace work {
 		// Internally, it is stored in the form of an embedded tree,
 		// each node represented by two bits; the two bits are the encoding
 		// of the scheduling decision
-		std::vector<bool> encoded;
+		std::vector<std::uint8_t> encoded;
+
+		DecisionTree(std::vector<std::uint8_t>&& data) : encoded(data) {}
 
 	public:
 
-		DecisionTree(int numNodes) : encoded(2*2*numNodes) {}	// 2 bits for 2x the number of nodes
+		DecisionTree(int numNodes) : encoded(2*2*numNodes/8) {}	// 2 bits for 2x the number of nodes
 
 		// updates a decision for a given path
 		void set(const TaskPath& path, Decision decision);
@@ -51,6 +54,13 @@ namespace work {
 
 		// provide a printer for debugging
 		friend std::ostream& operator<<(std::ostream& out, const DecisionTree& tree);
+
+
+		// --- serialization support ---
+
+		static DecisionTree load(allscale::utils::ArchiveReader&);
+
+		void store(allscale::utils::ArchiveWriter&) const;
 
 	};
 
@@ -71,11 +81,17 @@ namespace work {
 
 		// --- factories ---
 
-		// create a uniform distributing policy for N nodes
-		static SchedulingPolicy createUniform(int N, int extraDepth = 3);
+		/**
+		 * Creates a scheduling policy distributing work on the given scheduling granularity
+		 * level evenly (as close as possible) among the N available nodes.
+		 *
+		 * @param N the number of nodes to distribute work on
+		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 3 => 2^-3 = 12.5%
+		 */
+		static SchedulingPolicy createUniform(int N, int granularity = 3);
 
 		// create a balanced work distribution based on the given load distribution
-		static SchedulingPolicy createBalanced(const std::vector<float>& loadDistribution, int extraDepth = 3);
+		static SchedulingPolicy createReBalanced(const SchedulingPolicy& old, const std::vector<float>& loadDistribution);
 
 		// --- observer ---
 

@@ -68,6 +68,9 @@ namespace work {
 		// the number of tasks processed by this worker
 		std::uint32_t processedCounter = 0;
 
+		// tracing the load processed by this worker, considering the task granularity
+		double processedWork = 0;
+
 	public:
 
 		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), node(nullptr) {}
@@ -114,6 +117,13 @@ namespace work {
 		 */
 		std::uint32_t getNumProcessedTasks() const {
 			return processedCounter;
+		}
+
+		/**
+		 * Obtains an estimate of the processed work.
+		 */
+		double getProcessedWork() const {
+			return processedWork;
 		}
 
 		/**

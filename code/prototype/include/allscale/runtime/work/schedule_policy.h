@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "allscale/utils/serializer.h"
+
+#include "allscale/runtime/com/hierarchy.h"
 #include "allscale/runtime/work/task_id.h"
 
 namespace allscale {
@@ -86,9 +88,9 @@ namespace work {
 		 * level evenly (as close as possible) among the N available nodes.
 		 *
 		 * @param N the number of nodes to distribute work on
-		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 3 => 2^-3 = 12.5%
+		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 5 => 2^-5 = 3.125%
 		 */
-		static SchedulingPolicy createUniform(int N, int granularity = 3);
+		static SchedulingPolicy createUniform(int N, int granularity = 5);
 
 		// create a balanced work distribution based on the given load distribution
 		static SchedulingPolicy createReBalanced(const SchedulingPolicy& old, const std::vector<float>& loadDistribution);
@@ -101,6 +103,10 @@ namespace work {
 
 		// --- the main interface for the scheduler ---
 
+		// computes the hierarchical address to be reached when scheduling a task with the given path
+		com::HierarchyAddress getTarget(const com::HierarchyAddress& root, const TaskPath& path) const;
+
+		// get the decision in which direction to schedule the given task path
 		Decision decide(const TaskPath& path) const {
 			return tree.get(path);
 		}

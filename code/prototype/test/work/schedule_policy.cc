@@ -162,7 +162,9 @@ namespace work {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
-		constexpr int GRANULARITY = 1;
+		constexpr int GRANULARITY = 3;
+
+		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
 
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
@@ -170,12 +172,13 @@ namespace work {
 //		std::cout << u << "\n";
 
 		// get the list of all paths down to the given level
-		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+		auto max_length = std::max(CEIL_LOG_2_NUM_NODES,GRANULARITY);
 		auto paths = getAll(max_length);
 
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -190,7 +193,9 @@ namespace work {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
-		constexpr int GRANULARITY = 0;
+		constexpr int GRANULARITY = 2;
+
+		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
 
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
@@ -198,12 +203,13 @@ namespace work {
 //		std::cout << u << "\n";
 
 		// get the list of all paths down to the given level
-		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+		auto max_length = std::max(CEIL_LOG_2_NUM_NODES,GRANULARITY);
 		auto paths = getAll(max_length);
 
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -218,7 +224,9 @@ namespace work {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
-		constexpr int GRANULARITY = 3;
+		constexpr int GRANULARITY = 5;
+
+		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
 
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
@@ -226,12 +234,13 @@ namespace work {
 //		std::cout << u << "\n";
 
 		// get the list of all paths down to the given level
-		auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+		auto max_length = std::max(CEIL_LOG_2_NUM_NODES,GRANULARITY);
 		auto paths = getAll(max_length);
 
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -253,18 +262,21 @@ namespace work {
 
 				int NUM_NODES = n;
 				int CEIL_LOG_2_NUM_NODES = ceilLog2(n);
-				int GRANULARITY = e;
+				int GRANULARITY = CEIL_LOG_2_NUM_NODES + e;
+
+				auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
 
 				// get uniform distributed policy
 				auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 				// get the list of all paths down to the given level
-				auto max_length = CEIL_LOG_2_NUM_NODES + GRANULARITY;
+				auto max_length = std::max(CEIL_LOG_2_NUM_NODES,GRANULARITY);
 				auto paths = getAll(max_length);
 
 				// collect scheduling target on lowest level
 				std::vector<com::rank_t> targets;
 				for(const auto& cur : paths) {
+					EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
 					if (cur.getLength() != max_length) continue;
 					auto target = getTarget(NUM_NODES,u,cur);
 					EXPECT_EQ(0,target.getLayer()) << cur;

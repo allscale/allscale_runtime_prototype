@@ -198,7 +198,7 @@ namespace work {
 
 		// compute number of levels to be scheduled
 		auto log2 = ceilLog2(N);
-		auto levels = log2 + granularity;
+		auto levels = std::max(log2,granularity);
 
 		// create initial task to node mapping
 		int numTasks = (1<<levels);
@@ -215,9 +215,26 @@ namespace work {
 	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>&) {
 		assert_not_implemented();
 		return p;
-
 	}
 
+
+	com::HierarchyAddress SchedulingPolicy::getTarget(const com::HierarchyAddress& root, const TaskPath& path) const {
+		// for roots it is easy
+		if (path.isRoot()) return root;
+
+		// for everything else, we walk recursive
+		auto res = getTarget(root,path.getParentPath());
+
+		// simulate scheduling
+		switch(decide(path)) {
+		case Decision::Done  : return res;
+		case Decision::Stay  : return res;
+		case Decision::Left  : return res.getLeftChild();
+		case Decision::Right : return res.getRightChild();
+		}
+		assert_fail();
+		return res;
+	}
 
 	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader& in) {
 		return in.read<DecisionTree>();

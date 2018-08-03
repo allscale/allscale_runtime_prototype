@@ -13,6 +13,10 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+	TEST(DecisionTree, Traits) {
+		EXPECT_TRUE(allscale::utils::is_serializable<DecisionTree>::value);
+	}
+
 	TEST(DecisionTree, Basic) {
 
 		DecisionTree tree(8);
@@ -98,9 +102,6 @@ namespace work {
 			// for everything else, we walk recursive
 			auto res = traceTarget(netSize,policy,path.getParentPath());
 
-			// test whether there is any deeper level
-//			if (res.isLeaf()) return res;
-
 			// simulate scheduling
 			switch(policy.decide(path)) {
 			case Decision::Done  : return res;
@@ -125,20 +126,17 @@ namespace work {
 			collectPaths(path,children,path.getLength());
 
 			// retrieve position of all children, make sure they all reach the same rank
-			com::rank_t pos = -1;
+			com::rank_t initial = -1;
+			com::rank_t pos = initial;
 			for(const auto& cur : children) {
 				if (cur.getLength() != path.getLength()*2) continue;
 				auto childTarget = traceTarget(netSize,policy,cur);
 				EXPECT_TRUE(childTarget.isLeaf()) << cur;
-				if (pos == -1) pos = childTarget.getRank();
+				if (pos == initial) pos = childTarget.getRank();
 				else EXPECT_EQ(pos,childTarget.getRank()) << "Parent: " << path << ", Child: " << cur;
 			}
 			return pos;
-
-
 		}
-
-
 
 	}
 
@@ -311,11 +309,8 @@ namespace work {
 							<< "Share:  " << share << "\n"
 							<< "Actual: " << hist[i] << "\n";
 				}
-
-
 			}
 		}
-
 
 	}
 

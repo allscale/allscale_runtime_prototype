@@ -88,5 +88,41 @@ namespace utils {
 	}
 
 
+	struct B {
+		int f(int x) {
+			return x + 3;
+		}
+	};
+
+	TEST(Serialization, MemberFunctionPtr) {
+
+		using fun_t = int(B::*)(int);
+
+		fun_t p = &B::f;
+
+		// serialize the pointer
+		auto a = serialize(p);
+		auto r = deserialize<fun_t>(a);
+
+		EXPECT_EQ(r,p);
+		EXPECT_EQ(6,(B().*p)(3));
+
+	}
+
+	TEST(Serialization, MemberFunctionPtrFromLibrary) {
+		using namespace allscale::runtime::work;
+
+		using fun_t = std::uint8_t(TaskID::*)() const;
+
+		fun_t p = &TaskID::getDepth;
+
+		// serialize the pointer
+		auto a = serialize(p);
+		auto r = deserialize<fun_t>(a);
+
+		EXPECT_EQ(r,p);
+		EXPECT_EQ(0,(getFreshId().*p)());
+
+	}
 } // end namespace utils
 } // end namespace allscale

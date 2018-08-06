@@ -41,22 +41,22 @@ namespace mpi {
 		// a utility for running services
 
 		template<typename R, typename S, typename Tuple, std::size_t ... I>
-		R runOperationOnHelper(S& service, const Tuple& args, std::index_sequence<I...>) {
-			return (service.*std::get<0>(args))(std::get<I+1>(args)...);
+		R runOperationOnHelper(S& service, Tuple& args, std::index_sequence<I...>) {
+			return (service.*std::get<0>(args))(std::move(std::get<I+1>(args))...);
 		}
 
 		template<typename R, typename S, typename ... Args>
-		R runOperationOn(S& service, const std::tuple<Args...>& args) {
+		R runOperationOn(S& service, std::tuple<Args...>& args) {
 			return runOperationOnHelper<R>(service,args,std::make_index_sequence<sizeof...(Args)-1>());
 		}
 
 		template<typename S, typename Tuple, std::size_t ... I>
-		void runProcedureOnHelper(S& service, const Tuple& args, std::index_sequence<I...>) {
-			(service.*std::get<0>(args))(std::get<I+1>(args)...);
+		void runProcedureOnHelper(S& service, Tuple& args, std::index_sequence<I...>) {
+			(service.*std::get<0>(args))(std::move(std::get<I+1>(args))...);
 		}
 
 		template<typename S, typename ... Args>
-		void runProcedureOn(S& service, const std::tuple<Args...>& args) {
+		void runProcedureOn(S& service, std::tuple<Args...>& args) {
 			runProcedureOnHelper(service,args,std::make_index_sequence<sizeof...(Args)-1>());
 		}
 
@@ -71,10 +71,12 @@ namespace mpi {
 			EpochService(Node& node, std::atomic<int>& counter)
 				: rank(node.getRank()), counter(counter) {}
 
-			void inc(int next) {
+			// Increments the state and acknowledges the update (by returning)
+			bool inc(int next) {
 				std::cout << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
 				assert_eq(next-1,counter);
 				counter++;
+				return true;
 			}
 
 		};

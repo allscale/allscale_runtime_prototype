@@ -15,6 +15,7 @@
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/tuple.h"
+#include "allscale/utils/serializer/functions.h"
 
 #include "allscale/runtime/data/data_item_requirement.h"
 
@@ -133,14 +134,14 @@ namespace work {
 		void store(allscale::utils::ArchiveWriter& out) const {
 			out.write(getId());
 			out.write(getOwner());
-			out.write(std::intptr_t(getLoadFunction()));
+			out.write(getLoadFunction());
 			storeInternal(out);
 		}
 
 		static std::unique_ptr<Task> load(allscale::utils::ArchiveReader& in) {
 			auto id = in.read<TaskID>();
 			auto owner = in.read<com::rank_t>();
-			load_fun_t load = load_fun_t(in.read<std::intptr_t>());
+			load_fun_t load = in.read<load_fun_t>();
 			return load(id,owner,in);
 		}
 

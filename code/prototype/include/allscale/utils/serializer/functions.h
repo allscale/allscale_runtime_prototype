@@ -32,10 +32,14 @@ namespace utils {
 				Indirect = 1
 			};
 
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wpmf-conversions"
+			#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+
 			static void store(ArchiveWriter& writer, FP value) {
 
 				// get name of symbol addressed by the pointer
-				auto addr = *reinterpret_cast<void**>(&value);
+				void* addr = reinterpret_cast<void*>(value);
 
 				// get symbol information
 				Dl_info info;
@@ -46,9 +50,11 @@ namespace utils {
 				// if the name could not be resolved
 				if (!info.dli_sname) {
 					// we serialize the function pointer directly (the function is not in any library but in the main)
+					std::cout << "Sending direct: " << value << "\n";
 					writer.write(Direct);
 					writer.write<std::intptr_t>(std::intptr_t(addr));
 				} else {
+					std::cout << "Sending indirect: " << info.dli_sname << "\n";
 					// we send the symbol name since it is in a library
 					writer.write(Indirect);
 					writer.write<std::string>(info.dli_sname);
@@ -61,8 +67,9 @@ namespace utils {
 
 				// if direct, just use the pointer
 				if (mode == Direct) {
-					void* res = (void*)reader.read<std::intptr_t>();
-					return reinterpret_cast<FP&>(res);
+					char data[sizeof(FP)] = {};
+					reinterpret_cast<std::intptr_t&>(data) = reader.read<std::intptr_t>();
+					return reinterpret_cast<FP&>(*data);
 				}
 
 				// if indirect, use the symbol
@@ -77,8 +84,12 @@ namespace utils {
 				}
 
 				// convert to target type
-				return reinterpret_cast<FP&>(res);
+				char data[sizeof(FP)] = {};
+				reinterpret_cast<void*&>(data) = res;
+				return reinterpret_cast<FP&>(*data);
 			}
+
+			#pragma GCC diagnostic pop
 
 		};
 

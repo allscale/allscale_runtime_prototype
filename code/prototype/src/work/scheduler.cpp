@@ -11,6 +11,8 @@
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/data/data_item_index.h"
 
+#include "allscale/runtime/work/schedule_policy.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -41,7 +43,7 @@ namespace work {
 			auto numNodes = net.numNodes();
 
 			// the cut-off level for "forced" distribution
-			return ceilLog2(numNodes) + 2;
+			return ceilLog2(numNodes) + 3;
 		}
 
 	}
@@ -130,19 +132,6 @@ namespace work {
 
 	namespace data_aware {
 
-		// process the task
-		bool scheduleLocal(TaskPtr&& task) {
-
-			DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
-
-			// assign to local worker
-			com::Node::getLocalService<Worker>().schedule(std::move(task));
-
-			// success
-			return true;
-		}
-
-
 		/**
 		 * A service running on each virtual node.
 		 */
@@ -163,6 +152,9 @@ namespace work {
 			// the depth of this node in the tree, counted from the root
 			std::size_t depth;
 
+			// the scheduling policy to follow
+			SchedulingPolicy policy;
+
 		public:
 
 			ScheduleService(com::Network& net, const com::HierarchyAddress& addr)
@@ -170,7 +162,8 @@ namespace work {
 				  myAddr(addr),
 				  rootAddr(network.getRootAddress()),
 				  isRoot(myAddr == rootAddr),
-				  depth(rootAddr.getLayer()-myAddr.getLayer()) {}
+				  depth(rootAddr.getLayer()-myAddr.getLayer()),
+				  policy(SchedulingPolicy::createUniform(net.numNodes())) {}
 
 			/**
 			 * The following two methods are the central element of the scheduling process.
@@ -189,7 +182,13 @@ namespace work {
 
 				// check whether current node is allowed to make autonomous scheduling decisions
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
-				if (!isRoot && task->getId().getDepth() > depth && diis.coversWriteRequirements(task->getProcessRequirements())) {
+				auto path = task->getId().getPath();
+				if (!isRoot
+						// test that this virtual node has been receiving the parent task
+						&& !path.isRoot() && myAddr == policy.getTarget(rootAddr,path.getParentPath())
+						// test that this virtual node has control over all required data
+						&& diis.coversWriteRequirements(task->getProcessRequirements())
+					) {
 					// we can schedule it right here!
 					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
 					return scheduleDown(std::move(task),{});
@@ -233,20 +232,24 @@ namespace work {
 					return scheduleLocal(std::move(task));
 				}
 
-				// schedule locally if not sufficiently refined yet
+				// schedule locally if decided to do so
 				auto id = task->getId();
-				if (id.getDepth() <= depth) {
+				if (myAddr == policy.getTarget(rootAddr,id.getPath())) {
 					return scheduleLocal(std::move(task));
-				}
-
-				// decide whether to schedule left or right
-				while(id.getDepth() > depth+1) {
-					id = id.getParent();
 				}
 
 				// TODO: check whether left or right node covers all write requirements
 
-				bool targetLeft = (id.getParent().getLeftChild() == id);
+				// ask the scheduling policy what to do with this task
+				auto d = policy.decide(id.getPath());
+				assert_ne(d,Decision::Done);
+
+				// if it should stay, process it here
+				if (d == Decision::Stay) {
+					return scheduleLocal(std::move(task));
+				}
+
+				bool targetLeft = (d == Decision::Left);
 
 				// get address of next virtual node to be involved
 				com::HierarchyAddress next = (targetLeft)
@@ -287,20 +290,40 @@ namespace work {
 				return network.getRemoteProcedure(next,&ScheduleService::scheduleDown)(std::move(task),subAllowances);
 			}
 
+
+			// process the task
+			bool scheduleLocal(TaskPtr&& task) {
+
+				// make sure this is as it has been intended by the policy
+				assert_eq(myAddr,policy.getTarget(rootAddr,task->getId().getPath()))
+					<< "Task: " << task->getId() << "\n"
+					<< "Policy:\n" << policy;
+
+				DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
+
+				// assign to local worker
+				com::Node::getLocalService<Worker>().schedule(std::move(task));
+
+				// success
+				return true;
+			}
+
 		};
 
 
 		// schedules a task based on its write-set requirements, spreads evenly in case of multiple options
 		void schedule(TaskPtr&& task) {
 
+			auto& service = com::HierarchicalOverlayNetwork::getLocalService<ScheduleService>();
+
 			// special case: non-distributable task
 			if (!task->canBeDistributed()) {
-				scheduleLocal(std::move(task));
+				service.scheduleLocal(std::move(task));
 				return;
 			}
 
 			// forward to task scheduling service
-			com::HierarchicalOverlayNetwork::getLocalService<ScheduleService>().schedule(std::move(task));
+			service.schedule(std::move(task));
 
 		}
 

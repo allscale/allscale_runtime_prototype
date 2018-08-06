@@ -15,7 +15,8 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
-	// we are reusing the reference implementations task ID
+	// we are reusing the reference implementations task path and task ID
+	using TaskPath = allscale::api::core::impl::reference::TaskPath;
 	using TaskID = allscale::api::core::impl::reference::TaskID;
 
 	// obtains a new, fresh id

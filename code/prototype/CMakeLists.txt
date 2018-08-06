@@ -10,6 +10,8 @@ target_include_directories(prototype PUBLIC ${PROJECT_SOURCE_DIR}/../api/code/ut
 # attach threads dependency (needed by API)
 target_link_libraries(prototype Threads::Threads)
 
+# add dependendeny to dl library
+target_link_libraries(prototype "-ldl")
 
 # MPI
 target_include_directories(prototype PUBLIC ${MPI_CXX_INCLUDE_PATH})

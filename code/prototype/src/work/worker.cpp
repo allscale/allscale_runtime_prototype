@@ -169,6 +169,9 @@ namespace work {
 				// increment processed counter
 				processedCounter++;
 
+				// increment workload counter (by the fraction of work processed)
+				processedWork += 1.0f/(1<<t->getId().getDepth());
+
 			}
 
 			return true;

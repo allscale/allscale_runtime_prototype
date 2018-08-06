@@ -35,7 +35,7 @@ namespace utils {
 			static void store(ArchiveWriter& writer, FP value) {
 
 				// get name of symbol addressed by the pointer
-				auto addr = reinterpret_cast<void*>(value);
+				auto addr = *reinterpret_cast<void**>(&value);
 
 				// get symbol information
 				Dl_info info;
@@ -47,7 +47,7 @@ namespace utils {
 				if (!info.dli_sname) {
 					// we serialize the function pointer directly (the function is not in any library but in the main)
 					writer.write(Direct);
-					writer.write<std::intptr_t>(std::intptr_t(value));
+					writer.write<std::intptr_t>(std::intptr_t(addr));
 				} else {
 					// we send the symbol name since it is in a library
 					writer.write(Indirect);
@@ -61,7 +61,8 @@ namespace utils {
 
 				// if direct, just use the pointer
 				if (mode == Direct) {
-					return FP(reader.read<std::intptr_t>());
+					void* res = (void*)reader.read<std::intptr_t>();
+					return reinterpret_cast<FP&>(res);
 				}
 
 				// if indirect, use the symbol
@@ -76,7 +77,7 @@ namespace utils {
 				}
 
 				// convert to target type
-				return FP(res);
+				return reinterpret_cast<FP&>(res);
 			}
 
 		};

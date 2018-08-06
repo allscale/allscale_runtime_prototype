@@ -97,7 +97,7 @@ namespace work {
 
 			// create the resulting decision tree
 			auto log2 = ceilLog2(map.size());
-			assert_eq((1<<log2),map.size()) << "Input map is not of power-of-two size: " << map.size();
+			assert_eq((1u<<log2),map.size()) << "Input map is not of power-of-two size: " << map.size();
 
 			// the resulting (unbalanced) tree has to be at most 2x as deep
 			DecisionTree res((1<<(2*log2)));
@@ -126,7 +126,7 @@ namespace work {
 	// updates a decision for a given path
 	void DecisionTree::set(const TaskPath& path, Decision decision) {
 		int pos = getPosition(path);
-		assert_lt(pos/4,encoded.size());
+		assert_lt(std::size_t(pos/4),encoded.size());
 		int byte_pos = 2*pos / 8;
 		int bit_pos = (2*pos) % 8;
 		encoded[byte_pos] = (encoded[byte_pos] & ~(0x3 << bit_pos)) | (int(decision) << bit_pos);
@@ -140,7 +140,7 @@ namespace work {
 		int byte_pos = 2*pos / 8;
 		int bit_pos = (2*pos) % 8;
 
-		if (byte_pos > encoded.size()) return Decision::Done;
+		if (std::size_t(byte_pos) > encoded.size()) return Decision::Done;
 
 		// extract encoded value
 		return Decision((encoded[byte_pos] >> bit_pos) & 0x3);
@@ -161,12 +161,6 @@ namespace work {
 			res.push_back(cur);
 			collectPaths(cur.getLeftChildPath(),res,depth-1);
 			collectPaths(cur.getRightChildPath(),res,depth-1);
-		}
-
-		std::vector<TaskPath> getAll(int depth) {
-			std::vector<TaskPath> res;
-			collectPaths(TaskPath::root(),res,depth);
-			return res;
 		}
 
 		void printHelper(std::ostream& out, const DecisionTree& tree, const TaskPath& path) {

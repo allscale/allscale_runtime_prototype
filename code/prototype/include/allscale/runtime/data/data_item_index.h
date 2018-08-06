@@ -340,6 +340,8 @@ namespace data {
 		 */
 		DataItemLocationInfos locate(const DataItemRegions& regions);
 
+
+
 	private:
 
 		// retrieves a type specific index maintained in this service

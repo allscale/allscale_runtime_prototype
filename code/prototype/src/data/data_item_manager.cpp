@@ -89,6 +89,12 @@ namespace data {
 		}
 	}
 
+	void DataItemManagerService::acquire(const DataItemRegions& regions) {
+		for(const auto& cur : registers) {
+			cur.second->acquire(regions);
+		}
+	}
+
 
 } // end of namespace data
 } // end of namespace runtime

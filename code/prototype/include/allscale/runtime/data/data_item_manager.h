@@ -114,6 +114,10 @@ namespace data {
 			exclusive = newSize;
 		}
 
+		const region_type& getExclusiveRegion() const {
+			return exclusive;
+		}
+
 		void reserve(const region_type& area) {
 			// lock down this fragment
 			guard g(lock);
@@ -155,6 +159,7 @@ namespace data {
 		public:
 			virtual ~DataItemRegisterBase() {};
 			virtual void retrieve(const DataItemLocationInfos&) =0;
+			virtual void acquire(const DataItemRegions&) =0;
 		};
 
 		/**
@@ -214,6 +219,36 @@ namespace data {
 					// import data
 					handler.insert(archive);
 				});
+			}
+
+			void acquire(const DataItemRegions& regions) override {
+				assert_not_implemented();
+//				regions.forAll<DataItem>([&](const reference_type& ref, const region_type& region){
+//
+//					// TODO: this sends retrieval requests per-data-item; those can be aggregated
+//
+//
+//					// retrieve fragment handler
+//					auto& handler = get(ref);
+//
+//					// see what is here
+//					const auto& curSize = handler.getExclusiveRegion();
+//
+//					// see what is missing
+//					auto missing = region_type::difference(region,curSize);
+//
+//					// see if this is empty
+//					if(missing.empty()) return;
+//
+//					// acquire ownership of this part
+//					auto archive = com::Node::getLocalNode().getService<DataItemIndexService>().retrieveOwnership(ref,region);
+//
+//					// ensure space for the new region
+//					handler.reserve(region_type::merge(curSize,region));
+//
+//					// import data
+//					handler.insert(archive);
+//				});
 			}
 
 			// obtains access to a selected fragment handler
@@ -294,6 +329,11 @@ namespace data {
 		 */
 		void retrieve(const DataItemLocationInfos& data);
 
+		/**
+		 * Acquires ownership on the stated requirements (where missing).
+		 */
+		void acquire(const DataItemRegions& reqs);
+
 		// --- protocol interface ---
 
 		template<typename DataItem>
@@ -328,6 +368,16 @@ namespace data {
 			getRegister<DataItem>().get(ref).resizeExclusive(region);
 		}
 
+		template<typename DataItem>
+		void acquireOwnership(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
+//			getRegister<DataItem>().get(ref).acquireOwnership(region);
+		}
+
+		template<typename DataItem>
+		typename DataItem::region_type getExclusiveRegion(const DataItemReference<DataItem>& ref) const {
+			return getRegister<DataItem>().get(ref).getExclusiveRegion();
+		}
+
 	private:
 
 		// obtains the register for a given data item type
@@ -341,6 +391,13 @@ namespace data {
 			auto& res = *instance;
 			registers[typeid(DataItem)] = std::move(instance);
 			return res;
+		}
+
+		template<typename DataItem>
+		DataItemRegister<DataItem>& getRegister() const {
+			auto pos = registers.find(typeid(DataItem));
+			assert_true(pos != registers.end());
+			return *static_cast<DataItemRegister<DataItem>*>(pos->second.get());
 		}
 
 	};

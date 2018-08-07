@@ -213,10 +213,11 @@ namespace mpi {
 				// wait for result
 				// TODO: avoid blocking, yield to worker thread
 //				work::yield();
+				int flag = false;
 				MPI_Status status;
-				{
+				while(!flag) {
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Probe(trg,RESPOND_TAG,point2point,&status);
+					MPI_Iprobe(trg,RESPOND_TAG,point2point,&flag,&status);
 				}
 
 				// retrieve message

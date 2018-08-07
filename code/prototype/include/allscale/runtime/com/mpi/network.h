@@ -28,6 +28,9 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
+//#define DEBUG_MPI_NETWORK if(true)  std::cout
+#define DEBUG_MPI_NETWORK if(false) std::cout
+
 	// the two tags used for request/respond exchanges
 	constexpr int REQUEST_TAG = 123;
 	constexpr int RESPOND_TAG = 321;
@@ -40,24 +43,24 @@ namespace mpi {
 
 		// a utility for running services
 
-		template<typename R, typename S, typename Tuple, std::size_t ... I>
-		R runOperationOnHelper(S& service, Tuple& args, std::index_sequence<I...>) {
-			return (service.*std::get<0>(args))(std::move(std::get<I+1>(args))...);
+		template<typename R, typename Tuple, std::size_t ... I>
+		R runOperationOnHelper(Node& node, Tuple& args, std::index_sequence<I...>) {
+			return (std::get<1>(args)(node).*std::get<0>(args))(std::move(std::get<I+2>(args))...);
 		}
 
-		template<typename R, typename S, typename ... Args>
-		R runOperationOn(S& service, std::tuple<Args...>& args) {
-			return runOperationOnHelper<R>(service,args,std::make_index_sequence<sizeof...(Args)-1>());
+		template<typename R, typename ... Args>
+		R runOperationOn(Node& node, std::tuple<Args...>& args) {
+			return runOperationOnHelper<R>(node,args,std::make_index_sequence<sizeof...(Args)-2>());
 		}
 
-		template<typename S, typename Tuple, std::size_t ... I>
-		void runProcedureOnHelper(S& service, Tuple& args, std::index_sequence<I...>) {
-			(service.*std::get<0>(args))(std::move(std::get<I+1>(args))...);
+		template<typename Tuple, std::size_t ... I>
+		void runProcedureOnHelper(Node& node, Tuple& args, std::index_sequence<I...>) {
+			return (std::get<1>(args)(node).*std::get<0>(args))(std::move(std::get<I+2>(args))...);
 		}
 
-		template<typename S, typename ... Args>
-		void runProcedureOn(S& service, std::tuple<Args...>& args) {
-			runProcedureOnHelper(service,args,std::make_index_sequence<sizeof...(Args)-1>());
+		template<typename ... Args>
+		void runProcedureOn(Node& node, std::tuple<Args...>& args) {
+			runProcedureOnHelper(node,args,std::make_index_sequence<sizeof...(Args)-2>());
 		}
 
 
@@ -73,7 +76,7 @@ namespace mpi {
 
 			// Increments the state and acknowledges the update (by returning)
 			bool inc(int next) {
-				std::cout << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
+				DEBUG_MPI_NETWORK << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
 				assert_eq(next-1,counter);
 				counter++;
 				return true;
@@ -122,7 +125,7 @@ namespace mpi {
 		 * A default service selector.
 		 */
 		template<typename S>
-		struct direct_selector {
+		struct direct_selector  : public allscale::utils::trivially_serializable {
 			S& operator()(Node& node) const {
 				return node.getService<S>();
 			}
@@ -147,7 +150,7 @@ namespace mpi {
 			R(S::* fun)(Args...);
 
 			// the tuple encoding the arguments
-			using args_tuple = std::tuple<R(S::*)(Args...),std::decay_t<Args>...>;
+			using args_tuple = std::tuple<R(S::*)(Args...),Selector,std::decay_t<Args>...>;
 
 		public:
 
@@ -161,21 +164,19 @@ namespace mpi {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
-				// TODO: integrate service selector
-
-				std::cout << "Node " << node.getRank() << ": Processing request ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request ...\n";
 
 				// run service
-				R res = detail::runOperationOn<R>(node.getService<S>(), args);
+				R res = detail::runOperationOn<R>(node, args);
 
-				std::cout << "Node " << node.getRank() << ": Sending response to " << source << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to " << source << " ...\n";
 
 				// send back result to source
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
 				MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,RESPOND_TAG,point2point);
 
-				std::cout << "Node " << node.getRank() << ": Response sent to " << source << "\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to " << source << "\n";
 			}
 
 			/**
@@ -193,19 +194,19 @@ namespace mpi {
 				// perform remote call
 				{
 					// create an argument tuple and serialize it
-					auto aa  = allscale::utils::serialize(args_tuple(fun,args...));
+					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleRequest,aa));
 					auto& buffer = msg.getBuffer();
 					// send to target node
 
-					std::cout << "Node " << src << ": Sending request ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request ...\n";
 
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,REQUEST_TAG,point2point);
 					}
 
-					std::cout << "Node " << src << ": Request sent\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent\n";
 
 				}
 
@@ -228,7 +229,7 @@ namespace mpi {
 				// allocate memory
 				std::vector<char> buffer(count);
 
-				std::cout << "Node " << src << ": Receiving response ...";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response ...";
 
 				// receive message
 				{
@@ -236,7 +237,7 @@ namespace mpi {
 					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 				}
 
-				std::cout << "Node " << src << ": Response received\n";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Response received\n";
 
 				// unpack result
 				allscale::utils::Archive a(std::move(buffer));
@@ -264,7 +265,7 @@ namespace mpi {
 			void(S::* fun)(Args...);
 
 			// the tuple encoding the arguments
-			using args_tuple = std::tuple<void(S::*)(Args...),std::decay_t<Args>...>;
+			using args_tuple = std::tuple<void(S::*)(Args...),Selector,std::decay_t<Args>...>;
 
 		public:
 
@@ -278,14 +279,12 @@ namespace mpi {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
-				// TODO: integrate service selector
-
-				std::cout << "Node " << node.getRank() << ": Processing request from " << source << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request from " << source << " ...\n";
 
 				// run service
-				detail::runProcedureOn(node.getService<S>(), args);
+				detail::runProcedureOn(node, args);
 
-				std::cout << "Node " << node.getRank() << ": Request processed, no result produced\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Request processed, no result produced\n";
 			}
 
 
@@ -305,19 +304,19 @@ namespace mpi {
 				// perform remote call
 				{
 					// create an argument tuple and serialize it
-					auto aa  = allscale::utils::serialize(args_tuple(fun,args...));
+					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleProcedure,aa));
 					auto& buffer = msg.getBuffer();
 
 					// send to target node
-					std::cout << "Node " << src << ": Sending request " << (void*)&handleProcedure << " ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << (void*)&handleProcedure << " ...\n";
 
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,REQUEST_TAG,point2point);
 					}
 
-					std::cout << "Node " << src << ": Request sent (fire-and-forget)\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent (fire-and-forget)\n";
 
 				}
 			}

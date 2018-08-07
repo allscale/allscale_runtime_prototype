@@ -411,6 +411,9 @@ namespace work {
 			// if we have the value, there is nothing to do any more
 			if (bool(value)) return;
 
+			// only the owning instance may retrieve the value
+			assert_true(owning);
+
 			// retrieve the value
 			value = getStateService().template getResult<R>(owner,id);
 

@@ -414,6 +414,11 @@ namespace sim {
 		}
 
 		/**
+		 * Get all nodes to the same state.
+		 */
+		void sync() { /* it's a no-op in this network implementatio */ }
+
+		/**
 		 * Obtains the network transfer statistics collected so far.
 		 */
 		const Statistics& getStatistics() const {

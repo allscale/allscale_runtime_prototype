@@ -242,9 +242,10 @@ namespace work {
 
 	public:
 
-		ComputeTask(const TaskID& id, com::rank_t owner) : Task(id,owner) {
+		// the first flag indicates whether this task is created the first time or is the result of a copy/clone/serialization
+		ComputeTask(const TaskID& id, com::rank_t owner, bool first = false) : Task(id,owner) {
 			// register this task for the treeture service
-			TreetureStateService::getLocal().registerTask<R>(id);
+			if (first) TreetureStateService::getLocal().registerTask<R>(id);
 		}
 
 		// obtains the treeture referencing the value produced by this task
@@ -266,9 +267,9 @@ namespace work {
 
 	public:
 
-		ComputeTask(const TaskID& id, com::rank_t owner) : Task(id,owner) {
+		ComputeTask(const TaskID& id, com::rank_t owner, bool first = false) : Task(id,owner) {
 			// register this task for the treeture service
-			TreetureStateService::getLocal().registerTask<void>(id);
+			if (first) TreetureStateService::getLocal().registerTask<void>(id);
 		}
 
 		// obtains the treeture referencing the value produced by this task
@@ -322,8 +323,8 @@ namespace work {
 
 	public:
 
-		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure)
-			: ComputeTask<result_type>(id,owner), closure(std::move(closure)) {}
+		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure, bool first = true)
+			: ComputeTask<result_type>(id,owner,first), closure(std::move(closure)) {}
 
 		virtual bool isSplitable() const override {
 			return WorkItemDesc::can_spit_test::call(closure);
@@ -380,8 +381,8 @@ namespace work {
 
 	public:
 
-		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure)
-			: ComputeTask<result_type>(id,owner), closure(std::move(closure)) {}
+		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure, bool first = true)
+			: ComputeTask<result_type>(id,owner,first), closure(std::move(closure)) {}
 
 		virtual bool canBeDistributed() const override {
 			return true;
@@ -419,7 +420,7 @@ namespace work {
 		}
 
 		static std::unique_ptr<Task> load(const TaskID& id, com::rank_t owner, allscale::utils::ArchiveReader& in) {
-			return std::make_unique<WorkItemTask>(id,owner,in.read<closure_type>());
+			return std::make_unique<WorkItemTask>(id,owner,in.read<closure_type>(),false);
 		}
 
 		// retrieves the function capable of de-serializing a task instance

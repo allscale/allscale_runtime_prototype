@@ -50,11 +50,9 @@ namespace utils {
 				// if the name could not be resolved
 				if (!info.dli_sname) {
 					// we serialize the function pointer directly (the function is not in any library but in the main)
-					std::cout << "Sending direct: " << value << "\n";
 					writer.write(Direct);
 					writer.write<std::intptr_t>(std::intptr_t(addr));
 				} else {
-					std::cout << "Sending indirect: " << info.dli_sname << "\n";
 					// we send the symbol name since it is in a library
 					writer.write(Indirect);
 					writer.write<std::string>(info.dli_sname);

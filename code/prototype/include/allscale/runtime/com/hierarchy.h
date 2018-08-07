@@ -188,6 +188,23 @@ namespace com {
 	};
 
 	/**
+	 * A utility to select a hierarchy service during a remote procedure call.
+	 */
+	template<typename S>
+	class hierarchy_service_selector : public allscale::utils::trivially_serializable {
+
+		layer_t layer;
+
+	public:
+
+		hierarchy_service_selector(layer_t layer = 0) : layer(layer) {}
+
+		S& operator()(Node& node) const {
+			return node.getService<HierarchyService<S>>().get(layer);
+		}
+	};
+
+	/**
 	 * A hierarchical overlay network that can be placed on top of an existing network.
 	 */
 	class HierarchicalOverlayNetwork {
@@ -243,9 +260,7 @@ namespace com {
 		 */
 		template<typename S, typename R, typename ... Args>
 		auto getRemoteProcedure(const HierarchyAddress& addr, R(S::*fun)(Args...)) const {
-			return network.getRemoteProcedure(addr.getRank(),[addr](Node& node)->S&{
-				return node.getService<HierarchyService<S>>().get(addr.getLayer());
-			},fun);
+			return network.getRemoteProcedure(addr.getRank(),hierarchy_service_selector<S>{addr.getLayer()},fun);
 		}
 
 		/**

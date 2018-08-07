@@ -1,8 +1,7 @@
 
-#if true || defined(ENABLE_MPI)
+#if defined(ENABLE_MPI)
 
-//#include <mpi.h>
-#include <mpi/mpi.h>
+#include <mpi.h>
 
 #include "allscale/runtime/com/mpi/network.h"
 
@@ -59,12 +58,12 @@ namespace mpi {
 
 	Network::~Network() {
 
-		std::cout << "Node " << localNode->getRank() << " beginning shutdown ..\n";
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << " beginning shutdown ..\n";
 
 		// wait for all nodes to reach the shutdown barrier
 		sync();
 
-		std::cout << "Node " << localNode->getRank() << " conducting shutdown ..\n";
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << " conducting shutdown ..\n";
 
 		// kill request server
 		alive = false;
@@ -78,7 +77,7 @@ namespace mpi {
 		// shut down environment
 		MPI_Finalize();
 
-		std::cout << "Node " << localNode->getRank() << " shutdown complete\n";
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << " shutdown complete\n";
 	}
 
 	Network* Network::create() {
@@ -95,7 +94,7 @@ namespace mpi {
 
 	void Network::runRequestServer() {
 		auto& node = *localNode;
-		std::cout << "Starting up request server on node " << node.getRank() << "\n";
+		DEBUG_MPI_NETWORK << "Starting up request server on node " << node.getRank() << "\n";
 
 		int flag;
 		MPI_Status status;
@@ -125,7 +124,7 @@ namespace mpi {
 			std::vector<char> buffer(count);
 
 			// receive message
-			std::cout << "Node " << node.getRank() << ": Receiving request ...\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request ...\n";
 			{
 				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 				MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
@@ -135,21 +134,23 @@ namespace mpi {
 			allscale::utils::Archive a(std::move(buffer));
 			auto msg = allscale::utils::deserialize<request_msg_t>(a);
 
-			std::cout << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
 
 			// process message
-			std::get<0>(msg)(status.MPI_SOURCE,node,std::get<1>(msg));
-			std::cout << "Node " << node.getRank() << ": processing complete.\n";
+			node.run([&](Node&){
+				std::get<0>(msg)(status.MPI_SOURCE,node,std::get<1>(msg));
+			});
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing complete.\n";
 		}
 
-		std::cout << "Shutting down request server on node " << node.getRank() << "\n";
+		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";
 	}
 
 	void Network::sync() {
 		auto rank = localNode->getRank();
 		if (rank == 0) {
 
-			std::cout << "Node " << rank << ": stepping from epoch " << last_epoch << " to " << last_epoch+1 << "\n";
+			DEBUG_MPI_NETWORK << "Node " << rank << ": stepping from epoch " << last_epoch << " to " << last_epoch+1 << "\n";
 
 			// check current epoch
 			int cur_epoch = epoch_counter;
@@ -163,7 +164,7 @@ namespace mpi {
 
 		} else {
 
-			std::cout << "Node " << rank << ": waiting for epoch step from " << last_epoch << " to " << last_epoch+1 << "\n";
+			DEBUG_MPI_NETWORK << "Node " << rank << ": waiting for epoch step from " << last_epoch << " to " << last_epoch+1 << "\n";
 
 			// wait for update
 			last_epoch++;	// this is now the one we should be in
@@ -171,7 +172,7 @@ namespace mpi {
 				std::this_thread::yield();
 			}
 
-			std::cout << "Node " << rank << ": reached epoch " << last_epoch << "\n";
+			DEBUG_MPI_NETWORK << "Node " << rank << ": reached epoch " << last_epoch << "\n";
 		}
 	}
 

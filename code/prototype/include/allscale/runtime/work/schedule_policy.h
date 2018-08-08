@@ -73,9 +73,14 @@ namespace work {
 	 */
 	class SchedulingPolicy {
 
+		// the address of the root node of the network this policy is defined for
+		com::HierarchyAddress root;
+
+		// the routing-decision tree
 		DecisionTree tree;
 
-		SchedulingPolicy(DecisionTree&& data) : tree(std::move(data)) {}
+		SchedulingPolicy(com::HierarchyAddress root, DecisionTree&& data)
+			: root(root), tree(std::move(data)) {}
 
 	public:
 
@@ -97,19 +102,35 @@ namespace work {
 
 		// --- observer ---
 
+		const com::HierarchyAddress& getPresumedRootAddress() const {
+			return root;
+		}
+
 		const DecisionTree& getDecisionTree() const {
 			return tree;
 		}
 
 		// --- the main interface for the scheduler ---
 
-		// computes the hierarchical address to be reached when scheduling a task with the given path
-		com::HierarchyAddress getTarget(const com::HierarchyAddress& root, const TaskPath& path) const;
+		/**
+		 * Determines whether the node with the given address is part of the dispatching of a task with the given path.
+		 *
+		 * @param addr the address in the hierarchy to be tested
+		 * @param path the path to be tested
+		 */
+		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const;
 
-		// get the decision in which direction to schedule the given task path
-		Decision decide(const TaskPath& path) const {
-			return tree.get(path);
-		}
+		/**
+		 * Obtains the scheduling decision at the given node. The given node must be involved in
+		 * the scheduling of the given path.
+		 */
+		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const;
+
+		/**
+		 * Computes the target address a task with the given path should be forwarded to.
+		 */
+		com::HierarchyAddress getTarget(const TaskPath& path) const;
+
 
 		// --- serialization support ---
 

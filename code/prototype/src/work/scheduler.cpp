@@ -184,8 +184,8 @@ namespace work {
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
 				auto path = task->getId().getPath();
 				if (!isRoot
-						// test that this virtual node has been receiving the parent task
-						&& !path.isRoot() && myAddr == policy.getTarget(rootAddr,path.getParentPath())
+						// test that this virtual node is allowed to interfear with the scheduling of this task
+						&& policy.isInvolved(myAddr,path)
 						// test that this virtual node has control over all required data
 						&& diis.coversWriteRequirements(task->getProcessRequirements())
 					) {
@@ -214,6 +214,7 @@ namespace work {
 
 				// make sure this is processed on the right node
 				assert_eq(myAddr.getRank(),com::Node::getLocalRank());
+				assert_true(policy.isInvolved(myAddr,task->getId().getPath()));
 
 				// obtain access to the co-located data item index service
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
@@ -234,14 +235,11 @@ namespace work {
 
 				// schedule locally if decided to do so
 				auto id = task->getId();
-				if (myAddr == policy.getTarget(rootAddr,id.getPath())) {
-					return scheduleLocal(std::move(task));
-				}
 
 				// TODO: check whether left or right node covers all write requirements
 
 				// ask the scheduling policy what to do with this task
-				auto d = policy.decide(id.getPath());
+				auto d = policy.decide(myAddr,id.getPath());
 				assert_ne(d,Decision::Done);
 
 				// if it should stay, process it here
@@ -295,7 +293,7 @@ namespace work {
 			bool scheduleLocal(TaskPtr&& task) {
 
 				// make sure this is as it has been intended by the policy
-				assert_eq(myAddr,policy.getTarget(rootAddr,task->getId().getPath()))
+				assert_eq(myAddr,policy.getTarget(task->getId().getPath()))
 					<< "Task: " << task->getId() << "\n"
 					<< "Policy:\n" << policy;
 

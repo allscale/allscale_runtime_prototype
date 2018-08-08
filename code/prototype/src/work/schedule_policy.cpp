@@ -199,7 +199,7 @@ namespace work {
 		std::vector<std::uint32_t> mapping = getEqualDistribution(N,numTasks);
 
 		// convert mapping in decision tree
-		return toDecisionTree((1<<log2),mapping);
+		return { com::HierarchyAddress::getRootOfNetworkSize(N), toDecisionTree((1<<log2),mapping) };
 	}
 
 
@@ -207,20 +207,62 @@ namespace work {
 
 	// create a balanced work distribution based on the given load distribution
 	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>&) {
+
+		// get given task distribution mapping
+
+		// update mapping
+
+		// create new scheduling policy
+//		return { p.getPresumedRootAddress(), toDecisionTree((1<<log2),mapping) };
+
 		assert_not_implemented();
 		return p;
 	}
 
 
-	com::HierarchyAddress SchedulingPolicy::getTarget(const com::HierarchyAddress& root, const TaskPath& path) const {
+	bool SchedulingPolicy::isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const {
+
+		// only the root node is involved in scheduling the root path
+		if (path.isRoot()) return addr == root;
+
+		// TODO: implement this in O(logN) instead of O(logN^2)
+
+		// either the given address is involved in the parent or this node
+		return isInvolved(addr,path.getParentPath()) || getTarget(path) == addr;
+	}
+
+	Decision SchedulingPolicy::decide(const com::HierarchyAddress& addr, const TaskPath& path) const {
+		// make sure this task is involved in the scheduling of this task
+		assert_pred2(isInvolved,addr,path);
+
+		// if this is a leaf, there are not that many options :)
+		if (addr.isLeaf()) return Decision::Stay;
+
+		auto cur = path;
+		while(true) {
+			// for the root path, the decision is clear
+			if (cur.isRoot()) return tree.get(cur);
+
+			// see whether the addressed node is the node targeted by the parent path
+			auto parent = cur.getParentPath();
+			if (getTarget(parent) == addr) {
+				return tree.get(cur);
+			}
+
+			// walk one step further up
+			cur = parent;
+		}
+	}
+
+	com::HierarchyAddress SchedulingPolicy::getTarget(const TaskPath& path) const {
 		// for roots it is easy
 		if (path.isRoot()) return root;
 
 		// for everything else, we walk recursive
-		auto res = getTarget(root,path.getParentPath());
+		auto res = getTarget(path.getParentPath());
 
 		// simulate scheduling
-		switch(decide(path)) {
+		switch(decide(res,path)) {
 		case Decision::Done  : return res;
 		case Decision::Stay  : return res;
 		case Decision::Left  : return res.getLeftChild();
@@ -231,10 +273,12 @@ namespace work {
 	}
 
 	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader& in) {
-		return in.read<DecisionTree>();
+		auto root = in.read<com::HierarchyAddress>();
+		return { root, in.read<DecisionTree>() };
 	}
 
 	void SchedulingPolicy::store(allscale::utils::ArchiveWriter& out) const {
+		out.write(root);
 		out.write(tree);
 	}
 

@@ -8,7 +8,9 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <ostream>
 #include <utility>
 #include <thread>
@@ -28,12 +30,23 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
-//#define DEBUG_MPI_NETWORK if(true)  std::cout
 #define DEBUG_MPI_NETWORK if(false) std::cout
 
-	// the two tags used for request/respond exchanges
-	constexpr int REQUEST_TAG = 123;
-	constexpr int RESPOND_TAG = 321;
+
+
+	// tag handling for requests and responses
+	using tag_t = int;
+
+	tag_t getFreshRequestTag();
+
+	inline bool isRequestTag(tag_t tag) { return tag % 2; }
+
+	inline bool isResponseTag(tag_t tag) { return !isRequestTag(tag); }
+
+	inline tag_t getResponseTag(tag_t tag) {
+		assert_pred1(isRequestTag,tag);
+		return tag + 1;
+	}
 
 	// the communicator used for point-to-point operations
 	extern MPI_Comm point2point;
@@ -67,20 +80,22 @@ namespace mpi {
 		// an epoch counter service for syncing global operations
 		struct EpochService {
 
+			using guard = std::lock_guard<std::mutex>;
+
 			rank_t rank;
 
+			// the synchronization primitives guarding the epoche counter
+			std::mutex& mutex;
+			std::condition_variable& condition_variable;
+
+			// the actual counter
 			std::atomic<int>& counter;
 
-			EpochService(Node& node, std::atomic<int>& counter)
-				: rank(node.getRank()), counter(counter) {}
+			EpochService(Node& node, std::mutex& mutex, std::condition_variable& condition, std::atomic<int>& counter)
+				: rank(node.getRank()), mutex(mutex), condition_variable(condition), counter(counter) {}
 
 			// Increments the state and acknowledges the update (by returning)
-			bool inc(int next) {
-				DEBUG_MPI_NETWORK << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
-				assert_eq(next-1,counter);
-				counter++;
-				return true;
-			}
+			bool inc(int next);
 
 		};
 
@@ -95,10 +110,17 @@ namespace mpi {
 	class Network {
 
 		// the type of handler send along with messages to dispatch calls on the receiver side
-		using request_handler_t = void(*)(rank_t,Node&, allscale::utils::Archive&);
+		using request_handler_t = void(*)(rank_t,int tag, Node&, allscale::utils::Archive&);
 
 		// the type of message send for service requests
 		using request_msg_t = std::tuple<request_handler_t,allscale::utils::Archive>;
+
+
+		// the mutex guarding the epoch counter and condition var
+		std::mutex epoch_mutex;
+
+		// the condition variable for the epoch counter
+		std::condition_variable epoch_condition_var;
 
 		// the epoch counter, for global synchronization
 		std::atomic<int> epoch_counter;
@@ -160,23 +182,28 @@ namespace mpi {
 			RemoteProcedure(Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...))
 				: local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleRequest(rank_t source, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
+				assert_pred1(isRequestTag,request_tag);
+
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request " << request_tag << " ...\n";
 
 				// run service
 				R res = detail::runOperationOn<R>(node, args);
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to " << source << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " to source " << source << " ...\n";
 
 				// send back result to source
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
-				MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,RESPOND_TAG,point2point);
+				{
+					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
+				}
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to " << source << "\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " to source " << source << "\n";
 			}
 
 			/**
@@ -192,6 +219,8 @@ namespace mpi {
 				}
 
 				// perform remote call
+				int request_tag = getFreshRequestTag();
+				int response_tag = getResponseTag(request_tag);
 				{
 					// create an argument tuple and serialize it
 					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
@@ -199,14 +228,14 @@ namespace mpi {
 					auto& buffer = msg.getBuffer();
 					// send to target node
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " ...\n";
 
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,REQUEST_TAG,point2point);
+						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
 					}
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent\n";
 
 				}
 
@@ -217,8 +246,12 @@ namespace mpi {
 				MPI_Status status;
 				while(!flag) {
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Iprobe(trg,RESPOND_TAG,point2point,&flag,&status);
+					MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
 				}
+
+				// check validity
+				assert_eq(int(trg),status.MPI_SOURCE);
+				assert_eq(response_tag,status.MPI_TAG);
 
 				// retrieve message
 				int count = 0;
@@ -230,7 +263,7 @@ namespace mpi {
 				// allocate memory
 				std::vector<char> buffer(count);
 
-				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response ...";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " ...\n";
 
 				// receive message
 				{
@@ -238,7 +271,7 @@ namespace mpi {
 					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 				}
 
-				DEBUG_MPI_NETWORK << "Node " << src << ": Response received\n";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
 
 				// unpack result
 				allscale::utils::Archive a(std::move(buffer));
@@ -276,7 +309,7 @@ namespace mpi {
 			RemoteProcedure(Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
 				: local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleProcedure(rank_t source, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleProcedure(rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
@@ -312,9 +345,10 @@ namespace mpi {
 					// send to target node
 					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << (void*)&handleProcedure << " ...\n";
 
+					int msg_tag = getFreshRequestTag();
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,REQUEST_TAG,point2point);
+						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,msg_tag,point2point);
 					}
 
 					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent (fire-and-forget)\n";

@@ -2,6 +2,8 @@
 #if defined(ENABLE_MPI)
 
 #include <mpi.h>
+#include <mutex>
+#include <condition_variable>
 
 #include "allscale/runtime/com/mpi/network.h"
 
@@ -13,6 +15,36 @@ namespace mpi {
 	std::ostream& operator<<(std::ostream& out, const Network::Statistics&) {
 		return out << " -- reporting for MPI not implemented yet --\n";
 	}
+
+	int getFreshRequestTag() {
+		static std::atomic<int> counter(1);
+		auto tag = counter.fetch_add(2,std::memory_order_relaxed);
+		assert_pred1(isRequestTag,tag);
+		return tag;
+	}
+
+	namespace detail {
+
+
+		bool EpochService::inc(int next) {
+			DEBUG_MPI_NETWORK << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
+
+			// update epoche counter
+			{
+				guard g(mutex);
+				assert_eq(next-1,counter);
+				counter++;
+			}
+
+			// notify consumers
+			condition_variable.notify_all();
+
+			// done
+			return true;
+		}
+
+	}
+
 
 	// the communicator used for point-to-point operations
 	MPI_Comm point2point;
@@ -41,7 +73,7 @@ namespace mpi {
 		localNode = std::make_unique<Node>(rank);
 
 		// install epoch counter service
-		localNode->startService<detail::EpochService>(epoch_counter);
+		localNode->startService<detail::EpochService>(epoch_mutex,epoch_condition_var,epoch_counter);
 
 		// create communicator groups
 		MPI_Comm_dup(MPI_COMM_WORLD,&point2point);
@@ -93,6 +125,8 @@ namespace mpi {
 	}
 
 	void Network::runRequestServer() {
+		using namespace std::literals::chrono_literals;
+
 		auto& node = *localNode;
 		DEBUG_MPI_NETWORK << "Starting up request server on node " << node.getRank() << "\n";
 
@@ -103,15 +137,22 @@ namespace mpi {
 			// probe for some incoming message
 			{
 				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-				MPI_Iprobe(MPI_ANY_SOURCE,REQUEST_TAG,point2point,&flag,&status);
+				MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
 			}
 
 			// if there is nothing ...
 			if (!flag) {
 				// ... be nice here
-				std::this_thread::yield();
+				std::this_thread::sleep_for(1us);
 				continue;
 			}
+
+			// do not consume responses
+			if (!isRequestTag(status.MPI_TAG)) {
+				continue;
+			}
+
+			assert_pred1(isRequestTag,status.MPI_TAG);
 
 			// retrieve message
 			int count = 0;
@@ -124,7 +165,7 @@ namespace mpi {
 			std::vector<char> buffer(count);
 
 			// receive message
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request ...\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " ...\n";
 			{
 				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 				MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
@@ -138,9 +179,9 @@ namespace mpi {
 
 			// process message
 			node.run([&](Node&){
-				std::get<0>(msg)(status.MPI_SOURCE,node,std::get<1>(msg));
+				std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
 			});
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing complete.\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " complete.\n";
 		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";
@@ -168,8 +209,12 @@ namespace mpi {
 
 			// wait for update
 			last_epoch++;	// this is now the one we should be in
-			while(last_epoch != epoch_counter) {
-				std::this_thread::yield();
+			{
+				std::unique_lock<std::mutex> g(epoch_mutex);
+				// wait for condition
+				epoch_condition_var.wait(g,[&](){
+					return last_epoch == epoch_counter;
+				});
 			}
 
 			DEBUG_MPI_NETWORK << "Node " << rank << ": reached epoch " << last_epoch << "\n";

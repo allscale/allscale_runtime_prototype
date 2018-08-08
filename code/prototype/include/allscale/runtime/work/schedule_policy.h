@@ -46,7 +46,7 @@ namespace work {
 
 	public:
 
-		DecisionTree(int numNodes);
+		DecisionTree(std::uint64_t numNodes);
 
 		// updates a decision for a given path
 		void set(const TaskPath& path, Decision decision);
@@ -98,10 +98,26 @@ namespace work {
 		 * @param N the number of nodes to distribute work on
 		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 5 => 2^-5 = 3.125%
 		 */
-		static SchedulingPolicy createUniform(int N, int granularity = 5);
+		static SchedulingPolicy createUniform(int N, int granularity);
 
-		// create a balanced work distribution based on the given load distribution
+		/**
+		 * Creates a scheduling policy distributing work uniformly among the given number of nodes. The
+		 * granulartiy will be adjusted accordingly, such that ~8 tasks per node are created.
+		 *
+		 * @param N the number of nodes to distribute work on
+		 */
+		static SchedulingPolicy createUniform(int N);
+
+		/**
+		 * Creates an updated load balancing policy based on a given policy and a measured load distribution.
+		 * The resulting policy will distributed load evenly among the available nodes, weighted by the observed load.
+		 *
+		 * @param old the old policy, based on which the measurement has been taken
+		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. Ther must be one entry per node,
+		 * 			no entry must be negative.
+		 */
 		static SchedulingPolicy createReBalanced(const SchedulingPolicy& old, const std::vector<float>& loadDistribution);
+
 
 		// --- observer ---
 

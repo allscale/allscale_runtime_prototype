@@ -16,9 +16,9 @@ namespace work {
 
 	namespace {
 
-		int ceilLog2(int x) {
+		int ceilLog2(std::uint64_t x) {
 			int i = 0;
-			int c = 1;
+			std::uint64_t c = 1;
 			while (c<x) {
 				c = c << 1;
 				i++;
@@ -103,7 +103,7 @@ namespace work {
 			assert_eq((1u<<log2),map.size()) << "Input map is not of power-of-two size: " << map.size();
 
 			// the resulting (unbalanced) tree has to be at most 2x as deep
-			DecisionTree res((1<<(2*log2)));
+			DecisionTree res((std::uint64_t(1)<<(2*log2)));
 
 			// fill in decisions recursively
 			fillTree(res,TaskPath::root(), 0, ceilLog2(num_nodes), 0, num_nodes, &*map.begin(),&*map.end());
@@ -114,8 +114,8 @@ namespace work {
 
 	}
 
-	DecisionTree::DecisionTree(int numNodes) : encoded((2*2*numNodes/8)) { // 2 bits for 2x the number of nodes
-		assert_eq((1<<ceilLog2(numNodes)),numNodes) << "Number of nodes needs to be a power of 2!";
+	DecisionTree::DecisionTree(std::uint64_t numNodes) : encoded((2*2*numNodes/8)) { // 2 bits for 2x the number of nodes
+		assert_eq((std::uint64_t(1)<<ceilLog2(numNodes)),numNodes) << "Number of nodes needs to be a power of 2!";
 	}
 
 	std::ostream& operator<<(std::ostream& out, Decision d) {
@@ -215,6 +215,7 @@ namespace work {
 
 	std::vector<com::rank_t> SchedulingPolicy::getTaskDistributionMapping() const {
 		std::vector<com::rank_t> res;
+		res.reserve((1<<granulartiy));
 		for(const auto& cur : getAllPaths(granulartiy)) {
 			if (cur.getLength() != granulartiy) continue;
 			res.push_back(traceTarget(*this,cur));
@@ -240,7 +241,10 @@ namespace work {
 		return { com::HierarchyAddress::getRootOfNetworkSize(N), levels, toDecisionTree((1<<log2),mapping) };
 	}
 
-
+	// create an uniform distributing policy for N nodes, with an auto-adjusted granularity
+	SchedulingPolicy SchedulingPolicy::createUniform(int N) {
+		return createUniform(N,std::max(ceilLog2(N)+3,5));
+	}
 
 
 	// create a balanced work distribution based on the given load distribution
@@ -386,8 +390,8 @@ namespace work {
 	}
 
 	Decision SchedulingPolicy::decide(const com::HierarchyAddress& addr, const TaskPath& path) const {
-		// make sure this task is involved in the scheduling of this task
-		assert_pred2(isInvolved,addr,path);
+		// make sure this address is involved in the scheduling of this task
+//		assert_pred2(isInvolved,addr,path);
 
 		// if this is a leaf, there are not that many options :)
 		if (addr.isLeaf()) return Decision::Stay;

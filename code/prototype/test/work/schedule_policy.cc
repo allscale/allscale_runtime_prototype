@@ -430,6 +430,32 @@ namespace work {
 
 	}
 
+	TEST(SchedulingPolicy, Scaling) {
+
+		int N = 200;
+
+		// create a policy for N nodes
+		auto policy = SchedulingPolicy::createUniform(N);
+
+		std::cout << policy.getTaskDistributionMapping() << "\n";
+
+	}
+
+	TEST(SchedulingPolicy, Scaling_Rebalancing) {
+
+		int N = 200;
+
+		// create a policy for N nodes
+		auto u = SchedulingPolicy::createUniform(N);
+
+		std::vector<float> load(N,1.0);
+		auto b = SchedulingPolicy::createReBalanced(u,load);
+
+		EXPECT_EQ(u.getTaskDistributionMapping(),b.getTaskDistributionMapping());
+
+	}
+
+
 } // end of namespace work
 } // end of namespace runtime
 } // end of namespace allscale

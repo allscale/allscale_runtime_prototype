@@ -385,6 +385,51 @@ namespace work {
 		}
 	}
 
+	TEST(SchedulingPolicy, Rebalancing) {
+
+		auto u = SchedulingPolicy::createUniform(4,5);
+
+		// providing a nicely balanced load should not cause any changes
+		auto loadDist = std::vector<float>(4,1.0);
+		auto b1 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
+
+		// alter the distribution
+		loadDist[1] = 3;		// node 1 has 3x more load
+		loadDist[3] = 2;		// node 3 has 2x more load
+		auto b2 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b2.getTaskDistributionMapping());
+
+
+		// something more homogeneous
+		loadDist[0] = 1.25;
+		loadDist[1] = 1.5;
+		loadDist[2] = 1.25;
+		loadDist[3] = 2;
+		auto b3 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b3.getTaskDistributionMapping());
+
+
+		// something pretty even
+		loadDist[0] = 1.05;
+		loadDist[1] = 0.98;
+		loadDist[2] = 0.99;
+		loadDist[3] = 1.04;
+		auto b4 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b4.getTaskDistributionMapping());
+
+
+
+		// test zero-load value
+		loadDist[0] = 1.05;
+		loadDist[1] = 0;
+		loadDist[2] = 0.99;
+		loadDist[3] = 1.04;
+		auto b5 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b5.getTaskDistributionMapping());
+
+	}
+
 } // end of namespace work
 } // end of namespace runtime
 } // end of namespace allscale

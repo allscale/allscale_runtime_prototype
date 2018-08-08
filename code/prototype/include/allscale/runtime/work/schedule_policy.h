@@ -46,7 +46,7 @@ namespace work {
 
 	public:
 
-		DecisionTree(int numNodes) : encoded(2*2*numNodes/8) {}	// 2 bits for 2x the number of nodes
+		DecisionTree(int numNodes);
 
 		// updates a decision for a given path
 		void set(const TaskPath& path, Decision decision);
@@ -76,11 +76,14 @@ namespace work {
 		// the address of the root node of the network this policy is defined for
 		com::HierarchyAddress root;
 
+		// the balancing granularity this policy was created for
+		int granulartiy;
+
 		// the routing-decision tree
 		DecisionTree tree;
 
-		SchedulingPolicy(com::HierarchyAddress root, DecisionTree&& data)
-			: root(root), tree(std::move(data)) {}
+		SchedulingPolicy(com::HierarchyAddress root, int granulartiy, DecisionTree&& data)
+			: root(root), granulartiy(granulartiy), tree(std::move(data)) {}
 
 	public:
 
@@ -109,6 +112,10 @@ namespace work {
 		const DecisionTree& getDecisionTree() const {
 			return tree;
 		}
+
+		// retrieves the task distribution pattern this tree is realizing
+		std::vector<com::rank_t> getTaskDistributionMapping() const;
+
 
 		// --- the main interface for the scheduler ---
 
@@ -141,9 +148,7 @@ namespace work {
 		// --- printing ---
 
 		// provide a printer for debugging
-		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p) {
-			return out << p.tree;
-		}
+		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p);
 
 	};
 

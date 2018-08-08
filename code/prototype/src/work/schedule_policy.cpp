@@ -1,4 +1,6 @@
 
+#include <cmath>
+
 #include "allscale/utils/assert.h"
 #include "allscale/utils/printer/vectors.h"
 
@@ -111,6 +113,9 @@ namespace work {
 
 	}
 
+	DecisionTree::DecisionTree(int numNodes) : encoded((2*2*numNodes/8)) { // 2 bits for 2x the number of nodes
+		assert_eq((1<<ceilLog2(numNodes)),numNodes) << "Number of nodes needs to be a power of 2!";
+	}
 
 	std::ostream& operator<<(std::ostream& out, Decision d) {
 		switch(d) {
@@ -146,6 +151,23 @@ namespace work {
 		return Decision((encoded[byte_pos] >> bit_pos) & 0x3);
 	}
 
+	namespace {
+
+		void collectPaths(const TaskPath& cur, std::vector<TaskPath>& res, int depth) {
+			if (depth < 0) return;
+			res.push_back(cur);
+			collectPaths(cur.getLeftChildPath(),res,depth-1);
+			collectPaths(cur.getRightChildPath(),res,depth-1);
+		}
+
+		std::vector<TaskPath> getAllPaths(int depth) {
+			std::vector<TaskPath> res;
+			collectPaths(TaskPath::root(),res,depth);
+			return res;
+		}
+
+	}
+
 	DecisionTree DecisionTree::load(allscale::utils::ArchiveReader& in) {
 		return in.read<std::vector<uint8_t>>();
 	}
@@ -155,13 +177,6 @@ namespace work {
 	}
 
 	namespace {
-
-		void collectPaths(const TaskPath& cur, std::vector<TaskPath>& res, int depth) {
-			if (depth < 0) return;
-			res.push_back(cur);
-			collectPaths(cur.getLeftChildPath(),res,depth-1);
-			collectPaths(cur.getRightChildPath(),res,depth-1);
-		}
 
 		void printHelper(std::ostream& out, const DecisionTree& tree, const TaskPath& path) {
 			auto d = tree.get(path);
@@ -184,6 +199,28 @@ namespace work {
 
 	}
 
+	namespace {
+
+		com::rank_t traceTarget(const SchedulingPolicy& policy, TaskPath p) {
+			auto res = policy.getTarget(p);
+			while(!res.isLeaf()) {
+				p = p.getLeftChildPath();
+				res = policy.getTarget(p);
+			}
+			return res.getRank();
+		}
+
+	}
+
+	std::vector<com::rank_t> SchedulingPolicy::getTaskDistributionMapping() const {
+		std::vector<com::rank_t> res;
+		for(const auto& cur : getAllPaths(granulartiy)) {
+			if (cur.getLength() != granulartiy) continue;
+			res.push_back(traceTarget(*this,cur));
+		}
+		return res;
+	}
+
 
 	// create a uniform distributing policy for N nodes
 	SchedulingPolicy SchedulingPolicy::createUniform(int N, int granularity) {
@@ -199,24 +236,140 @@ namespace work {
 		std::vector<std::uint32_t> mapping = getEqualDistribution(N,numTasks);
 
 		// convert mapping in decision tree
-		return { com::HierarchyAddress::getRootOfNetworkSize(N), toDecisionTree((1<<log2),mapping) };
+		return { com::HierarchyAddress::getRootOfNetworkSize(N), levels, toDecisionTree((1<<log2),mapping) };
 	}
 
 
 
 
 	// create a balanced work distribution based on the given load distribution
-	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>&) {
+	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>& load) {
 
 		// get given task distribution mapping
 
 		// update mapping
+		std::vector<com::rank_t> mapping = p.getTaskDistributionMapping();
+
+		// --- estimate costs per task ---
+
+		// get number of nodes
+		com::rank_t numNodes = 0;
+		for(const auto& cur : mapping) {
+			numNodes = std::max<com::rank_t>(numNodes,cur+1);
+		}
+
+		// test that load vector has correct size
+		assert_eq(numNodes,load.size())
+			<< "Needs current load of all nodes!\n";
+
+		// test that all load values are positive
+		assert_true(std::all_of(load.begin(),load.end(),[](float x) { return x >= 0; }))
+			<< "Measures loads must be positive!";
+
+		// count number of tasks per node
+		std::vector<int> oldShare(numNodes,0);
+		for(const auto& cur : mapping) {
+			oldShare[cur]++;
+		}
+
+		// compute average costs for tasks (default value)
+		float sum = 0;
+		for(const auto& cur : load) sum += cur;
+		float avg = sum / mapping.size();
+
+		// average costs per task on node
+		std::vector<float> costs(numNodes);
+		for(com::rank_t i=0; i<numNodes; i++) {
+			if (oldShare[i] == 0) {
+				costs[i] = avg;
+			} else {
+				costs[i] = load[i]/oldShare[i];
+			}
+		}
+
+		// create vector of costs per task
+		float totalCosts = 0;
+		std::vector<float> taskCosts(mapping.size());
+		for(std::size_t i=0; i<mapping.size(); i++) {
+			taskCosts[i] = costs[mapping[i]];
+			totalCosts += taskCosts[i];
+		}
+
+
+		// --- redistributing costs ---
+
+		float share = totalCosts / numNodes;
+
+
+		float curCosts = 0;
+		float nextGoal = share;
+		com::rank_t curNode = 0;
+		std::vector<com::rank_t> newMapping(mapping.size());
+		for(std::size_t i=0; i<mapping.size(); i++) {
+
+			// compute next costs
+			auto nextCosts = curCosts + taskCosts[i];
+
+			// if we cross a boundary
+			if (curNode < (numNodes-1)) {
+
+				// decide whether to switch to next node
+				if (std::abs(curCosts-nextGoal) < std::abs(nextGoal-nextCosts)) {
+					// stopping here is closer to the target
+					curNode++;
+					nextGoal += share;
+				}
+			}
+
+			// else, just add current task to current node
+			newMapping[i] = curNode;
+			curCosts = nextCosts;
+		}
+
+		// for development, to estimate quality:
+
+		const bool DEBUG = false;
+		if (DEBUG) {
+			// --- compute new load distribution ---
+			std::vector<float> newEstCosts(numNodes,0);
+			for(std::size_t i=0; i<mapping.size(); i++) {
+				newEstCosts[newMapping[i]] += costs[mapping[i]];
+			}
+
+			// compute initial load imbalance variance
+			auto mean = [](const std::vector<float>& v)->float {
+				float s = 0;
+				for(const auto& cur : v) {
+					s += cur;
+				}
+				return s / v.size();
+			};
+			auto variance = [&](const std::vector<float>& v)->float {
+				float m = mean(v);
+				float s = 0;
+				for(const auto& cur : v) {
+					auto d = cur - m;
+					s += d*d;
+				}
+				return s / (v.size()-1);
+			};
+
+
+			std::cout << "Load vector: " << load << " - " << mean(load) << " / " << variance(load) << "\n";
+			std::cout << "Est. vector: " << newEstCosts << " - " << mean(newEstCosts) << " / " << variance(newEstCosts) << "\n";
+			std::cout << "Target Load: " << share << "\n";
+			std::cout << "Task shared: " << oldShare << "\n";
+			std::cout << "Node costs:  " << costs << "\n";
+			std::cout << "Task costs:  " << taskCosts << "\n";
+			std::cout << "In-distribution:  " << mapping << "\n";
+			std::cout << "Out-distribution: " << newMapping << "\n";
+			std::cout << "\n";
+		}
 
 		// create new scheduling policy
-//		return { p.getPresumedRootAddress(), toDecisionTree((1<<log2),mapping) };
-
-		assert_not_implemented();
-		return p;
+		auto root = p.getPresumedRootAddress();
+		auto log2 = root.getLayer();
+		return { root, p.granulartiy, toDecisionTree((1<<log2),newMapping) };
 	}
 
 
@@ -274,14 +427,19 @@ namespace work {
 
 	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader& in) {
 		auto root = in.read<com::HierarchyAddress>();
-		return { root, in.read<DecisionTree>() };
+		auto gran = in.read<int>();
+		return { root, gran, in.read<DecisionTree>() };
 	}
 
 	void SchedulingPolicy::store(allscale::utils::ArchiveWriter& out) const {
 		out.write(root);
+		out.write(granulartiy);
 		out.write(tree);
 	}
 
+	std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p) {
+		return out << p.tree << "Mapping: " << p.getTaskDistributionMapping();
+	}
 
 } // end of namespace com
 } // end of namespace runtime

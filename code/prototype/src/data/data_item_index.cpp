@@ -96,6 +96,41 @@ namespace data {
 	}
 
 
+	// removes the provided regions to this node
+	void DataItemIndexService::removeRegions(const DataItemRegions& regions) {
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
+		for(const auto& cur : indices) {
+			cur.second->remove(regions);
+		}
+	}
+
+	// removes the provided regions to the coverage of the left sub tree
+	void DataItemIndexService::removeRegionsLeft(const DataItemRegions& regions) {
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
+		for(const auto& cur : indices) {
+			cur.second->removeLeft(regions);
+		}
+	}
+
+	// removes the provided regions to the coverage of the right sub tree
+	void DataItemIndexService::removeRegionsRight(const DataItemRegions& regions) {
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
+		for(const auto& cur : indices) {
+			cur.second->removeRight(regions);
+		}
+	}
+
+
 	// computes the data regions available on this node
 	DataItemRegions DataItemIndexService::getAvailableData() const {
 		DataItemRegions res;
@@ -217,7 +252,172 @@ namespace data {
 	}
 
 
+	DataItemMigrationData DataItemIndexService::acquire(const DataItemRegions& regions) {
+		// this entry point is only to be called on the leaf level
+		assert_true(myAddress.isLeaf());
 
+		// if this is the root node, there is no place to retrieve data from
+		if (isRoot) {
+			assert_not_implemented();
+			// TODO: extend migration data to include entries without data, to be default constructed
+			return {};
+		}
+
+		// compute the missing regions
+		auto missing = difference(regions,getAvailableData());
+
+		// send request to parent
+		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnership)(myAddress,missing);
+
+		// make sure the requested data is complete
+		assert_eq(regions,res.getCoveredRegions());
+
+		// register ownership
+		addRegions(res.getCoveredRegions());
+
+		// done
+		return res;
+	}
+
+	DataItemMigrationData DataItemIndexService::acquireOwnership(com::HierarchyAddress caller, const DataItemRegions& regions) {
+
+		// the caller must be related
+		assert_true(caller == myAddress.getParent() || caller == myAddress.getLeftChild() || caller == myAddress.getRightChild())
+			<< "MyAddress: " << myAddress << "\n"
+			<< "Caller:    " << caller << "\n";
+
+
+		// this is similar to the lookup operation, just that while returning ownership is transfered
+
+		// start out empty
+		DataItemMigrationData res;
+
+		// quick exit - if there is nothing requested
+		if (regions.empty()) return res;
+
+		// keep track of the regions still to resolve
+		auto remaining = regions;
+
+		// -- add data for local sub-tree  --
+
+		if (myAddress.isLeaf()) {
+
+			// this must be called from the parent site
+			assert_eq(caller,myAddress.getParent());
+
+			// add local information
+			for(const auto& cur : indices) {
+				cur.second->abandonOwnership(remaining,res);
+			}
+
+			// ownership should be reduced impicitly
+			assert_true(intersect(res.getCoveredRegions(),getAvailableData()).empty())
+				<< "Extracted: " << res.getCoveredRegions() << "\n"
+				<< "Remaining: " << getAvailableData() << "\n";
+
+			return res;
+		}
+
+		// for inner nodes, query sub-trees
+		{
+			// start with left
+			auto part = intersect(remaining,getAvailableDataLeft());
+			if (!part.empty()) {
+
+				// in this case the call should not be coming from the left side
+				assert_ne(caller,myAddress.getLeftChild());
+
+				// query sub-tree
+				auto subData = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::acquireOwnership)(myAddress,part);
+
+				// consistency check
+				assert_eq(part,subData.getCoveredRegions());
+
+				// reduce left ownership
+				removeRegionsLeft(subData.getCoveredRegions());
+
+				// add to result
+				res.addAll(subData);
+
+			}
+
+			// reduce remaining
+			remaining = difference(remaining,part);
+
+		}
+
+		// and if necessary also the right sub-tree
+		if (!remaining.empty()) {
+
+			auto part = intersect(remaining,getAvailableDataRight());
+			if (!part.empty()) {
+
+				// in this case the call should not be coming from the right side
+				assert_ne(caller,myAddress.getRightChild());
+
+				// query sub-tree
+				auto subData = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::acquireOwnership)(myAddress,part);
+
+				// consistency check
+				assert_eq(part,subData.getCoveredRegions());
+
+				// add to result
+				res.addAll(subData);
+
+				// reduce right ownership
+				removeRegionsRight(subData.getCoveredRegions());
+
+			}
+		}
+
+		// if transfer of ownership is toward parent, remove local ownership
+		if (caller == myAddress.getParent()) {
+			removeRegions(res.getCoveredRegions());
+		}
+
+
+		// -- complete query by escalating if necessary --
+
+		// get covered regions
+		auto covered = res.getCoveredRegions();
+
+		// get missing regions
+		auto missing = difference(regions,covered);
+
+		// if there is still something missing => escalate
+		if (!missing.empty()) {
+
+			// in this case the call must not have come from the parent
+			assert_ne(caller,myAddress.getParent());
+
+			// if this is the root, there is nowhere to escalate any more
+			if (isRoot) {
+				assert_not_implemented();
+				// TODO: do the same as above, in the acquire function
+				return res;
+			}
+
+			// ask parent
+			auto extra = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::acquireOwnership)(myAddress,missing);
+
+			// add to local ownership
+			addRegions(extra.getCoveredRegions());
+
+			// merge partial results
+			res.addAll(extra);
+
+		}
+
+		// add new ownerships to target node
+		if (caller == myAddress.getLeftChild()) {
+			addRegionsLeft(res.getCoveredRegions());
+		} else if (caller == myAddress.getRightChild()) {
+			addRegionsRight(res.getCoveredRegions());
+		}
+
+		// done
+		return res;
+	}
 
 } // end of namespace data
 } // end of namespace runtime

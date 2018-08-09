@@ -90,8 +90,19 @@ namespace data {
 	}
 
 	void DataItemManagerService::acquire(const DataItemRegions& regions) {
+
+		// if there is nothing to get, be done
+		if (regions.empty()) return;
+
+		// get access to the local data item index service
+		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+
+		// forward this call to the index server
+		auto data = diis.acquire(regions);
+
+		// insert data locally
 		for(const auto& cur : registers) {
-			cur.second->acquire(regions);
+			cur.second->takeOwnership(data);
 		}
 	}
 

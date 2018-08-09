@@ -26,7 +26,11 @@ namespace data {
 
 
 	/**
-	 * A class associating data item regions to migration info.
+	 * A class to represent the data collected during an ownership transfer.
+	 *
+	 * It is the result type of the acquire call in the data item management service. With
+	 * its transfer, a snapshot of the current data as well as ownership rights are transfered
+	 * from the callee to caller.
 	 */
 	class DataItemMigrationData {
 
@@ -120,9 +124,9 @@ namespace data {
 
 			template<typename Op>
 			void forEach(const Op& op) {
-				for(const auto& cur : elements) {
-					for(const auto& part : cur.second) {
-						op(cur.first, part.region, part.archive);
+				for(auto& cur : elements) {
+					for(auto& part : cur.second) {
+						op(cur.first, part.region, part.data);
 					}
 				}
 			}
@@ -147,7 +151,7 @@ namespace data {
 				const Entry& other = static_cast<const Entry&>(base);
 				for(const auto& cur : other.elements) {
 					for(const auto& part : cur.second) {
-						add(cur.first,part.region,part.archive);
+						add(cur.first,part.region,part.data);
 					}
 				}
 			}

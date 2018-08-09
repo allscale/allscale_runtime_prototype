@@ -39,6 +39,7 @@ namespace data {
 		hierarchy.installServiceOnNodes<DataItemIndexService>();
 
 		// sync before processing
+		net.sync();
 
 		ref_t A(0);
 		auto printDistribution = [&]{
@@ -48,6 +49,22 @@ namespace data {
 				std::cout << "Node " << node.getRank() << ": " << mgr.getExclusiveRegion(A) << "\n";
 			});
 			std::cout << "\n";
+
+			// print distribution knowledge
+			com::HierarchicalOverlayNetwork hierarchy(net);
+
+			auto extractRegionFrom = [&](const DataItemRegions& regions)->region_t {
+				auto res = regions.getRegion(A);
+				return (res) ? *res : region_t();
+			};
+
+			hierarchy.runOnAll([&](com::Node& node, com::HierarchyAddress addr){
+				auto& diis = node.getService<com::HierarchyService<DataItemIndexService>>().get(addr.getLayer());
+				std::cout << addr << ": F=" << extractRegionFrom(diis.getAvailableData())
+						<< ", L=" << extractRegionFrom(diis.getAvailableDataLeft())
+						<< ", R=" << extractRegionFrom(diis.getAvailableDataRight()) << "\n";
+			});
+			std::cout << "\n\n";
 		};
 
 
@@ -61,8 +78,24 @@ namespace data {
 		// allocate data at node 0
 		region_t region_left(0,5);
 		net.runOn(0,[&](com::Node& node){
+
+			DataItemRegions regions;
+			regions.add(A,region_left);
+
+			// insert ownership in information service
+			for(int i=2; i>=0; i--) {
+				auto& diis = node.getService<com::HierarchyService<DataItemIndexService>>().get(com::layer_t(i));
+				diis.addRegions(regions);
+				if (i != 0) {
+					diis.addRegionsLeft(regions);
+				}
+			}
+
+			// get data fragment
 			auto& mgr = node.getService<DataItemManagerService>();
-			mgr.resizeExclusive(A,region_left);
+
+			// should now already have the correct size
+			EXPECT_EQ(region_left,mgr.getExclusiveRegion(A));
 
 			// insert some data
 			mgr.get(A)[3] = 12;
@@ -74,7 +107,7 @@ namespace data {
 		region_t fragment(2,4);
 		net.runOn(3,[&](com::Node& node){
 			auto& mgr = node.getService<DataItemManagerService>();
-			mgr.acquireOwnership(A,fragment);
+			mgr.acquire(A,fragment);
 
 			// check value of available data
 			EXPECT_EQ(12,mgr.get(A)[3]);

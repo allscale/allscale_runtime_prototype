@@ -22,6 +22,7 @@
 #include "allscale/runtime/data/data_item_reference.h"
 #include "allscale/runtime/data/data_item_requirement.h"
 #include "allscale/runtime/data/data_item_location.h"
+#include "allscale/runtime/data/data_item_migration.h"
 
 namespace allscale {
 namespace runtime {
@@ -159,7 +160,7 @@ namespace data {
 		public:
 			virtual ~DataItemRegisterBase() {};
 			virtual void retrieve(const DataItemLocationInfos&) =0;
-			virtual void acquire(const DataItemRegions&) =0;
+			virtual void takeOwnership(const DataItemMigrationData&) =0;
 		};
 
 		/**
@@ -221,34 +222,13 @@ namespace data {
 				});
 			}
 
-			void acquire(const DataItemRegions& regions) override {
-				assert_not_implemented();
-//				regions.forAll<DataItem>([&](const reference_type& ref, const region_type& region){
-//
-//					// TODO: this sends retrieval requests per-data-item; those can be aggregated
-//
-//
-//					// retrieve fragment handler
-//					auto& handler = get(ref);
-//
-//					// see what is here
-//					const auto& curSize = handler.getExclusiveRegion();
-//
-//					// see what is missing
-//					auto missing = region_type::difference(region,curSize);
-//
-//					// see if this is empty
-//					if(missing.empty()) return;
-//
-//					// acquire ownership of this part
-//					auto archive = com::Node::getLocalNode().getService<DataItemIndexService>().retrieveOwnership(ref,region);
-//
-//					// ensure space for the new region
-//					handler.reserve(region_type::merge(curSize,region));
-//
-//					// import data
-//					handler.insert(archive);
-//				});
+			void takeOwnership(const DataItemMigrationData& data) override {
+				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::Archive& archive){
+					if (region.empty()) return;
+					auto& fragment = get(ref);
+					assert_pred2(allscale::api::core::isSubRegion,region,fragment.getExclusiveRegion());
+					fragment.insert(archive);
+				});
 			}
 
 			// obtains access to a selected fragment handler
@@ -369,8 +349,11 @@ namespace data {
 		}
 
 		template<typename DataItem>
-		void acquireOwnership(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
-//			getRegister<DataItem>().get(ref).acquireOwnership(region);
+		void acquire(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
+			// channel through the type-erased interface
+			DataItemRegions regions;
+			regions.add(ref,region);
+			acquire(regions);
 		}
 
 		template<typename DataItem>

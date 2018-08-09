@@ -23,6 +23,7 @@
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/data/data_item_requirement.h"
 #include "allscale/runtime/data/data_item_location.h"
+#include "allscale/runtime/data/data_item_migration.h"
 
 namespace allscale {
 namespace runtime {
@@ -127,6 +128,31 @@ namespace data {
 			check();
 		}
 
+
+		void remove(const DataItemRegion<DataItem>& a) {
+			guard g(full_lock);
+			full = region_type::difference(full,a.getRegion());
+
+			// if this is not a leaf we are done
+			if (!myAddr.isLeaf()) return;
+
+			// shrink corresponding fragment (keep them equally sized)
+			com::Node::getLocalService<DataItemManagerService>().resizeExclusive(ref,full);
+		}
+
+		void removeLeft(const DataItemRegion<DataItem>& a) {
+			guard g(left_lock);
+			left = region_type::difference(left,a.getRegion());
+			check();
+		}
+
+		void removeRight(const DataItemRegion<DataItem>& a) {
+			guard g(right_lock);
+			right = region_type::difference(right,a.getRegion());
+			check();
+		}
+
+
 		void addTo(DataItemRegions& a) const {
 			guard g(full_lock);
 			a.add(DataItemRegion<DataItem>(ref,full));
@@ -161,6 +187,33 @@ namespace data {
 
 		}
 
+		void abandonOwnership(const region_type& needed, DataItemMigrationData& res) {
+
+			// this must only be called for leaf nodes
+			assert_true(myAddr.isLeaf());
+
+			// fill in local data
+
+			// lock local state
+			guard g(full_lock);
+
+			// see whether there is something within the domain of this node
+			auto match = region_type::intersect(needed,full);
+			if (match.empty()) return; // does not seem so
+
+			// get the local data item manager
+			auto& dim = com::Node::getLocalService<DataItemManagerService>();
+
+			// we found something => extract it
+			auto data = dim.extract(ref,match);
+			res.add(ref,match,std::move(data));
+
+			// remove ownership
+			full = region_type::difference(full,match);
+
+			// resize local data fragment (deletes local data)
+			dim.resizeExclusive(ref,full);
+		}
 
 	private:
 
@@ -201,8 +254,15 @@ namespace data {
 
 			virtual void addRight(const DataItemRegions& regions) =0;
 
+			virtual void remove(const DataItemRegions& regions) =0;
+
+			virtual void removeLeft(const DataItemRegions& regions) =0;
+
+			virtual void removeRight(const DataItemRegions& regions) =0;
+
 			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const =0;
 
+			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) =0;
 		};
 
 		// a type specific index entry
@@ -264,11 +324,39 @@ namespace data {
 				});
 			}
 
+			void remove(const DataItemRegions& regions) override {
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
+					get(r.getDataItemReference()).remove(r);
+				});
+			}
+
+			void removeLeft(const DataItemRegions& regions) override {
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
+					get(r.getDataItemReference()).removeLeft(r);
+				});
+			}
+
+			void removeRight(const DataItemRegions& regions) override {
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
+					get(r.getDataItemReference()).removeRight(r);
+				});
+			}
+
 			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const {
+				assert_true(myAddress.isLeaf());
 				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
 					auto pos = indices.find(r.getDataItemReference());
 					if (pos == indices.end()) return;
 					pos->second->addLocationInfo(r.getRegion(),res);
+				});
+			}
+
+			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) {
+				assert_true(myAddress.isLeaf());
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r) {
+					auto pos = indices.find(r.getDataItemReference());
+					if (pos == indices.end()) return;
+					pos->second->abandonOwnership(r.getRegion(),res);
 				});
 			}
 
@@ -335,12 +423,30 @@ namespace data {
 		// adds the provided regions to the coverage of the right sub tree
 		void addRegionsRight(const DataItemRegions&);
 
+		// removes the provided regions to this node
+		void removeRegions(const DataItemRegions&);
+
+		// removes the provided regions to the coverage of the left sub tree
+		void removeRegionsLeft(const DataItemRegions&);
+
+		// removes the provided regions to the coverage of the right sub tree
+		void removeRegionsRight(const DataItemRegions&);
+
 		/**
 		 * Requests information on the location of data in the given regions.
 		 */
 		DataItemLocationInfos locate(const DataItemRegions& regions);
 
+		/**
+		 * Retrieves the current state and ownership for the specified regions.
+		 */
+		DataItemMigrationData acquire(const DataItemRegions& regions);
 
+		/**
+		 * Retrieves the current state of the specified regions and transferring ownership
+		 * to the given call site.
+		 */
+		DataItemMigrationData acquireOwnership(com::HierarchyAddress caller, const DataItemRegions& regions);
 
 	private:
 

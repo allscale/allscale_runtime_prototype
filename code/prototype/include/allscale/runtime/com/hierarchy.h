@@ -279,6 +279,18 @@ namespace com {
 			com::Node::getLocalService<HierarchyService<S>>().forAll(op);
 		}
 
+		/**
+		 * Runs the given operation once for each virtual node in the hierarchical network.
+		 */
+		template<typename Op>
+		void runOnAll(const Op& op) {
+			network.runOnAll([&](Node& node){
+				for(layer_t i=0; i<HierarchyAddress::getLayersOn(node.getRank(),network.numNodes()); i++) {
+					op(node,HierarchyAddress(node.getRank(),i));
+				}
+			});
+		}
+
 	};
 
 

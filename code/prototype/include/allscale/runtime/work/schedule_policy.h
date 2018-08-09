@@ -46,7 +46,7 @@ namespace work {
 
 	public:
 
-		DecisionTree(int numNodes) : encoded(2*2*numNodes/8) {}	// 2 bits for 2x the number of nodes
+		DecisionTree(std::uint64_t numNodes);
 
 		// updates a decision for a given path
 		void set(const TaskPath& path, Decision decision);
@@ -73,9 +73,17 @@ namespace work {
 	 */
 	class SchedulingPolicy {
 
+		// the address of the root node of the network this policy is defined for
+		com::HierarchyAddress root;
+
+		// the balancing granularity this policy was created for
+		int granulartiy;
+
+		// the routing-decision tree
 		DecisionTree tree;
 
-		SchedulingPolicy(DecisionTree&& data) : tree(std::move(data)) {}
+		SchedulingPolicy(com::HierarchyAddress root, int granulartiy, DecisionTree&& data)
+			: root(root), granulartiy(granulartiy), tree(std::move(data)) {}
 
 	public:
 
@@ -90,26 +98,62 @@ namespace work {
 		 * @param N the number of nodes to distribute work on
 		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 5 => 2^-5 = 3.125%
 		 */
-		static SchedulingPolicy createUniform(int N, int granularity = 5);
+		static SchedulingPolicy createUniform(int N, int granularity);
 
-		// create a balanced work distribution based on the given load distribution
+		/**
+		 * Creates a scheduling policy distributing work uniformly among the given number of nodes. The
+		 * granulartiy will be adjusted accordingly, such that ~8 tasks per node are created.
+		 *
+		 * @param N the number of nodes to distribute work on
+		 */
+		static SchedulingPolicy createUniform(int N);
+
+		/**
+		 * Creates an updated load balancing policy based on a given policy and a measured load distribution.
+		 * The resulting policy will distributed load evenly among the available nodes, weighted by the observed load.
+		 *
+		 * @param old the old policy, based on which the measurement has been taken
+		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. Ther must be one entry per node,
+		 * 			no entry must be negative.
+		 */
 		static SchedulingPolicy createReBalanced(const SchedulingPolicy& old, const std::vector<float>& loadDistribution);
 
+
 		// --- observer ---
+
+		const com::HierarchyAddress& getPresumedRootAddress() const {
+			return root;
+		}
 
 		const DecisionTree& getDecisionTree() const {
 			return tree;
 		}
 
+		// retrieves the task distribution pattern this tree is realizing
+		std::vector<com::rank_t> getTaskDistributionMapping() const;
+
+
 		// --- the main interface for the scheduler ---
 
-		// computes the hierarchical address to be reached when scheduling a task with the given path
-		com::HierarchyAddress getTarget(const com::HierarchyAddress& root, const TaskPath& path) const;
+		/**
+		 * Determines whether the node with the given address is part of the dispatching of a task with the given path.
+		 *
+		 * @param addr the address in the hierarchy to be tested
+		 * @param path the path to be tested
+		 */
+		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const;
 
-		// get the decision in which direction to schedule the given task path
-		Decision decide(const TaskPath& path) const {
-			return tree.get(path);
-		}
+		/**
+		 * Obtains the scheduling decision at the given node. The given node must be involved in
+		 * the scheduling of the given path.
+		 */
+		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const;
+
+		/**
+		 * Computes the target address a task with the given path should be forwarded to.
+		 */
+		com::HierarchyAddress getTarget(const TaskPath& path) const;
+
 
 		// --- serialization support ---
 
@@ -120,9 +164,7 @@ namespace work {
 		// --- printing ---
 
 		// provide a printer for debugging
-		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p) {
-			return out << p.tree;
-		}
+		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p);
 
 	};
 

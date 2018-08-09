@@ -10,7 +10,7 @@ namespace sim {
 	Network::Network(size_t size) : stats(size) {
 		nodes.reserve(size);
 		for(size_t i=0; i<size; i++) {
-			nodes.emplace_back(i);
+			nodes.emplace_back(std::make_unique<Node>(i));
 		}
 	}
 

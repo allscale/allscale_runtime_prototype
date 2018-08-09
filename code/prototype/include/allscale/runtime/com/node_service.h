@@ -13,6 +13,7 @@
 #include <ostream>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include "allscale/utils/assert.h"
@@ -50,6 +51,10 @@ namespace com {
 		// The service registry.
 		std::map<std::type_index,std::unique_ptr<ServiceBase>> services;
 
+		mutable std::mutex lock;
+
+		using guard = std::lock_guard<std::mutex>;
+
 	public:
 
 		/**
@@ -57,12 +62,22 @@ namespace com {
 		 */
 		NodeServiceRegistry(Node& node) : node(node) {};
 
+	private:
+
+		template<typename S>
+		bool hasServiceInternal() const {
+			return services.find(typeid(S)) != services.end();
+		}
+
+	public:
+
 		/**
 		 * Tests whether the requested service is registered.
 		 */
 		template<typename S>
 		bool hasService() const {
-			return services.find(typeid(S)) != services.end();
+			guard g(lock);
+			return hasServiceInternal<S>();
 		}
 
 		/**
@@ -70,11 +85,12 @@ namespace com {
 		 */
 		template<typename S, typename ... Args>
 		S& startService(Args&& ... args) {
+			guard g(lock);
 			// only start service at most once
-			if (!hasService<S>()) {
+			if (!hasServiceInternal<S>()) {
 				services[typeid(S)] = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
 			}
-			return getService<S>();
+			return static_cast<Service<S>&>(*services[typeid(S)]).service;
 		}
 
 		/**
@@ -82,7 +98,8 @@ namespace com {
 		 */
 		template<typename S>
 		S& getService() const {
-			assert_true(hasService<S>());
+			guard g(lock);
+			assert_true(hasServiceInternal<S>());
 			return static_cast<Service<S>&>(*services.find(typeid(S))->second).service;
 		}
 
@@ -91,7 +108,8 @@ namespace com {
 		 */
 		template<typename S>
 		void stopService() {
-			assert_true(hasService<S>());
+			guard g(lock);
+			assert_true(hasServiceInternal<S>());
 			services.erase(typeid(S));
 		}
 	};

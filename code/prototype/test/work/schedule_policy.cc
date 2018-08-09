@@ -103,7 +103,7 @@ namespace work {
 			auto res = traceTarget(netSize,policy,path.getParentPath());
 
 			// simulate scheduling
-			switch(policy.decide(path)) {
+			switch(policy.decide(res,path)) {
 			case Decision::Done  : return res;
 			case Decision::Stay  : return res;
 			case Decision::Left  : return res.getLeftChild();
@@ -162,8 +162,6 @@ namespace work {
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 3;
 
-		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
-
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
@@ -176,7 +174,7 @@ namespace work {
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
-			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -193,8 +191,6 @@ namespace work {
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 2;
 
-		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
-
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
@@ -207,7 +203,7 @@ namespace work {
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
-			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -224,8 +220,6 @@ namespace work {
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 5;
 
-		auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
-
 		// get uniform distributed policy
 		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
@@ -238,7 +232,7 @@ namespace work {
 		// collect scheduling target on lowest level
 		std::vector<com::rank_t> targets;
 		for(const auto& cur : paths) {
-			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
+			EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(cur));
 			if (cur.getLength() != max_length) continue;
 			auto target = getTarget(NUM_NODES,u,cur);
 			EXPECT_EQ(0,target.getLayer());
@@ -262,8 +256,6 @@ namespace work {
 				int CEIL_LOG_2_NUM_NODES = ceilLog2(n);
 				int GRANULARITY = CEIL_LOG_2_NUM_NODES + e;
 
-				auto root = com::HierarchyAddress::getRootOfNetworkSize(NUM_NODES);
-
 				// get uniform distributed policy
 				auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
@@ -274,7 +266,7 @@ namespace work {
 				// collect scheduling target on lowest level
 				std::vector<com::rank_t> targets;
 				for(const auto& cur : paths) {
-					EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(root,cur));
+					EXPECT_EQ(traceTarget(NUM_NODES,u,cur),u.getTarget(cur));
 					if (cur.getLength() != max_length) continue;
 					auto target = getTarget(NUM_NODES,u,cur);
 					EXPECT_EQ(0,target.getLayer()) << cur;
@@ -313,6 +305,156 @@ namespace work {
 		}
 
 	}
+
+
+	namespace {
+
+		// simulates the scheduling processes within the actual task scheduler
+		com::HierarchyAddress traceIndirectTarget(const SchedulingPolicy& policy, const com::HierarchyAddress& cur, const TaskPath& path) {
+
+			// if current node is not involved, forward to parent
+			if (!policy.isInvolved(cur,path)) return traceIndirectTarget(policy,cur.getParent(),path);
+
+			// the root node should be at the root location
+			if (path.isRoot()) return cur;
+
+			// get location of parent task
+			auto parentLoc = traceIndirectTarget(policy,cur,path.getParentPath());
+
+			// check the correctness of this tracer code
+			EXPECT_EQ(parentLoc,policy.getTarget(path.getParentPath()));
+			EXPECT_TRUE(policy.isInvolved(parentLoc,path));
+
+			// compute where the parent has send this task
+			switch(policy.decide(parentLoc,path)) {
+			case Decision::Stay: {
+				return parentLoc;
+			}
+			case Decision::Left: {
+				EXPECT_FALSE(parentLoc.isLeaf());
+				return parentLoc.getLeftChild();
+			}
+			case Decision::Right: {
+				EXPECT_FALSE(parentLoc.isLeaf());
+				return parentLoc.getRightChild();
+			}
+			case Decision::Done:
+				EXPECT_TRUE(parentLoc.isLeaf());
+				return cur;
+			}
+
+			assert_fail() << "Invalid decision!";
+			return {};
+		}
+
+		template<typename Op>
+		void forAllChildren(const com::HierarchyAddress& addr, const Op& op) {
+			op(addr);
+			if (addr.isLeaf()) return;
+			forAllChildren(addr.getLeftChild(),op);
+			forAllChildren(addr.getRightChild(),op);
+		}
+
+		void testAllSources(const SchedulingPolicy& policy, const std::string& trg, const TaskPath& path) {
+			forAllChildren(policy.getPresumedRootAddress(),[&](const com::HierarchyAddress& cur){
+				EXPECT_EQ(trg,toString(traceIndirectTarget(policy,cur,path))) << "Origin: " << cur << "\nPath: " << path << "\n";
+			});
+		}
+
+		void testAllSources(const SchedulingPolicy& policy, const com::HierarchyAddress& trg, const TaskPath& path) {
+			testAllSources(policy,toString(trg),path);
+		}
+	}
+
+	TEST(SchedulingPolicy,Redirect) {
+
+		// start from wrong positions and see whether target can be located successfully
+
+		for(int num_nodes=1; num_nodes<=10; num_nodes++) {
+
+			// get a uniform distribution
+			auto policy = SchedulingPolicy::createUniform(num_nodes);
+
+//			std::cout << "N=" << num_nodes << "\n" << policy << "\n";
+
+			// test that all paths can reach their destination starting from any location
+			for(const auto& path : getAll(8)) {
+				testAllSources(policy,policy.getTarget(path),path);
+			}
+
+		}
+	}
+
+	TEST(SchedulingPolicy, Rebalancing) {
+
+		auto u = SchedulingPolicy::createUniform(4,5);
+
+		// providing a nicely balanced load should not cause any changes
+		auto loadDist = std::vector<float>(4,1.0);
+		auto b1 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
+
+		// alter the distribution
+		loadDist[1] = 3;		// node 1 has 3x more load
+		loadDist[3] = 2;		// node 3 has 2x more load
+		auto b2 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b2.getTaskDistributionMapping());
+
+
+		// something more homogeneous
+		loadDist[0] = 1.25;
+		loadDist[1] = 1.5;
+		loadDist[2] = 1.25;
+		loadDist[3] = 2;
+		auto b3 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b3.getTaskDistributionMapping());
+
+
+		// something pretty even
+		loadDist[0] = 1.05;
+		loadDist[1] = 0.98;
+		loadDist[2] = 0.99;
+		loadDist[3] = 1.04;
+		auto b4 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b4.getTaskDistributionMapping());
+
+
+
+		// test zero-load value
+		loadDist[0] = 1.05;
+		loadDist[1] = 0;
+		loadDist[2] = 0.99;
+		loadDist[3] = 1.04;
+		auto b5 = SchedulingPolicy::createReBalanced(u,loadDist);
+		EXPECT_NE(u.getTaskDistributionMapping(),b5.getTaskDistributionMapping());
+
+	}
+
+	TEST(SchedulingPolicy, Scaling) {
+
+		int N = 200;
+
+		// create a policy for N nodes
+		auto policy = SchedulingPolicy::createUniform(N);
+
+		std::cout << policy.getTaskDistributionMapping() << "\n";
+
+	}
+
+	TEST(SchedulingPolicy, Scaling_Rebalancing) {
+
+		int N = 200;
+
+		// create a policy for N nodes
+		auto u = SchedulingPolicy::createUniform(N);
+
+		std::vector<float> load(N,1.0);
+		auto b = SchedulingPolicy::createReBalanced(u,load);
+
+		EXPECT_EQ(u.getTaskDistributionMapping(),b.getTaskDistributionMapping());
+
+	}
+
 
 } // end of namespace work
 } // end of namespace runtime

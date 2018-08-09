@@ -25,9 +25,14 @@ namespace runtime {
 		// install and start workers in nodes
 		work::startWorker(network);
 
+		// wait for all network instances to be at this state
+		network.sync();
 	}
 
 	void Runtime::shutdown() {
+
+		// wait until all network instances are at this point
+		network.sync();
 
 		// shut down workers
 		work::stopWorker(network);

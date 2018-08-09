@@ -68,6 +68,13 @@ namespace runtime {
 			return std::move(treeture);
 		});
 
+		// the rest should only run on node 0, the one with the valid treeture
+		if (!treeture.valid()) {
+			std::cout << "Shutting down runtime ...\n";
+			rt.shutdown();
+			return 0;
+		}
+
 		// wait for completion
 		auto res = std::move(treeture).get_result();
 

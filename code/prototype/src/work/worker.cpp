@@ -149,6 +149,8 @@ namespace work {
 
 			} else {
 
+				using clock = std::chrono::high_resolution_clock;
+
 				// in this case we process the task
 				auto reqs = t->getProcessRequirements();
 
@@ -159,7 +161,9 @@ namespace work {
 				if (dim) dim->allocate(reqs);
 
 				// process this task
+				auto begin = clock::now();
 				t->process();
+				auto end = clock::now();
 
 				// free requirements
 				if (dim) dim->release(reqs);
@@ -170,8 +174,10 @@ namespace work {
 				processedCounter++;
 
 				// increment workload counter (by the fraction of work processed)
-				processedWork += 1.0f/(1<<t->getId().getDepth());
+				processedWork = processedWork + 1.0/(1<<t->getId().getDepth());
 
+				// increment processing time
+				processTime = processTime.load() + (end - begin);
 			}
 
 			return true;

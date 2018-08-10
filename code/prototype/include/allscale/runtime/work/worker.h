@@ -8,6 +8,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 #include "allscale/runtime/com/node.h"
@@ -63,17 +64,22 @@ namespace work {
 		com::Node* node;
 
 		// the number of tasks split by this worker
-		std::uint32_t splitCounter = 0;
+		std::atomic<std::uint32_t> splitCounter;
 
 		// the number of tasks processed by this worker
-		std::uint32_t processedCounter = 0;
+		std::atomic<std::uint32_t> processedCounter;
 
 		// tracing the load processed by this worker, considering the task granularity
-		double processedWork = 0;
+		std::atomic<double> processedWork;
+
+		// amount of time spend in processing tasks (in nanoseconds)
+		std::atomic<std::chrono::nanoseconds> processTime;
 
 	public:
 
-		Worker(com::rank_t rank = 0) : state(Ready), rank(rank), node(nullptr) {}
+		Worker(com::rank_t rank = 0)
+			: state(Ready), rank(rank), node(nullptr),
+			  splitCounter(0), processedCounter(0), processedWork(0), processTime(std::chrono::nanoseconds(0)) {}
 
 		Worker(com::Node& node) : Worker(node.getRank()) {
 			this->node = &node;
@@ -124,6 +130,13 @@ namespace work {
 		 */
 		double getProcessedWork() const {
 			return processedWork;
+		}
+
+		/**
+		 * Obtains the amount of time spend on task processing.
+		 */
+		std::chrono::nanoseconds getProcessTime() const {
+			return processTime;
 		}
 
 		/**

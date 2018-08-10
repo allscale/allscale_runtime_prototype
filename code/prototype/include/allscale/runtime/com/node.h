@@ -59,6 +59,14 @@ namespace com {
 		}
 
 		/**
+		 * Tests whether a given service is installed on this node.
+		 */
+		template<typename S>
+		bool hasService() const {
+			return services.hasService<S>();
+		}
+
+		/**
 		 * Obtains access to a selected service running on this node.
 		 */
 		template<typename S>

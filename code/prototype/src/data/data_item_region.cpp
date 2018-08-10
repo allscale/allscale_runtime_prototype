@@ -65,15 +65,17 @@ namespace data {
 
 	void DataItemRegions::toJSON(std::ostream& out) const {
 		if (empty()) {
-			out << "{}";
+			out << "[]";
 			return;
 		}
 		bool first = true;
+		out << "[";
 		for(const auto& cur : regions) {
 			if (!first) out << ",";
 			first = false;
 			cur.second->printJSON(out);
 		}
+		out << "]";
 	}
 
 	bool DataItemRegions::operator==(const DataItemRegions& other) const {

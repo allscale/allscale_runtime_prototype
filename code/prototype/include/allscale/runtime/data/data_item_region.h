@@ -127,6 +127,9 @@ namespace data {
 			// requires specializations to be printable
 			virtual void print(std::ostream& out) const=0;
 
+			// required specialization to be JSON dumpable
+			virtual void printJSON(std::ostream& out) const =0;
+
 			virtual bool operator==(const RegionsBase& otherBase) const=0;
 
 			bool operator!=(const RegionsBase& other) const {
@@ -200,6 +203,29 @@ namespace data {
 			void print(std::ostream& out) const override {
 				out << allscale::utils::join(",",regions,[](std::ostream& out, const auto& cur){
 					out << cur.first << ":" << cur.second;
+				});
+			}
+
+			void printJSON(std::ostream& out) const override {
+				using allscale::utils::join;
+
+				// TODO: support this for non-grid data items
+
+				out << join(",",regions,[](std::ostream& out, const auto& cur){
+					out << "{";
+					out << "\"id\" : " << cur.first.getID() << ",";
+					out << "\"type\" : \"" << region_type::Dimensions << "D-Grid\",";
+					out << "\"region\" : [";
+
+					out << join(",",cur.second.getBoxes(),[](std::ostream& out, const auto& cur){
+						out << "{";
+						out << "\"from\" : " << cur.getMin() << ",";
+						out << "\"to\" : " << cur.getMax();
+						out << "}";
+					});
+
+					out << "]";
+					out << "}";
 				});
 			}
 
@@ -379,6 +405,10 @@ namespace data {
 
 		// supports printing regions
 		friend std::ostream& operator<<(std::ostream&, const DataItemRegions&);
+
+		// support printing in JSON format
+		void toJSON(std::ostream& out) const;
+
 
 		// --- set operations ---
 

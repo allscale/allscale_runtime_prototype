@@ -396,7 +396,7 @@ namespace data {
 		// tests whether the given requirements are covered by this node
 		bool coversWriteRequirements(const DataItemRequirements&);
 
-		// computes the data regions available on this node
+		// computes the data regions available on this node (according to the ownership)
 		DataItemRegions getAvailableData() const;
 
 		// computes the data regions available in the left sub tree

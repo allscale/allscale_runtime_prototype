@@ -106,6 +106,14 @@ namespace data {
 		}
 	}
 
+	DataItemRegions DataItemManagerService::getExclusiveRegions() const {
+		DataItemRegions res;
+		for(const auto& cur : registers) {
+			cur.second->addExclusiveRegions(res);
+		}
+		return res;
+	}
+
 
 } // end of namespace data
 } // end of namespace runtime

@@ -105,6 +105,10 @@ namespace data {
 			return fragment.mask();
 		}
 
+		region_type getDataItemSize() const {
+			return fragment.getTotalSize();
+		}
+
 		void resizeExclusive(const region_type& newSize) {
 
 			// reserve the area
@@ -161,6 +165,7 @@ namespace data {
 			virtual ~DataItemRegisterBase() {};
 			virtual void retrieve(const DataItemLocationInfos&) =0;
 			virtual void takeOwnership(const DataItemMigrationData&) =0;
+			virtual void addExclusiveRegions(DataItemRegions&) const =0;
 		};
 
 		/**
@@ -229,6 +234,14 @@ namespace data {
 					assert_pred2(allscale::api::core::isSubRegion,region,fragment.getExclusiveRegion());
 					fragment.insert(archive);
 				});
+			}
+
+			void addExclusiveRegions(DataItemRegions& res) const override {
+				for(const auto& cur : items) {
+					auto region = region_type::intersect(cur.second->getExclusiveRegion(),cur.second->getDataItemSize());
+					if (region.empty()) continue;
+					res.add(cur.first,region);
+				}
 			}
 
 			// obtains access to a selected fragment handler
@@ -360,6 +373,8 @@ namespace data {
 		typename DataItem::region_type getExclusiveRegion(const DataItemReference<DataItem>& ref) const {
 			return getRegister<DataItem>().get(ref).getExclusiveRegion();
 		}
+
+		DataItemRegions getExclusiveRegions() const;
 
 	private:
 

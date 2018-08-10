@@ -63,6 +63,19 @@ namespace data {
 		}) << ")";
 	}
 
+	void DataItemRegions::toJSON(std::ostream& out) const {
+		if (empty()) {
+			out << "{}";
+			return;
+		}
+		bool first = true;
+		for(const auto& cur : regions) {
+			if (!first) out << ",";
+			first = false;
+			cur.second->printJSON(out);
+		}
+	}
+
 	bool DataItemRegions::operator==(const DataItemRegions& other) const {
 		for(const auto& cur : regions) {
 			auto pos = other.regions.find(cur.first);

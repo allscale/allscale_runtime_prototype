@@ -482,7 +482,7 @@ namespace mon {
 			memcpy(buffer,&msgSizeBE,sizeof(std::uint64_t));
 			memcpy(buffer+sizeof(std::uint64_t),json.c_str(),json.size());
 
-			// send message (several times)
+			// send message
 			int size = write(sock,buffer,bufferSize);
 			if (size != int(bufferSize)) {
 				std::cerr << "Lost dashboard connection, ending status broadcast.";

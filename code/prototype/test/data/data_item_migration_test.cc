@@ -16,13 +16,25 @@ namespace allscale {
 namespace runtime {
 namespace data {
 
-	// TODO: simulate the migration of data ownership
 
-	TEST(DataItemMigration, TwoPoint) {
+	TEST(DISABLED_DataItemMigration, TwoPoint) {
 
 		using data_item = Grid<int,1>;
 		using region_t = typename data_item::region_type;
 		using ref_t = DataItemReference<Grid<int,1>>;
+
+		// the data item reference to be manipulated
+		ref_t A(0);
+
+		// the region to be allocated
+		region_t region_left(0,5);
+
+		// the region to be transfered
+		region_t fragment(2,4);
+
+		DataItemRegions regions;
+		regions.add(A,region_left);
+
 
 		// create a network
 		auto network = com::Network::create();
@@ -41,7 +53,6 @@ namespace data {
 		// sync before processing
 		net.sync();
 
-		ref_t A(0);
 		auto printDistribution = [&]{
 			// check distribution
 			net.runOnAll([&](com::Node& node){
@@ -75,12 +86,14 @@ namespace data {
 
 		printDistribution();
 
-		// allocate data at node 0
-		region_t region_left(0,5);
-		net.runOn(0,[&](com::Node& node){
+		net.runOn(2,[&](com::Node&){
+			auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+			auto loc = diis.locate(regions);
+			EXPECT_EQ("Locations()",toString(loc));
+		});
 
-			DataItemRegions regions;
-			regions.add(A,region_left);
+		// allocate data at node 0
+		net.runOn(0,[&](com::Node& node){
 
 			// insert ownership in information service
 			for(int i=2; i>=0; i--) {
@@ -103,8 +116,13 @@ namespace data {
 
 		printDistribution();
 
+		net.runOn(2,[&](com::Node&){
+			auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+			auto loc = diis.locate(regions);
+			EXPECT_EQ("",toString(loc));
+		});
+
 		// migrate data to node 3
-		region_t fragment(2,4);
 		net.runOn(3,[&](com::Node& node){
 			auto& mgr = node.getService<DataItemManagerService>();
 			mgr.acquire(A,fragment);
@@ -114,6 +132,12 @@ namespace data {
 		});
 
 		printDistribution();
+
+		net.runOn(2,[&](com::Node&){
+			auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+			auto loc = diis.locate(regions);
+			EXPECT_EQ("",toString(loc));
+		});
 
 	}
 

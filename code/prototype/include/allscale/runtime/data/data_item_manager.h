@@ -246,7 +246,7 @@ namespace data {
 
 			// obtains access to a selected fragment handler
 			DataFragmentHandler<DataItem>& get(const reference_type& ref) {
-				assert_pred1(contains,ref);
+				assert_pred1(contains,ref) << "Known Items: " << allscale::utils::join(",",items,[](std::ostream& out, const auto& entry) { out << entry.first; });
 				return *items.find(ref)->second;
 			}
 

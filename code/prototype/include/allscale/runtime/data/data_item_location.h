@@ -56,6 +56,12 @@ namespace data {
 				return out;
 			}
 
+			virtual bool operator==(const EntryBase&) const =0;
+
+			bool operator!=(const EntryBase& other) const {
+				return !(*this == other);
+			}
+
 			// provide serialization support
 			void store(allscale::utils::ArchiveWriter& out) const {
 				out.write(load_fun);
@@ -78,23 +84,7 @@ namespace data {
 			using ref_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
 
-			struct Part {
-				region_type region;
-				com::rank_t location;
-
-				void store(allscale::utils::ArchiveWriter& out) const {
-					out.write(region);
-					out.write(location);
-				}
-
-				static Part load(allscale::utils::ArchiveReader& in) {
-					region_type r = in.read<region_type>();
-					com::rank_t l = in.read<com::rank_t>();
-					return { std::move(r), l };
-				}
-			};
-
-			using location_map = std::map<ref_type,std::vector<Part>>;
+			using location_map = std::map<ref_type,std::map<com::rank_t,region_type>>;
 
 			location_map elements;
 
@@ -105,8 +95,8 @@ namespace data {
 
 			void addCoveredRegions(DataItemRegions& res) const override {
 				for(const auto& cur : elements) {
-					for(const auto& part : cur.second) {
-						res.add(cur.first,part.region);
+					for(const auto& inner : cur.second) {
+						res.add(cur.first,inner.second);
 					}
 				}
 			}
@@ -114,16 +104,16 @@ namespace data {
 			void add(const ref_type& ref, const region_type& region, com::rank_t loc) {
 				// make sure there is no overlap
 				assert_true(std::all_of(elements[ref].begin(),elements[ref].end(),[&](const auto& a){
-					return region_type::intersect(a.region,region).empty();
+					return region_type::intersect(a.second,region).empty();
 				}));
-				elements[ref].emplace_back(Part{region,loc});
+				elements[ref][loc] = region_type::merge(elements[ref][loc],region);
 			}
 
 			template<typename Op>
 			void forEach(const Op& op) {
 				for(const auto& cur : elements) {
 					for(const auto& part : cur.second) {
-						op(cur.first, part.region, part.location);
+						op(cur.first, part.second, part.first);
 					}
 				}
 			}
@@ -131,6 +121,24 @@ namespace data {
 			virtual std::unique_ptr<EntryBase> clone() const override {
 				return std::make_unique<Entry>(*this);
 			}
+
+			virtual bool operator==(const EntryBase& entry) const {
+				if (!dynamic_cast<const Entry*>(&entry)) return false;
+				const Entry& other = static_cast<const Entry&>(entry);
+
+				// size has to fit
+				if (elements.size() != other.elements.size()) return false;
+
+				for(const auto& cur : elements) {
+					auto pos = other.elements.find(cur.first);
+					if (pos == other.elements.end()) return false;
+					if (cur.second != pos->second) return false;
+				}
+
+				// no differences => it is the same
+				return true;
+			}
+
 
 			virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
 				out.write<location_map>(elements);
@@ -148,7 +156,7 @@ namespace data {
 				const Entry& other = static_cast<const Entry&>(base);
 				for(const auto& cur : other.elements) {
 					for(const auto& part : cur.second) {
-						add(cur.first,part.region,part.location);
+						add(cur.first,part.second,part.first);
 					}
 				}
 			}
@@ -156,7 +164,7 @@ namespace data {
 			virtual void print(std::ostream& out) const override {
 				for(const auto& cur : elements) {
 					for(const auto& part : cur.second) {
-						out << cur.first << ":" << part.region << "@" << part.location << ",";
+						out << cur.first << ":" << part.second << "@" << part.first << ",";
 					}
 				}
 			}
@@ -205,6 +213,14 @@ namespace data {
 		template<typename DataItem>
 		void add(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region, com::rank_t loc) {
 			get<DataItem>().add(ref,region,loc);
+		}
+
+		// --- operators ---
+
+		bool operator==(const DataItemLocationInfos&) const;
+
+		bool operator!=(const DataItemLocationInfos& other) const {
+			return !(*this == other);
 		}
 
 		// --- set operations ---

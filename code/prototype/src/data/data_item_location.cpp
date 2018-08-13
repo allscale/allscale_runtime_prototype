@@ -23,6 +23,23 @@ namespace data {
 		return std::move(res);
 	}
 
+	bool DataItemLocationInfos::operator==(const DataItemLocationInfos& other) const {
+		if (this == &other) return true;
+
+		// check the size
+		if (entries.size() != other.entries.size()) return false;
+
+		// check the key
+		for(const auto& cur : entries) {
+			auto pos = other.entries.find(cur.first);
+			if (pos == other.entries.end()) return false;
+			if (*cur.second != *pos->second) return false;
+		}
+
+		// all the same, we are fine
+		return true;
+	}
+
 	DataItemLocationInfos& DataItemLocationInfos::addAll(const DataItemLocationInfos& other) {
 		for(const auto& cur : other.entries) {
 			auto pos = entries.find(cur.first);

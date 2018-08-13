@@ -120,14 +120,89 @@ namespace mon {
 		return res;
 	}
 
-
-	// -- Node State Service --
-
-	class NodeStateService {
+	namespace {
 
 		using clock = std::chrono::high_resolution_clock;
 		using time_point = clock::time_point;
 		using duration = clock::duration;
+
+		std::uint64_t getCurrentTime(const time_point& now) {
+			return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() / 1000;
+		}
+
+		std::uint64_t getCurrentTime() {
+			return getCurrentTime(clock::now());
+		}
+
+		struct CPULoadSensor {
+
+			std::array<long double,4> a = {{0}};
+
+			float getCPUUsage() {
+
+				// the file contains:
+				// cpu <usr> <nice> <sys> <idle> ...
+
+				// get current snapshot
+				std::array<long double,4> b;
+				FILE *fp;
+				fp = fopen("/proc/stat","r");
+				int count = fscanf(fp,"%*s %Lf %Lf %Lf %Lf",&b[0],&b[1],&b[2],&b[3]);
+				if (count != 4) { assert_fail() << "Unable to read values from /proc/stat\n"; }
+				fclose(fp);
+
+				// if this is the first round => nothing to report
+				if (a[0] == 0) {
+					a = b;
+					return 0.0f;
+				}
+
+				// compute system load
+				float res = ((b[0]+b[1]+b[2]) - (a[0]+a[1]+a[2])) / ((b[0]+b[1]+b[2]+b[3]) - (a[0]+a[1]+a[2]+a[3]));
+
+				// remember current state
+				a = b;
+
+				// return result
+				return res;
+
+			}
+
+		};
+
+		std::uint64_t getMemoryUsage() {
+
+			int count;
+			std::uint64_t total, free, available;
+
+			FILE *fp;
+			fp = fopen("/proc/meminfo","r");
+			count = fscanf(fp,"%*s %lud", &total);
+			if (count != 1) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+			count = fscanf(fp,"%*s");
+			if (count != 0) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+
+			count = fscanf(fp,"%*s %lud", &free);
+			if (count != 1) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+			count = fscanf(fp,"%*s");
+			if (count != 0) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+
+			count = fscanf(fp,"%*s %lud", &available);
+			if (count != 1) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+			count = fscanf(fp,"%*s");
+			if (count != 0) { assert_fail() << "Unable to read value from /proc/meminfo\n"; }
+
+			fclose(fp);
+
+			return (total - available);
+		}
+
+	}
+
+
+	// -- Node State Service --
+
+	class NodeStateService {
 
 		// the network being part of
 		com::Network& network;
@@ -148,6 +223,8 @@ namespace mon {
 		double lastProcessedWork = 0;
 		std::chrono::nanoseconds lastProcessTime;
 
+		CPULoadSensor cpu_sensor;
+
 	public:
 
 		NodeStateService(com::Node& node)
@@ -164,15 +241,14 @@ namespace mon {
 
 			NodeState res;
 			res.rank = localNode.getRank();
-//			res.time = std::chrono::duration_cast<std::chrono::milliseconds>(now - startup_time).count();
-			res.time = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() / 1000;
+			res.time = getCurrentTime(now);
 			res.online = true;
 
 			// -- duration independent values --
 
 			// TODO: get some actual source
-			res.cpu_load = 1.0;				// 100% usage
-			res.memory_load = (1<<30);		// 1GB
+			res.cpu_load = cpu_sensor.getCPUUsage();
+			res.memory_load = getMemoryUsage();
 
 			// fill in data information
 			if (localNode.hasService<data::DataItemManagerService>()) {
@@ -335,6 +411,9 @@ namespace mon {
 			// wait for thread to finish
 			thread.join();
 
+			// send final info
+			sendShutdownInfo();
+
 			// also handle the socket
 			close(sock);
 		}
@@ -357,6 +436,32 @@ namespace mon {
 
 			// collect data
 			auto data = getSystemState(network);
+
+			// send data
+			sendUpdate(data);
+
+		}
+
+		void sendShutdownInfo() {
+
+			// create shutdown info
+			std::vector<NodeState> info;
+			for(com::rank_t i = 0; i<network.numNodes(); i++) {
+				NodeState state;
+				state.rank = i;
+				state.time = getCurrentTime() + 1; // to make sure it does not collide with the last update
+				state.online = false;
+				info.push_back(state);
+			}
+
+			// send shutdown info
+			sendUpdate(info);
+
+		}
+
+		void sendUpdate(const std::vector<NodeState>& data) {
+
+			// extract time
 			auto time = data[0].time;
 
 			// create JSON data block
@@ -377,8 +482,12 @@ namespace mon {
 			memcpy(buffer,&msgSizeBE,sizeof(std::uint64_t));
 			memcpy(buffer+sizeof(std::uint64_t),json.c_str(),json.size());
 
-			// send message (several times)
-			write(sock,buffer,bufferSize);
+			// send message
+			int size = write(sock,buffer,bufferSize);
+			if (size != int(bufferSize)) {
+				std::cerr << "Lost dashboard connection, ending status broadcast.";
+				alive = false;
+			}
 
 			// free buffer
 			delete [] buffer;

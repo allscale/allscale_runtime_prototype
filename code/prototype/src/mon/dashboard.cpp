@@ -76,6 +76,7 @@ namespace mon {
 		}
 		out << "\"cpu_load\":" << cpu_load << ",";
 		out << "\"mem_load\":" << memory_load << ",";
+		out << "\"total_memory\":" << total_memory << ",";
 		out << "\"task_throughput\":" << task_throughput << ",";
 		out << "\"weighted_task_througput\":" << weighted_task_throughput << ",";
 		out << "\"network_in\":" << network_in << ",";
@@ -95,6 +96,7 @@ namespace mon {
 		if (!online) return;
 		out.write(cpu_load);
 		out.write(memory_load);
+		out.write(total_memory);
 		out.write(task_throughput);
 		out.write(weighted_task_throughput);
 		out.write(network_in);
@@ -111,6 +113,7 @@ namespace mon {
 		if (!res.online) return res;
 		res.cpu_load = in.read<float>();
 		res.memory_load = in.read<std::uint64_t>();
+		res.total_memory = in.read<std::uint64_t>();
 		res.task_throughput = in.read<float>();
 		res.weighted_task_throughput = in.read<float>();
 		res.network_in = in.read<std::uint64_t>();
@@ -170,7 +173,7 @@ namespace mon {
 
 		};
 
-		std::uint64_t getMemoryUsage() {
+		std::pair<std::uint64_t,std::uint64_t> getMemoryUsage() {
 
 			int count;
 			std::uint64_t total, free, available;
@@ -194,7 +197,7 @@ namespace mon {
 
 			fclose(fp);
 
-			return (total - available);
+			return std::make_pair((total - available),available);
 		}
 
 	}
@@ -248,7 +251,10 @@ namespace mon {
 
 			// TODO: get some actual source
 			res.cpu_load = cpu_sensor.getCPUUsage();
-			res.memory_load = getMemoryUsage();
+
+			auto mem = getMemoryUsage();
+			res.memory_load = mem.first;
+			res.total_memory = mem.second;
 
 			// fill in data information
 			if (localNode.hasService<data::DataItemManagerService>()) {

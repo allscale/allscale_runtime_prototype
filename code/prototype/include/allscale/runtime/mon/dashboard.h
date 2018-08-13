@@ -29,6 +29,9 @@ namespace mon {
 		// the current memory usage
 		std::uint64_t memory_load = 0;
 
+		// the total available physical memory
+		std::uint64_t total_memory = 0;
+
 		// number of tasks processed per second
 		float task_throughput = 0.0f;
 

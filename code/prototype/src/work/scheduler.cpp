@@ -1,4 +1,6 @@
 
+#include <random>
+
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/com/hierarchy.h"
 
@@ -187,7 +189,7 @@ namespace work {
 						// test that this virtual node is allowed to interfear with the scheduling of this task
 						&& policy.isInvolved(myAddr,path)
 						// test that this virtual node has control over all required data
-						&& diis.coversWriteRequirements(task->getProcessRequirements())
+						&& diis.covers(task->getProcessRequirements().getWriteRequirements())
 					) {
 					// we can schedule it right here!
 					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
@@ -203,7 +205,7 @@ namespace work {
 				// Phase 2: propagate task down the hierarchy
 
 				// compute unallocated data item regions
-				auto missing = diis.getMissingRegions(task->getProcessRequirements());
+				auto missing = diis.getMissingRegions(task->getProcessRequirements().getWriteRequirements());
 
 				// pass those along with the scheduling process
 				return scheduleDown(std::move(task),missing);
@@ -219,17 +221,18 @@ namespace work {
 				// obtain access to the co-located data item index service
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
 
-				// integrate allowance into owned data
-				diis.addRegions(allowance);
-
-				// now all requirements should be satisfied now
-				assert_pred1(diis.coversWriteRequirements,task->getProcessRequirements())
-					<< "Allowance: " << allowance << "\n"
-					<< "Available: " << diis.getAvailableData() << "\n"
-					<< "Required:  " << task->getProcessRequirements();
-
 				// on leaf level, schedule locally
 				if (myAddr.isLeaf()) {
+					// add granted allowances
+					diis.addAllowanceLocal(allowance);
+
+					// now all requirements should be satisfied now
+					assert_pred1(diis.covers,task->getProcessRequirements().getWriteRequirements())
+						<< "Allowance: " << allowance << "\n"
+						<< "Available: " << diis.getAvailableData() << "\n"
+						<< "Required:  " << task->getProcessRequirements();
+
+					// run locally
 					return scheduleLocal(std::move(task));
 				}
 
@@ -244,6 +247,17 @@ namespace work {
 
 				// if it should stay, process it here
 				if (d == Decision::Stay) {
+
+					// add granted allowances
+					diis.addAllowanceLocal(allowance);
+
+					// now all requirements should be satisfied now
+					assert_pred1(diis.covers,task->getProcessRequirements().getWriteRequirements())
+						<< "Allowance: " << allowance << "\n"
+						<< "Available: " << diis.getAvailableData() << "\n"
+						<< "Required:  " << task->getProcessRequirements();
+
+					// run locally
 					return scheduleLocal(std::move(task));
 				}
 
@@ -259,30 +273,17 @@ namespace work {
 					next = myAddr.getLeftChild();
 				}
 
+
 				// compute regions
 				auto reqs = task->getProcessRequirements();
 				auto subAllowances = (targetLeft)
-						? diis.getMissingRegionsLeft(reqs)
-						: diis.getMissingRegionsRight(reqs);
+						? diis.addAllowanceLeft(allowance,reqs.getWriteRequirements())
+						: diis.addAllowanceRight(allowance,reqs.getWriteRequirements());
 
-				// currently miss-aligned regions are not supported
-				if (targetLeft) {
-					assert_pred2(data::isDisjoint,reqs.getWriteRequirements(),diis.getAvailableDataRight())
-						<< "Un-aligned tasks not yet supported!\n";
-				} else {
-					assert_pred2(data::isDisjoint,reqs.getWriteRequirements(),diis.getAvailableDataLeft())
-						<< "Un-aligned tasks not yet supported!\n";
-				}
 
 				// record handout of missing region
-				DLOG << "Adding sub-allowances " << subAllowances << " to " << next << " -- needed: " << reqs << "\n";
-				if (targetLeft) {
-					diis.addRegionsLeft(subAllowances);
-				} else {
-					diis.addRegionsRight(subAllowances);
-				}
-
 				DLOG << "Dispatching " << id << " on " << myAddr << " to " << next << " with " << subAllowances << " ... \n";
+
 
 				// forward task
 				return network.getRemoteProcedure(next,&ScheduleService::scheduleDown)(std::move(task),subAllowances);
@@ -328,15 +329,201 @@ namespace work {
 	} // end namespace data_aware
 
 
+	namespace random {
+
+		/**
+		 * A service running on each virtual node.
+		 */
+		class ScheduleService {
+
+			// the network being a part of
+			com::HierarchicalOverlayNetwork network;
+
+			// the address of this scheduler service
+			com::HierarchyAddress myAddr;
+
+			// the address of the root node
+			com::HierarchyAddress rootAddr;
+
+			// a flag indicating whether this node is the root node
+			bool isRoot;
+
+			// the depth of this node in the tree, counted from the root
+			std::size_t depth;
+
+			// a random device - because only random is truly fair
+			std::uniform_real_distribution<> policy;
+
+			// the source for random values
+			std::random_device generator;
+
+		public:
+
+			ScheduleService(com::Network& net, const com::HierarchyAddress& addr)
+				: network(net),
+				  myAddr(addr),
+				  rootAddr(network.getRootAddress()),
+				  isRoot(myAddr == rootAddr),
+				  depth(rootAddr.getLayer()-myAddr.getLayer()) {}
+
+			/**
+			 * The following two methods are the central element of the scheduling process.
+			 *
+			 * They attempt to achieve two goals: manage allowances and distribute tasks randomly
+			 *
+			 */
+
+			// requests this scheduler instance to schedule this task.
+			bool schedule(TaskReference task) {
+
+				// Phase 1: locate virtual node allowed to perform the scheduling
+				DLOG << "Start Scheduling " << task->getId() << " on " << myAddr << " ... \n";
+				assert_true(task->isReady());
+
+				// check whether current node is allowed to make autonomous scheduling decisions
+				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
+				auto path = task->getId().getPath();
+				if (!isRoot
+						// decide randomly whether this one is allowed to schedule it
+						&& path.getLength() > depth && policy(generator) < 0.2			// 20% probability for fine enough tasks
+						// test that this virtual node has control over all required data
+						&& diis.covers(task->getProcessRequirements().getWriteRequirements())
+					) {
+					// we can schedule it right here!
+					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
+					return scheduleDown(std::move(task),{});
+				}
+
+				// if there are unallocated allowances still to process, do so
+				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
+				if (!unallocated.empty()) {
+					// take unallocated share and pass along scheduling process
+					return scheduleDown(std::move(task),unallocated);
+				}
+
+				// propagate to parent
+				if (!isRoot) {
+					// forward call to parent node
+					return network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
+				}
+
+				// Phase 2: propagate task down the hierarchy
+				assert_true(isRoot);
+
+				// compute unallocated data item regions
+				auto missing = diis.getMissingRegions(task->getProcessRequirements().getWriteRequirements());
+
+				// pass those along with the scheduling process
+				return scheduleDown(std::move(task),missing);
+
+			}
+
+			bool scheduleDown(TaskReference task, const data::DataItemRegions& allowance) {
+
+				// make sure this is processed on the right node
+				assert_eq(myAddr.getRank(),com::Node::getLocalRank());
+
+				// obtain access to the co-located data item index service
+				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
+
+				// on leaf level, schedule locally
+				if (myAddr.isLeaf()) {
+					diis.addAllowanceLocal(allowance);
+					return scheduleLocal(std::move(task));
+				}
+
+				// schedule locally if decided to do so
+				auto id = task->getId();
+
+				// TODO: check whether left or right node covers all write requirements
+
+				// ask the scheduling policy what to do with this task
+				auto r = policy(generator);
+				auto d = (r < 0.33) ? Decision::Left  :
+						 (r < 0.66) ? Decision::Right :
+								      (id.getDepth() < getCutOffLevel())
+									  	  ? Decision::Stay
+										  : (( r < 0.83 ) ? Decision::Left : Decision::Right) ;
+
+				// if it should stay, process it here
+				if (d == Decision::Stay) {
+					assert_lt(id.getDepth(),getCutOffLevel());
+					diis.addAllowanceLocal(allowance);
+					return scheduleLocal(std::move(task));
+				}
+
+				bool targetLeft = (d == Decision::Left);
+
+				// get address of next virtual node to be involved
+				com::HierarchyAddress next = (targetLeft)
+						? myAddr.getLeftChild()
+						: myAddr.getRightChild();
+
+				// reconsider if right is to far right
+				if (next.getRank() >= network.numNodes()) {
+					next = myAddr.getLeftChild();
+				}
+
+				// compute regions
+				auto reqs = task->getProcessRequirements().getWriteRequirements();
+				auto subAllowances = (targetLeft)
+						? diis.addAllowanceLeft(allowance,reqs)
+						: diis.addAllowanceRight(allowance,reqs);
+
+
+				// record handout of missing region
+				DLOG << "Dispatching " << id << " on " << myAddr << " to " << next << " with " << subAllowances << " ... \n";
+
+				// forward task
+				return network.getRemoteProcedure(next,&ScheduleService::scheduleDown)(std::move(task),subAllowances);
+			}
+
+
+			// process the task
+			bool scheduleLocal(TaskPtr&& task) {
+
+				DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
+
+				// assign to local worker
+				com::Node::getLocalService<Worker>().schedule(std::move(task));
+
+				// success
+				return true;
+			}
+
+		};
+
+
+		// schedules a task based on its write-set requirements, spreads evenly in case of multiple options
+		void schedule(TaskPtr&& task) {
+
+			auto& service = com::HierarchicalOverlayNetwork::getLocalService<ScheduleService>();
+
+			// special case: non-distributable task
+			if (!task->canBeDistributed()) {
+				service.scheduleLocal(std::move(task));
+				return;
+			}
+
+			// forward to task scheduling service
+			service.schedule(std::move(task));
+
+		}
+
+	} // end namespace random
+
+
 	// the main entry point for scheduling
 	void schedule(TaskPtr&& task) {
 		//simple::schedule(std::move(task));
 		data_aware::schedule(std::move(task));
+//		random::schedule(std::move(task));
 	}
 
 	void installSchedulerService(com::Network& network) {
 		com::HierarchicalOverlayNetwork hierarchy(network);
 		hierarchy.installServiceOnNodes<data_aware::ScheduleService>();
+		hierarchy.installServiceOnNodes<random::ScheduleService>();
 		hierarchy.installServiceOnNodes<data::DataItemIndexService>();
 	}
 

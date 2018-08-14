@@ -472,7 +472,7 @@ namespace mon {
 
 			// create JSON data block
 			std::stringstream msg;
-			msg << "{\"time\":" << time << ",\"nodes\":" << data << "}";
+			msg << "{\"time\":" << time << ",\"type\":\"status\",\"nodes\":" << data << "}";
 
 			// sent to bashboard
 

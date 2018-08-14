@@ -100,9 +100,10 @@ namespace data {
 			// insert ownership in information service
 			for(int i=2; i>=0; i--) {
 				auto& diis = node.getService<com::HierarchyService<DataItemIndexService>>().get(com::layer_t(i));
-				diis.addRegions(regions);
-				if (i != 0) {
-					diis.addRegionsLeft(regions);
+				if (i!=0) {
+					diis.addAllowanceLeft(regions,regions);
+				} else {
+					diis.addAllowanceLocal(regions);
 				}
 			}
 
@@ -243,14 +244,12 @@ namespace data {
 			for(int i=2; i>=0; i--) {
 				auto& diis = node.getService<com::HierarchyService<DataItemIndexService>>().get(com::layer_t(i));
 				if (i > 1) {
-					diis.addRegions(regions_full);
-					diis.addRegionsLeft(regions_full);
+					diis.addAllowanceLeft(regions_full,regions_full);
 				} if (i == 1) {
-					diis.addRegions(regions_full);
-					diis.addRegionsLeft(regions_left);
-					diis.addRegionsRight(regions_right);
+					diis.addAllowanceLeft(regions_full,regions_left);
+					diis.addAllowanceRight({},regions_right);
 				} else {
-					diis.addRegions(regions_left);
+					diis.addAllowanceLocal(regions_left);
 				}
 			}
 
@@ -270,7 +269,7 @@ namespace data {
 			// insert ownership in information service
 			{
 				auto& diis = node.getService<com::HierarchyService<DataItemIndexService>>().get(com::layer_t(0));
-				diis.addRegions(regions_right);
+				diis.addAllowanceLocal(regions_right);
 			}
 
 			// get data fragment

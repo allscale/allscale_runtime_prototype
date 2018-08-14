@@ -36,7 +36,13 @@ namespace data {
 		// get access to the local data item index service
 		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
 
-		// for now, just test that write data is available
+		// retrieve ownership of missing data
+		auto missing = difference(reqs.getWriteRequirements(),diis.getAvailableData());
+		if (!missing.empty()) {
+			acquire(missing);
+		}
+
+		// now all write-requirements should be satisfied
 		assert_pred2(
 			data::isSubRegion,
 			reqs.getWriteRequirements(),

@@ -139,7 +139,7 @@ namespace data {
 
 		allscale::utils::Archive extract(const region_type& region) const {
 			allscale::utils::ArchiveWriter out;
-			fragment.extract(out,region);
+			fragment.extract(out,region_type::intersect(region,getDataItemSize()));
 			return std::move(out).toArchive();
 
 		}
@@ -228,11 +228,11 @@ namespace data {
 			}
 
 			void takeOwnership(const DataItemMigrationData& data) override {
-				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::Archive& archive){
+				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::optional<allscale::utils::Archive>& archive){
 					if (region.empty()) return;
 					auto& fragment = get(ref);
 					assert_pred2(allscale::api::core::isSubRegion,region,fragment.getExclusiveRegion());
-					fragment.insert(archive);
+					if (bool(archive)) fragment.insert(*archive);
 				});
 			}
 

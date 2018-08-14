@@ -16,6 +16,9 @@
 
 #include "allscale/utils/assert.h"
 
+#include "allscale/utils/optional.h"
+#include "allscale/utils/serializer/optionals.h"
+
 #include "allscale/runtime/com/node.h"
 
 #include "allscale/runtime/data/data_item_region.h"
@@ -80,10 +83,11 @@ namespace data {
 
 			using ref_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
+			using data_type = allscale::utils::optional<allscale::utils::Archive>;
 
 			struct Part {
 				region_type region;
-				allscale::utils::Archive data;
+				data_type data;
 
 				void store(allscale::utils::ArchiveWriter& out) const {
 					out.write(region);
@@ -92,8 +96,8 @@ namespace data {
 
 				static Part load(allscale::utils::ArchiveReader& in) {
 					region_type r = in.read<region_type>();
-					auto a = in.read<allscale::utils::Archive>();
-					return { std::move(r), a };
+					auto a = in.read<data_type>();
+					return { std::move(r), std::move(a) };
 				}
 			};
 
@@ -114,12 +118,28 @@ namespace data {
 				}
 			}
 
-			void add(const ref_type& ref, const region_type& region, const allscale::utils::Archive& archive) {
+			void add(const ref_type& ref, const region_type& region, data_type&& archive) {
 				// make sure there is no overlap
 				assert_true(std::all_of(elements[ref].begin(),elements[ref].end(),[&](const auto& a){
 					return region_type::intersect(a.region,region).empty();
 				}));
 				elements[ref].emplace_back(Part{region,std::move(archive)});
+			}
+
+			void add(const ref_type& ref, const region_type& region, const data_type& archive) {
+				// make sure there is no overlap
+				assert_true(std::all_of(elements[ref].begin(),elements[ref].end(),[&](const auto& a){
+					return region_type::intersect(a.region,region).empty();
+				}));
+				elements[ref].emplace_back(Part{region,archive});
+			}
+
+			void add(const ref_type& ref, const region_type& region, const allscale::utils::Archive& archive) {
+				add(ref,region,data_type(std::move(archive)));
+			}
+
+			void addDefault(const ref_type& ref, const region_type& region) {
+				add(ref,region,data_type());
 			}
 
 			template<typename Op>

@@ -377,6 +377,12 @@ namespace data {
 		// a cache for location information
 		mutable DataItemLocationCache locationCache;
 
+		// a lock to synchronize transfers on this instance
+		mutable std::recursive_mutex lock;
+
+		// the guard type to utilize
+		using guard = std::lock_guard<std::recursive_mutex>;
+
 	public:
 
 		// creates a new instance of this service running on the given address
@@ -393,8 +399,11 @@ namespace data {
 			return getIndex<DataItem>().get(ref);
 		}
 
-		// tests whether the given requirements are covered by this node
-		bool coversWriteRequirements(const DataItemRequirements&);
+		// tests whether the given regions are covered by this node
+		bool covers(const DataItemRegions&) const;
+
+		// tests whether the gvien region contains data managed by this node, yet not allocated to left or right
+		DataItemRegions getManagedUnallocatedRegion(const DataItemRegions&) const;
 
 		// computes the data regions available on this node (according to the ownership)
 		DataItemRegions getAvailableData() const;
@@ -406,13 +415,15 @@ namespace data {
 		DataItemRegions getAvailableDataRight() const;
 
 		// computes the set of required regions to cover the given requirements
-		DataItemRegions getMissingRegions(const DataItemRequirements&);
+		DataItemRegions getMissingRegions(const DataItemRegions&) const;
 
 		// computes the set of required regions to schedule in the left sub-tree
-		DataItemRegions getMissingRegionsLeft(const DataItemRequirements&);
+		DataItemRegions getMissingRegionsLeft(const DataItemRegions&) const;
 
 		// computes the set of required regions to schedule in the right sub-tree
-		DataItemRegions getMissingRegionsRight(const DataItemRequirements&);
+		DataItemRegions getMissingRegionsRight(const DataItemRegions&) const;
+
+	private:
 
 		// adds the provided regions to this node
 		void addRegions(const DataItemRegions&);
@@ -432,21 +443,91 @@ namespace data {
 		// removes the provided regions to the coverage of the right sub tree
 		void removeRegionsRight(const DataItemRegions&);
 
+	public:
+
+		// -- data item allowances handling --
+
+		/**
+		 * Register an additional local allowance (only supported for leaf nodes).
+		 */
+		void addAllowanceLocal(const DataItemRegions&);
+
+		/**
+		 * Register an additional allowance for the left sub-tree.
+		 *
+		 * @return the regions added to left
+		 */
+		DataItemRegions addAllowanceLeft(const DataItemRegions& full, const DataItemRegions& required);
+
+		/**
+		 * Register an additional allowance for the right sub-tree.
+		 *
+		 * @return the regions added to right
+		 */
+		DataItemRegions addAllowanceRight(const DataItemRegions& full, const DataItemRegions& required);
+
+
+		// -- data item location protocol --
+
+		/**
+		 * The locate protocol has 3 phases:
+		 *  - phase 1: walk from origin to node T in hierarchy owning everything that is requested (no locking along path)
+		 *  - phase 2: from node T, lookup location recursively depth-first, locking nodes along the active paths
+		 *  - phase 3: return result to origin
+		 */
+
 		/**
 		 * Requests information on the location of data in the given regions.
+		 * This is the entry point, as well as the implementation of phase 1 and 3.
 		 */
 		DataItemLocationInfos locate(const DataItemRegions& regions);
 
 		/**
+		 * This recursively resolves the location of the given data regions. Implements
+		 * phase 2 of the lookup procedure.
+		 */
+		DataItemLocationInfos resolveLocations(const DataItemRegions& regions);
+
+
+
+		// -- data item acquire protocol --
+
+		/**
+		 * The acquire protocol has 4 phases:
+		 *   - phase 1: walk from target to node T in hierarchy owning everything that is required (no locking along path)
+		 *   - phase 2: lock node T
+		 *   - phase 3: from node T, acquire required data recursively, lock in depth-first search manner
+		 *   - phase 4: gradually move ownership from T to target, locking step-by-step
+		 */
+
+		/**
 		 * Retrieves the current state and ownership for the specified regions.
+		 * This is the entry point for e.g. the data item manager.
 		 */
 		DataItemMigrationData acquire(const DataItemRegions& regions);
 
 		/**
-		 * Retrieves the current state of the specified regions and transferring ownership
-		 * to the given call site.
+		 * This function handles phase 1,2, and 4.
 		 */
-		DataItemMigrationData acquireOwnership(com::HierarchyAddress caller, const DataItemRegions& regions);
+		DataItemMigrationData acquireOwnershipFor(const DataItemRegions& regions,com::HierarchyAddress child);
+
+		/**
+		 * A utility required for realizing the locking scheme of phase 4.
+		 *
+		 * @return always true; the return value is required to not make it a fire-and-forget asynchronous remote call
+		 */
+		bool lockForOwnershipTransfer();
+
+		/**
+		 * This function implements the recursive bottom-up collection of region data (phase 3) and
+		 * removes ownership by doing so.
+		 */
+		DataItemMigrationData abandonOwnership(const DataItemRegions&);
+
+	private:
+
+		// a internal utility function implementing common functionality of acquireOwnershipFor and abandonOwnership
+		DataItemMigrationData collectOwnershipFromChildren(const DataItemRegions&);
 
 	private:
 

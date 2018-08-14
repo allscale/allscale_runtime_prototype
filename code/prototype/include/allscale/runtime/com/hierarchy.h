@@ -155,7 +155,7 @@ namespace com {
 	class HierarchyService {
 
 		// the locally running services (one instance for each layer)
-		std::vector<Service> services;
+		std::vector<std::unique_ptr<Service>> services;
 
 	public:
 
@@ -167,21 +167,21 @@ namespace com {
 			auto numServices = HierarchyAddress::getLayersOn(node.getRank(),network.numNodes());
 			services.reserve(numServices);
 			for(layer_t i=0; i<numServices; i++) {
-				services.emplace_back(network, HierarchyAddress(node.getRank(), i), args...);
+				services.emplace_back(std::make_unique<Service>(network, HierarchyAddress(node.getRank(), i), args...));
 			}
 		}
 
 		// retrieves a service instance
 		Service& get(layer_t layer) {
 			assert_lt(layer,services.size());
-			return services[layer];
+			return *(services[layer]);
 		}
 
 		// applies an operation on all local services
 		template<typename Op>
 		void forAll(const Op& op) {
 			for(auto& cur : services) {
-				op(cur);
+				op(*cur);
 			}
 		}
 
@@ -260,6 +260,14 @@ namespace com {
 		 */
 		template<typename S, typename R, typename ... Args>
 		auto getRemoteProcedure(const HierarchyAddress& addr, R(S::*fun)(Args...)) const {
+			return network.getRemoteProcedure(addr.getRank(),hierarchy_service_selector<S>{addr.getLayer()},fun);
+		}
+
+		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
+		template<typename S, typename R, typename ... Args>
+		auto getRemoteProcedure(const HierarchyAddress& addr, R(S::*fun)(Args...) const) const {
 			return network.getRemoteProcedure(addr.getRank(),hierarchy_service_selector<S>{addr.getLayer()},fun);
 		}
 

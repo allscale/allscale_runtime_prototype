@@ -251,6 +251,58 @@ namespace sim {
 
 		};
 
+
+		/**
+		 * A handle for remote procedures for const member functions.
+		 */
+		template<typename Selector, typename S, typename R, typename ... Args>
+		class RemoteConstProcedure {
+
+			// the targeted node
+			Node& node;
+
+			// the service selector
+			Selector selector;
+
+			// the targeted service function
+			R(S::* fun)(Args...) const;
+
+			// the statistics to work with
+			Statistics& stats;
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			RemoteConstProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...) const, Statistics& stats)
+				: node(node), selector(selector), fun(fun), stats(stats) {}
+
+			/**
+			 * Realizes the actual remote procedure call.
+			 */
+			R operator()(Args ... args) const {
+				auto src = Node::getLocalRank();
+				auto trg = node.getRank();
+
+				// short-cut for local communication
+				if (src == trg) {
+					return node.run([&](Node&){
+						return (selector(node).*fun)(std::forward<Args>(args)...);
+					});
+				}
+
+				// perform an actual remote call
+				stats[src].sent_calls += 1;
+				stats[trg].received_calls += 1;
+				return node.run([&](Node&){
+					return stats.transfer(trg,src,(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
+				});
+			}
+
+		};
+
+
 		/**
 		 * A handle for broadcasts.
 		 */
@@ -349,6 +401,14 @@ namespace sim {
 			return { *(nodes[rank]), selector, fun, stats };
 		}
 
+		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
+		template<typename Selector, typename S, typename R, typename ... Args>
+		RemoteConstProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...) const) {
+			assert_lt(rank,nodes.size());
+			return { *(nodes[rank]), selector, fun, stats };
+		}
 
 		/**
 		 * Obtains a handle for performing a remote procedure call of a selected service.

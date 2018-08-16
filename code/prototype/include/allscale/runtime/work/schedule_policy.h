@@ -7,9 +7,12 @@
 
 #pragma once
 
+#include <memory>
+#include <random>
 #include <vector>
 
 #include "allscale/utils/serializer.h"
+#include "allscale/utils/serializer/functions.h"
 
 #include "allscale/runtime/com/hierarchy.h"
 #include "allscale/runtime/work/task_id.h"
@@ -33,6 +36,249 @@ namespace work {
 
 
 	std::ostream& operator<<(std::ostream&,Decision);
+
+
+
+	/**
+	 * An abstract base class for scheduling policies.
+	 */
+	class SchedulingPolicy {
+
+		using load_fun = std::unique_ptr<SchedulingPolicy>(*)(allscale::utils::ArchiveReader&);
+
+		load_fun loader;
+
+	public:
+
+		SchedulingPolicy(const load_fun& loader) : loader(loader) {};
+
+		/**
+		 * Determines whether the node with the given address is part of the dispatching of a task with the given path.
+		 *
+		 * @param addr the address in the hierarchy to be tested
+		 * @param path the path to be tested
+		 */
+		virtual bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const =0;
+
+		/**
+		 * Obtains the scheduling decision at the given node. The given node must be involved in
+		 * the scheduling of the given path.
+		 */
+		virtual Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const =0;
+
+		/**
+		 * Tests whether the given target address is a a valid target for the given path.
+		 * This is utilized for debugging.
+		 */
+		virtual bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const =0;
+
+		// --- cloning ---
+
+		virtual std::unique_ptr<SchedulingPolicy> clone() const =0;
+
+		// --- printing support ---
+
+		// requests print support for all implementations
+		virtual void printTo(std::ostream& out) const =0;
+
+		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& policy);
+
+		// --- serialization support ---
+
+		static std::unique_ptr<SchedulingPolicy> load(allscale::utils::ArchiveReader& in) {
+			return in.read<load_fun>()(in);
+		}
+
+		void store(allscale::utils::ArchiveWriter& out) const {
+			out.write(loader);
+			storeInternal(out);
+		}
+
+		virtual void storeInternal(allscale::utils::ArchiveWriter&) const =0;
+
+	};
+
+
+	/**
+	 * A modifyable scheduling policy, also supporting direct serialization.
+	 */
+	class ExchangeableSchedulingPolicy : public SchedulingPolicy {
+
+		// the policy currently represented
+		std::unique_ptr<SchedulingPolicy> policy;
+
+	public:
+
+		// DO NOT USE, should be private, but std::make_unique requires access.
+		ExchangeableSchedulingPolicy(std::unique_ptr<SchedulingPolicy>&& policy);
+
+		ExchangeableSchedulingPolicy(const SchedulingPolicy& policy);
+
+		ExchangeableSchedulingPolicy(const ExchangeableSchedulingPolicy& other);
+		ExchangeableSchedulingPolicy(ExchangeableSchedulingPolicy&&) = default;
+
+		ExchangeableSchedulingPolicy& operator=(const ExchangeableSchedulingPolicy&);
+		ExchangeableSchedulingPolicy& operator=(ExchangeableSchedulingPolicy&&) = default;
+
+
+		// --- observers / mutators ---
+
+		template<typename T>
+		bool isa() const {
+			return dynamic_cast<T*>(policy.get());
+		}
+
+		const SchedulingPolicy& getPolicy() const {
+			return *policy;
+		}
+
+		SchedulingPolicy& getPolicy() {
+			return *policy;
+		}
+
+		template<typename T>
+		const T& getPolicy() const {
+			assert_true(isa<T>());
+			return *policy;
+		}
+
+		template<typename T>
+		T& getPolicy() {
+			assert_true(isa<T>());
+			return *policy;
+		}
+
+		template<typename P, typename ... Args>
+		void setPolicy(Args&& ... args) {
+			policy = std::make_unique<P>(std::forward<Args>(args)...);
+		}
+
+		void setPolicy(std::unique_ptr<SchedulingPolicy>&& newPolicy) {
+			assert_true(bool(newPolicy));
+			policy = std::move(newPolicy);
+		}
+
+
+		// --- scheduling interface ---
+
+		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const override {
+			return policy->isInvolved(addr,path);
+		}
+
+		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const override {
+			return policy->decide(addr,path);
+		}
+
+		bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const override {
+			return policy->checkTarget(addr,path);
+		}
+
+
+		// --- cloning ---
+
+		std::unique_ptr<SchedulingPolicy> clone() const override;
+
+
+		// --- printing support ---
+
+		void printTo(std::ostream& out) const override {
+			policy->printTo(out);
+		}
+
+
+		// --- serialization support ---
+
+		static ExchangeableSchedulingPolicy load(allscale::utils::ArchiveReader& in) {
+			return SchedulingPolicy::load(in);
+		}
+
+		void store(allscale::utils::ArchiveWriter& out) const {
+			policy->store(out);
+		}
+
+		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const {
+			policy->store(out);
+		}
+
+	private:
+
+		static std::unique_ptr<SchedulingPolicy> loadAsUniquePtr(allscale::utils::ArchiveReader& in) {
+			return std::make_unique<ExchangeableSchedulingPolicy>(load(in));
+		}
+
+	};
+
+
+
+	// ---------------------------------------------------------------
+	//				      Random Policy
+	// ---------------------------------------------------------------
+
+	/**
+	 * A scheduling policy assisting the scheduler in deciding
+	 * the direction in which to schedule tasks.
+	 */
+	class RandomSchedulingPolicy : public SchedulingPolicy {
+
+		// the task-cut-off level (determining granulartiy of processed tasks)
+		int cutOffLevel;
+
+		// a random device - because only random is truly fair
+		mutable std::uniform_real_distribution<> policy;
+
+		// the source for random values
+		mutable std::random_device generator;
+
+	public:
+
+		RandomSchedulingPolicy(int cutOffLevel = 0) : SchedulingPolicy(loadAsUniquePtr), cutOffLevel(cutOffLevel) {}
+
+
+		// --- the main interface for the scheduler ---
+
+		/**
+		 * Determines whether the node with the given address is part of the dispatching of a task with the given path.
+		 *
+		 * @param addr the address in the hierarchy to be tested
+		 * @param path the path to be tested
+		 */
+		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const override;
+
+		/**
+		 * Obtains the scheduling decision at the given node. The given node must be involved in
+		 * the scheduling of the given path.
+		 */
+		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const override;
+
+		/**
+		 * Tests whether the given address is a valid target for a task with the given task.
+		 */
+		bool checkTarget(const com::HierarchyAddress&, const TaskPath&) const override {
+			return true; // every target is ok
+		}
+
+		// --- cloning ---
+
+		std::unique_ptr<SchedulingPolicy> clone() const override;
+
+		// --- printing support ---
+
+		// requests print support for all implementations
+		void printTo(std::ostream& out) const override;
+
+		// --- serialization support ---
+
+		void storeInternal(allscale::utils::ArchiveWriter& out) const;
+
+	private:
+
+		static std::unique_ptr<SchedulingPolicy> loadAsUniquePtr(allscale::utils::ArchiveReader& in);
+
+	};
+
+	// ---------------------------------------------------------------
+	//				 Decision Tree Based Policy
+	// ---------------------------------------------------------------
 
 	class DecisionTree {
 
@@ -71,7 +317,7 @@ namespace work {
 	 * A scheduling policy assisting the scheduler in deciding
 	 * the direction in which to schedule tasks.
 	 */
-	class SchedulingPolicy {
+	class DecisionTreeSchedulingPolicy : public SchedulingPolicy {
 
 		// the address of the root node of the network this policy is defined for
 		com::HierarchyAddress root;
@@ -82,12 +328,13 @@ namespace work {
 		// the routing-decision tree
 		DecisionTree tree;
 
-		SchedulingPolicy(com::HierarchyAddress root, int granulartiy, DecisionTree&& data)
-			: root(root), granulartiy(granulartiy), tree(std::move(data)) {}
-
 	public:
 
-		SchedulingPolicy() = delete;
+		// Do not use directly, should be private, but is required by std::make_unique ...
+		DecisionTreeSchedulingPolicy(com::HierarchyAddress root, int granulartiy, DecisionTree&& data)
+			: SchedulingPolicy(loadAsUniquePtr), root(root), granulartiy(granulartiy), tree(std::move(data)) {}
+
+		DecisionTreeSchedulingPolicy() = delete;
 
 		// --- factories ---
 
@@ -98,7 +345,7 @@ namespace work {
 		 * @param N the number of nodes to distribute work on
 		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 5 => 2^-5 = 3.125%
 		 */
-		static SchedulingPolicy createUniform(int N, int granularity);
+		static DecisionTreeSchedulingPolicy createUniform(int N, int granularity);
 
 		/**
 		 * Creates a scheduling policy distributing work uniformly among the given number of nodes. The
@@ -106,7 +353,7 @@ namespace work {
 		 *
 		 * @param N the number of nodes to distribute work on
 		 */
-		static SchedulingPolicy createUniform(int N);
+		static DecisionTreeSchedulingPolicy createUniform(int N);
 
 		/**
 		 * Creates an updated load balancing policy based on a given policy and a measured load distribution.
@@ -116,7 +363,7 @@ namespace work {
 		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. Ther must be one entry per node,
 		 * 			no entry must be negative.
 		 */
-		static SchedulingPolicy createReBalanced(const SchedulingPolicy& old, const std::vector<float>& loadDistribution);
+		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution);
 
 
 		// --- observer ---
@@ -141,13 +388,20 @@ namespace work {
 		 * @param addr the address in the hierarchy to be tested
 		 * @param path the path to be tested
 		 */
-		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const;
+		bool isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const override;
 
 		/**
 		 * Obtains the scheduling decision at the given node. The given node must be involved in
 		 * the scheduling of the given path.
 		 */
-		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const;
+		Decision decide(const com::HierarchyAddress& addr, const TaskPath& path) const override;
+
+		/**
+		 * Tests whether the given address is a valid target for a task with the given task.
+		 */
+		bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const {
+			return addr == getTarget(path);
+		}
 
 		/**
 		 * Computes the target address a task with the given path should be forwarded to.
@@ -155,16 +409,21 @@ namespace work {
 		com::HierarchyAddress getTarget(const TaskPath& path) const;
 
 
+		// --- cloning ---
+
+		std::unique_ptr<SchedulingPolicy> clone() const override;
+
+
+		// --- printing support ---
+
+		void printTo(std::ostream& out) const override;
+
+
 		// --- serialization support ---
 
-		static SchedulingPolicy load(allscale::utils::ArchiveReader&);
+		static std::unique_ptr<SchedulingPolicy> loadAsUniquePtr(allscale::utils::ArchiveReader&);
 
-		void store(allscale::utils::ArchiveWriter&) const;
-
-		// --- printing ---
-
-		// provide a printer for debugging
-		friend std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p);
+		void storeInternal(allscale::utils::ArchiveWriter&) const;
 
 	};
 

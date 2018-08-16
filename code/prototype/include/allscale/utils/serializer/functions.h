@@ -36,7 +36,7 @@ namespace utils {
 			#pragma GCC diagnostic ignored "-Wpmf-conversions"
 			#pragma GCC diagnostic ignored "-Wstrict-aliasing"
 
-			static void store(ArchiveWriter& writer, FP value) {
+			static void store(ArchiveWriter& writer, const FP& value) {
 
 				// get name of symbol addressed by the pointer
 				void* addr = reinterpret_cast<void*>(value);

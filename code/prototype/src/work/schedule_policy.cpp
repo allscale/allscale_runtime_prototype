@@ -14,6 +14,68 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
+
+	std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& policy) {
+		policy.printTo(out);
+		return out;
+	}
+
+	ExchangeableSchedulingPolicy::ExchangeableSchedulingPolicy(const ExchangeableSchedulingPolicy& other)
+		: SchedulingPolicy(loadAsUniquePtr), policy(other.policy->clone()) {};
+
+	ExchangeableSchedulingPolicy::ExchangeableSchedulingPolicy(std::unique_ptr<SchedulingPolicy>&& policy)
+		: SchedulingPolicy(loadAsUniquePtr), policy(std::move(policy)) {
+		assert_true(bool(policy));
+	}
+
+	ExchangeableSchedulingPolicy::ExchangeableSchedulingPolicy(const SchedulingPolicy& policy)
+		: SchedulingPolicy(loadAsUniquePtr), policy(policy.clone()) {}
+
+
+	ExchangeableSchedulingPolicy& ExchangeableSchedulingPolicy::operator=(const ExchangeableSchedulingPolicy& other) {
+		if (this == &other) return *this;
+		policy = other.policy->clone();
+		return *this;
+	}
+
+	std::unique_ptr<SchedulingPolicy> ExchangeableSchedulingPolicy::clone() const {
+		return std::make_unique<ExchangeableSchedulingPolicy>(policy->clone());
+	}
+
+
+
+	bool RandomSchedulingPolicy::isInvolved(const com::HierarchyAddress&, const TaskPath&) const {
+		return policy(generator) < 0.2;
+	}
+
+	Decision RandomSchedulingPolicy::decide(const com::HierarchyAddress&, const TaskPath& path) const {
+		auto r = policy(generator);
+		return (r < 0.33) ? Decision::Left  :
+			   (r < 0.66) ? Decision::Right :
+				  	        (path.getLength() < cutOffLevel)
+							  	  ? Decision::Stay
+								  : (( r < 0.83 ) ? Decision::Left : Decision::Right) ;
+	}
+
+
+	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::clone() const {
+		return std::make_unique<RandomSchedulingPolicy>(cutOffLevel);
+	}
+
+	void RandomSchedulingPolicy::printTo(std::ostream& out) const {
+		out << "RandomScheduling";
+	}
+
+	void RandomSchedulingPolicy::storeInternal(allscale::utils::ArchiveWriter& out) const {
+		out.write(cutOffLevel);
+	}
+
+	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::loadAsUniquePtr(allscale::utils::ArchiveReader& in) {
+		return std::make_unique<RandomSchedulingPolicy>(in.read<int>());
+	}
+
+
+
 	namespace {
 
 		int ceilLog2(std::uint64_t x) {
@@ -202,7 +264,7 @@ namespace work {
 
 	namespace {
 
-		com::rank_t traceTarget(const SchedulingPolicy& policy, TaskPath p) {
+		com::rank_t traceTarget(const DecisionTreeSchedulingPolicy& policy, TaskPath p) {
 			auto res = policy.getTarget(p);
 			while(!res.isLeaf()) {
 				p = p.getLeftChildPath();
@@ -213,7 +275,7 @@ namespace work {
 
 	}
 
-	std::vector<com::rank_t> SchedulingPolicy::getTaskDistributionMapping() const {
+	std::vector<com::rank_t> DecisionTreeSchedulingPolicy::getTaskDistributionMapping() const {
 		std::vector<com::rank_t> res;
 		res.reserve((1<<granulartiy));
 		for(const auto& cur : getAllPaths(granulartiy)) {
@@ -225,7 +287,7 @@ namespace work {
 
 
 	// create a uniform distributing policy for N nodes
-	SchedulingPolicy SchedulingPolicy::createUniform(int N, int granularity) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(int N, int granularity) {
 		// some sanity checks
 		assert_lt(0,N);
 
@@ -242,13 +304,13 @@ namespace work {
 	}
 
 	// create an uniform distributing policy for N nodes, with an auto-adjusted granularity
-	SchedulingPolicy SchedulingPolicy::createUniform(int N) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(int N) {
 		return createUniform(N,std::max(ceilLog2(N)+3,5));
 	}
 
 
 	// create a balanced work distribution based on the given load distribution
-	SchedulingPolicy SchedulingPolicy::createReBalanced(const SchedulingPolicy& p, const std::vector<float>& load) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load) {
 
 		// get given task distribution mapping
 
@@ -378,7 +440,7 @@ namespace work {
 	}
 
 
-	bool SchedulingPolicy::isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const {
+	bool DecisionTreeSchedulingPolicy::isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const {
 
 		// only the root node is involved in scheduling the root path
 		if (path.isRoot()) return addr == root;
@@ -389,7 +451,7 @@ namespace work {
 		return isInvolved(addr,path.getParentPath()) || getTarget(path) == addr;
 	}
 
-	Decision SchedulingPolicy::decide(const com::HierarchyAddress& addr, const TaskPath& path) const {
+	Decision DecisionTreeSchedulingPolicy::decide(const com::HierarchyAddress& addr, const TaskPath& path) const {
 		// make sure this address is involved in the scheduling of this task
 //		assert_pred2(isInvolved,addr,path);
 
@@ -412,7 +474,7 @@ namespace work {
 		}
 	}
 
-	com::HierarchyAddress SchedulingPolicy::getTarget(const TaskPath& path) const {
+	com::HierarchyAddress DecisionTreeSchedulingPolicy::getTarget(const TaskPath& path) const {
 		// for roots it is easy
 		if (path.isRoot()) return root;
 
@@ -430,20 +492,24 @@ namespace work {
 		return res;
 	}
 
-	SchedulingPolicy SchedulingPolicy::load(allscale::utils::ArchiveReader& in) {
-		auto root = in.read<com::HierarchyAddress>();
-		auto gran = in.read<int>();
-		return { root, gran, in.read<DecisionTree>() };
+	std::unique_ptr<SchedulingPolicy> DecisionTreeSchedulingPolicy::clone() const {
+		return std::make_unique<DecisionTreeSchedulingPolicy>(*this);
 	}
 
-	void SchedulingPolicy::store(allscale::utils::ArchiveWriter& out) const {
+	std::unique_ptr<SchedulingPolicy> DecisionTreeSchedulingPolicy::loadAsUniquePtr(allscale::utils::ArchiveReader& in) {
+		auto root = in.read<com::HierarchyAddress>();
+		auto gran = in.read<int>();
+		return std::make_unique<DecisionTreeSchedulingPolicy>( root, gran, in.read<DecisionTree>() );
+	}
+
+	void DecisionTreeSchedulingPolicy::storeInternal(allscale::utils::ArchiveWriter& out) const {
 		out.write(root);
 		out.write(granulartiy);
 		out.write(tree);
 	}
 
-	std::ostream& operator<<(std::ostream& out, const SchedulingPolicy& p) {
-		return out << p.tree << "Mapping: " << p.getTaskDistributionMapping();
+	void DecisionTreeSchedulingPolicy::printTo(std::ostream& out) const {
+		out << tree << "Mapping: " << getTaskDistributionMapping();
 	}
 
 } // end of namespace com

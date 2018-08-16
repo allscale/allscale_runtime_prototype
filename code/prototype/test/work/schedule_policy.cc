@@ -63,19 +63,36 @@ namespace work {
 
 	}
 
-	TEST(SchedulePolicy, Basic) {
+	TEST(ExchangeableSchedulingPolicy, Basic) {
 
 		// type properties
-		EXPECT_FALSE(std::is_default_constructible<SchedulingPolicy>::value);
-		EXPECT_TRUE(std::is_destructible<SchedulingPolicy>::value);
+		EXPECT_FALSE(std::is_default_constructible<ExchangeableSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_destructible<ExchangeableSchedulingPolicy>::value);
 
-		EXPECT_TRUE(std::is_copy_constructible<SchedulingPolicy>::value);
-		EXPECT_TRUE(std::is_move_constructible<SchedulingPolicy>::value);
-		EXPECT_TRUE(std::is_copy_assignable<SchedulingPolicy>::value);
-		EXPECT_TRUE(std::is_move_assignable<SchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_copy_constructible<ExchangeableSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_move_constructible<ExchangeableSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_copy_assignable<ExchangeableSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_move_assignable<ExchangeableSchedulingPolicy>::value);
 
 		// also serializable
-		EXPECT_TRUE(allscale::utils::is_serializable<SchedulingPolicy>::value);
+		EXPECT_TRUE(allscale::utils::is_serializable<ExchangeableSchedulingPolicy>::value);
+
+	}
+
+
+	TEST(DecisionTreeSchedulingPolicy, Basic) {
+
+		// type properties
+		EXPECT_FALSE(std::is_default_constructible<DecisionTreeSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_destructible<DecisionTreeSchedulingPolicy>::value);
+
+		EXPECT_TRUE(std::is_copy_constructible<DecisionTreeSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_move_constructible<DecisionTreeSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_copy_assignable<DecisionTreeSchedulingPolicy>::value);
+		EXPECT_TRUE(std::is_move_assignable<DecisionTreeSchedulingPolicy>::value);
+
+		// but not serializable ...
+		EXPECT_FALSE(allscale::utils::is_serializable<DecisionTreeSchedulingPolicy>::value);
 
 	}
 
@@ -95,7 +112,7 @@ namespace work {
 		}
 
 
-		com::HierarchyAddress traceTarget(int netSize, const SchedulingPolicy& policy, const TaskPath& path) {
+		com::HierarchyAddress traceTarget(int netSize, const DecisionTreeSchedulingPolicy& policy, const TaskPath& path) {
 			// for roots it is easy
 			if (path.isRoot()) return com::HierarchyAddress::getRootOfNetworkSize(netSize);
 
@@ -113,7 +130,7 @@ namespace work {
 			return res;
 		}
 
-		com::HierarchyAddress getTarget(int netSize, const SchedulingPolicy& policy, const TaskPath& path) {
+		com::HierarchyAddress getTarget(int netSize, const DecisionTreeSchedulingPolicy& policy, const TaskPath& path) {
 
 			// trace current path
 			auto res = traceTarget(netSize,policy,path);
@@ -156,14 +173,14 @@ namespace work {
 	}
 
 
-	TEST(SchedulePolicy, UniformFixed) {
+	TEST(DecisionTreeSchedulingPolicy, UniformFixed) {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 3;
 
 		// get uniform distributed policy
-		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+		auto u = DecisionTreeSchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 //		std::cout << u << "\n";
 
@@ -185,14 +202,14 @@ namespace work {
 
 	}
 
-	TEST(SchedulePolicy, UniformFixedCoarse) {
+	TEST(DecisionTreeSchedulingPolicy, UniformFixedCoarse) {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 2;
 
 		// get uniform distributed policy
-		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+		auto u = DecisionTreeSchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 //		std::cout << u << "\n";
 
@@ -214,14 +231,14 @@ namespace work {
 
 	}
 
-	TEST(SchedulePolicy, UniformFixedFine) {
+	TEST(DecisionTreeSchedulingPolicy, UniformFixedFine) {
 
 		constexpr int NUM_NODES = 3;
 		constexpr int CEIL_LOG_2_NUM_NODES = ceilLog2(NUM_NODES);
 		constexpr int GRANULARITY = 5;
 
 		// get uniform distributed policy
-		auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+		auto u = DecisionTreeSchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 //		std::cout << u << "\n";
 
@@ -244,7 +261,7 @@ namespace work {
 	}
 
 
-	TEST(SchedulePolicy, Uniform_N3_deeper) {
+	TEST(DecisionTreeSchedulingPolicy, Uniform_N3_deeper) {
 
 		// check larger combination of nodes and extra levels
 		for(int n=1; n<16; n++) {
@@ -257,7 +274,7 @@ namespace work {
 				int GRANULARITY = CEIL_LOG_2_NUM_NODES + e;
 
 				// get uniform distributed policy
-				auto u = SchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
+				auto u = DecisionTreeSchedulingPolicy::createUniform(NUM_NODES,GRANULARITY);
 
 				// get the list of all paths down to the given level
 				auto max_length = std::max(CEIL_LOG_2_NUM_NODES,GRANULARITY);
@@ -310,7 +327,7 @@ namespace work {
 	namespace {
 
 		// simulates the scheduling processes within the actual task scheduler
-		com::HierarchyAddress traceIndirectTarget(const SchedulingPolicy& policy, const com::HierarchyAddress& cur, const TaskPath& path) {
+		com::HierarchyAddress traceIndirectTarget(const DecisionTreeSchedulingPolicy& policy, const com::HierarchyAddress& cur, const TaskPath& path) {
 
 			// if current node is not involved, forward to parent
 			if (!policy.isInvolved(cur,path)) return traceIndirectTarget(policy,cur.getParent(),path);
@@ -355,25 +372,25 @@ namespace work {
 			forAllChildren(addr.getRightChild(),op);
 		}
 
-		void testAllSources(const SchedulingPolicy& policy, const std::string& trg, const TaskPath& path) {
+		void testAllSources(const DecisionTreeSchedulingPolicy& policy, const std::string& trg, const TaskPath& path) {
 			forAllChildren(policy.getPresumedRootAddress(),[&](const com::HierarchyAddress& cur){
 				EXPECT_EQ(trg,toString(traceIndirectTarget(policy,cur,path))) << "Origin: " << cur << "\nPath: " << path << "\n";
 			});
 		}
 
-		void testAllSources(const SchedulingPolicy& policy, const com::HierarchyAddress& trg, const TaskPath& path) {
+		void testAllSources(const DecisionTreeSchedulingPolicy& policy, const com::HierarchyAddress& trg, const TaskPath& path) {
 			testAllSources(policy,toString(trg),path);
 		}
 	}
 
-	TEST(SchedulingPolicy,Redirect) {
+	TEST(DecisionTreeSchedulingPolicy,Redirect) {
 
 		// start from wrong positions and see whether target can be located successfully
 
 		for(int num_nodes=1; num_nodes<=10; num_nodes++) {
 
 			// get a uniform distribution
-			auto policy = SchedulingPolicy::createUniform(num_nodes);
+			auto policy = DecisionTreeSchedulingPolicy::createUniform(num_nodes);
 
 //			std::cout << "N=" << num_nodes << "\n" << policy << "\n";
 
@@ -385,19 +402,19 @@ namespace work {
 		}
 	}
 
-	TEST(SchedulingPolicy, Rebalancing) {
+	TEST(DecisionTreeSchedulingPolicy, Rebalancing) {
 
-		auto u = SchedulingPolicy::createUniform(4,5);
+		auto u = DecisionTreeSchedulingPolicy::createUniform(4,5);
 
 		// providing a nicely balanced load should not cause any changes
 		auto loadDist = std::vector<float>(4,1.0);
-		auto b1 = SchedulingPolicy::createReBalanced(u,loadDist);
+		auto b1 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist);
 		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
 
 		// alter the distribution
 		loadDist[1] = 3;		// node 1 has 3x more load
 		loadDist[3] = 2;		// node 3 has 2x more load
-		auto b2 = SchedulingPolicy::createReBalanced(u,loadDist);
+		auto b2 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist);
 		EXPECT_NE(u.getTaskDistributionMapping(),b2.getTaskDistributionMapping());
 
 
@@ -406,7 +423,7 @@ namespace work {
 		loadDist[1] = 1.5;
 		loadDist[2] = 1.25;
 		loadDist[3] = 2;
-		auto b3 = SchedulingPolicy::createReBalanced(u,loadDist);
+		auto b3 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist);
 		EXPECT_NE(u.getTaskDistributionMapping(),b3.getTaskDistributionMapping());
 
 
@@ -415,7 +432,7 @@ namespace work {
 		loadDist[1] = 0.98;
 		loadDist[2] = 0.99;
 		loadDist[3] = 1.04;
-		auto b4 = SchedulingPolicy::createReBalanced(u,loadDist);
+		auto b4 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist);
 		EXPECT_EQ(u.getTaskDistributionMapping(),b4.getTaskDistributionMapping());
 
 
@@ -425,31 +442,31 @@ namespace work {
 		loadDist[1] = 0;
 		loadDist[2] = 0.99;
 		loadDist[3] = 1.04;
-		auto b5 = SchedulingPolicy::createReBalanced(u,loadDist);
+		auto b5 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist);
 		EXPECT_NE(u.getTaskDistributionMapping(),b5.getTaskDistributionMapping());
 
 	}
 
-	TEST(SchedulingPolicy, Scaling) {
+	TEST(DecisionTreeSchedulingPolicy, Scaling) {
 
 		int N = 200;
 
 		// create a policy for N nodes
-		auto policy = SchedulingPolicy::createUniform(N);
+		auto policy = DecisionTreeSchedulingPolicy::createUniform(N);
 
 		std::cout << policy.getTaskDistributionMapping() << "\n";
 
 	}
 
-	TEST(SchedulingPolicy, Scaling_Rebalancing) {
+	TEST(DecisionTreeSchedulingPolicy, Scaling_Rebalancing) {
 
 		int N = 200;
 
 		// create a policy for N nodes
-		auto u = SchedulingPolicy::createUniform(N);
+		auto u = DecisionTreeSchedulingPolicy::createUniform(N);
 
 		std::vector<float> load(N,1.0);
-		auto b = SchedulingPolicy::createReBalanced(u,load);
+		auto b = DecisionTreeSchedulingPolicy::createReBalanced(u,load);
 
 		EXPECT_EQ(u.getTaskDistributionMapping(),b.getTaskDistributionMapping());
 

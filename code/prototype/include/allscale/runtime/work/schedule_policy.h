@@ -139,13 +139,13 @@ namespace work {
 		template<typename T>
 		const T& getPolicy() const {
 			assert_true(isa<T>());
-			return *policy;
+			return static_cast<const T&>(*policy);
 		}
 
 		template<typename T>
 		T& getPolicy() {
 			assert_true(isa<T>());
-			return *policy;
+			return static_cast<T&>(*policy);
 		}
 
 		template<typename P, typename ... Args>
@@ -303,6 +303,15 @@ namespace work {
 		// provide a printer for debugging
 		friend std::ostream& operator<<(std::ostream& out, const DecisionTree& tree);
 
+		// --- operators ---
+
+		bool operator==(const DecisionTree& other) const {
+			return encoded == other.encoded;
+		}
+
+		bool operator!=(const DecisionTree& other) const {
+			return !(*this == other);
+		}
 
 		// --- serialization support ---
 
@@ -408,6 +417,15 @@ namespace work {
 		 */
 		com::HierarchyAddress getTarget(const TaskPath& path) const;
 
+		// --- operator ---
+
+		bool operator==(const DecisionTreeSchedulingPolicy& other) const {
+			return tree == other.tree;
+		}
+
+		bool operator!=(const DecisionTreeSchedulingPolicy& other) const {
+			return tree != other.tree;
+		}
 
 		// --- cloning ---
 

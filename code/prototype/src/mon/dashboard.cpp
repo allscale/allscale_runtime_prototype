@@ -203,6 +203,46 @@ namespace mon {
 	}
 
 
+	namespace {
+
+		template<typename T, std::size_t size>
+		class MeasureBuffer {
+
+			std::array<T,size> data;
+
+			std::array<time_point,size> times;
+
+			std::size_t counter = 0;
+			std::size_t next = 0;
+
+		public:
+
+			void push(const T& value, const time_point& now) {
+				data[next] = value;
+				times[next] = now;
+				next = (next + 1) % size;
+				counter++;
+			}
+
+			const T& getOldest() {
+				return data[getOldestPosition()];
+			}
+
+			const time_point& getOldestTime() {
+				return times[getOldestPosition()];
+			}
+
+		public:
+
+			std::size_t getOldestPosition() const {
+				return (counter < size) ? 0 : next;
+			}
+
+		};
+
+	}
+
+
 	// -- Node State Service --
 
 	class NodeStateService {
@@ -224,7 +264,9 @@ namespace mon {
 		// old worker state
 		std::uint64_t lastTaskCount = 0;
 		double lastProcessedWork = 0;
-		std::chrono::nanoseconds lastProcessTime;
+
+		// a roughly 10-second work buffer (10 observation samples)
+		MeasureBuffer<std::chrono::nanoseconds,10> processTimeBuffer;
 
 		CPULoadSensor cpu_sensor;
 
@@ -234,8 +276,7 @@ namespace mon {
 			: network(com::Network::getNetwork()),
 			  localNode(node),
 			  startup_time(clock::now()),
-			  last(startup_time),
-			  lastProcessTime(0) {}
+			  last(startup_time) {}
 
 		NodeState getState() {
 
@@ -299,8 +340,12 @@ namespace mon {
 				res.weighted_task_throughput = calcThroughput(lastProcessedWork,curProcess);
 				lastProcessedWork = curProcess;
 
-				res.idle_rate = 1 - ((processTime - lastProcessTime) / interval);
-				lastProcessTime = processTime;
+				// compute idle rate over entire observed interval
+				res.idle_rate = 1 - (processTime - processTimeBuffer.getOldest())/std::chrono::duration_cast<std::chrono::duration<float>>(now - processTimeBuffer.getOldestTime());
+
+				// aggregate process time
+				processTimeBuffer.push(processTime, now);
+
 			}
 
 			// done

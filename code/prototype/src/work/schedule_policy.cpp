@@ -25,7 +25,7 @@ namespace work {
 
 	ExchangeableSchedulingPolicy::ExchangeableSchedulingPolicy(std::unique_ptr<SchedulingPolicy>&& policy)
 		: SchedulingPolicy(loadAsUniquePtr), policy(std::move(policy)) {
-		assert_true(bool(policy));
+		assert_true(bool(this->policy));
 	}
 
 	ExchangeableSchedulingPolicy::ExchangeableSchedulingPolicy(const SchedulingPolicy& policy)

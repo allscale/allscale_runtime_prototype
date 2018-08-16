@@ -39,6 +39,7 @@ foreach(test ${prototype_integration_tests})
     target_link_libraries(${tgt} prototype)
     add_test(NAME ${tgt}_uniform COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
 #    add_test(NAME ${tgt}_random  COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
+    add_test(NAME ${tgt}_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
 endforeach(test)
 
 # copy amdados config file

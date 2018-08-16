@@ -1,5 +1,8 @@
 
+#include <condition_variable>
 #include <random>
+
+#include "allscale/utils/printer/vectors.h"
 
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/com/hierarchy.h"
@@ -114,6 +117,16 @@ namespace work {
 			 *
 			 */
 
+			// updates the utilized policy
+			const ExchangeableSchedulingPolicy& getPolicy() const {
+				return policy;
+			}
+
+			// updates the utilized policy
+			void setPolicy(const ExchangeableSchedulingPolicy& p) {
+				policy = p;
+			}
+
 			// requests this scheduler instance to schedule this task.
 			bool schedule(TaskReference task) {
 
@@ -186,7 +199,7 @@ namespace work {
 
 				// if it should stay, process it here
 				if (task->isSplitable() && d == Decision::Stay) {	// non-splitable task must not stay on inner level
-					assert_lt(id.getDepth(),getCutOffLevel());
+//					assert_lt(id.getDepth(),getCutOffLevel());
 					diis.addAllowanceLocal(allowance);
 					return scheduleLocal(std::move(task));
 				}
@@ -223,11 +236,11 @@ namespace work {
 			bool scheduleLocal(TaskPtr&& task) {
 
 				// make sure this is as it has been intended by the policy
-				if (task->isSplitable()) {
-					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
-						<< "Task: " << task->getId() << "\n"
-						<< "Policy:\n" << policy;
-				}
+//				if (task->isSplitable()) {
+//					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
+//						<< "Task: " << task->getId() << "\n"
+//						<< "Policy:\n" << policy;
+//				}
 
 				DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
 
@@ -257,6 +270,147 @@ namespace work {
 
 		}
 
+
+		class InterNodeLoadBalancer {
+
+			using clock = std::chrono::high_resolution_clock;
+			using time_point = clock::time_point;
+
+			// the network being part of
+			com::Network& network;
+
+			// the node being installed on
+			com::Node& node;
+
+			// TODO: add this to a general timer service!
+
+			// the thread periodically collecting data adjusting the load balance (only running on locality 0)
+			std::thread thread;
+
+			// flag indicating whether this service is still alive
+			std::atomic<bool> alive;
+
+			// condition variable to communicate with reporting thread
+			std::mutex mutex;
+			std::condition_variable condition_var;
+
+			using guard = std::lock_guard<std::mutex>;
+
+			// -- efficiency measurement --
+
+			time_point lastSampleTime;
+
+			std::chrono::nanoseconds lastProcessTime;
+
+		public:
+
+			InterNodeLoadBalancer(com::Node& local)
+				: network(com::Network::getNetwork()),
+				  node(local),
+				  alive(node.getRank() == 0),
+				  lastSampleTime(now()),
+				  lastProcessTime(0) {
+
+				// start up balancing thread
+				if (!alive) return;
+
+				// start thread
+				thread = std::thread([&]{ run(); });
+			}
+
+
+			~InterNodeLoadBalancer() {
+				if (!alive) return;
+
+				// set alive to false
+				{
+					guard g(mutex);
+					alive = false;
+				}
+
+				// signal change to worker
+				condition_var.notify_all();
+
+				// wait for thread to finish
+				thread.join();
+			}
+
+			// to be called by remote to collect this nodes efficiency
+			float getEfficiency() {
+				// take a sample
+				auto curTime = now();
+				auto curProcess = node.getService<work::Worker>().getProcessTime();
+
+				// compute efficiency
+				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastSampleTime);
+				auto res = (curProcess - lastProcessTime)/ interval;
+
+				// keep track of data
+				lastSampleTime = curTime;
+				lastProcessTime = curProcess;
+
+				// done
+				return res;
+			}
+
+			void updatePolicy(const ExchangeableSchedulingPolicy& policy) {
+				// get local scheduler service
+				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
+				// update policies
+				service.forAll([&](auto& cur) { cur.setPolicy(policy); });
+			}
+
+		private:
+
+			void balance() const {
+
+
+				// collect the load of all nodes
+				com::rank_t numNodes = network.numNodes();
+				std::vector<float> load(numNodes);
+				for(com::rank_t i=0; i<numNodes; i++) {
+					load[i] = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getEfficiency)();
+				}
+
+				// get the local scheduler
+				auto& scheduleService = node.getService<com::HierarchyService<ScheduleService>>().get(0);
+
+				// get current policy
+				auto& policy = scheduleService.getPolicy();
+				assert_true(policy.isa<DecisionTreeSchedulingPolicy>());
+
+				// re-balance load
+				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
+				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load);
+
+				// check whether something has changed
+				if (curPolicy == newPolicy) return;
+
+				// distribute new policy
+				for(com::rank_t i=0; i<numNodes; i++) {
+					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy);
+				}
+			}
+
+			void run() {
+				// run a balancing round every 10 seconds
+				using namespace std::literals::chrono_literals;
+				while(true) {
+					std::unique_lock<std::mutex> g(mutex);
+					condition_var.wait_for(g, 2s,[&](){ return !alive; });
+					if (!alive) return;
+					node.run([&](com::Node&){
+						balance();
+					});
+				}
+			}
+
+			static time_point now() {
+				return std::chrono::high_resolution_clock::now();
+			}
+
+		};
+
 	} // end namespace detail
 
 
@@ -276,22 +430,31 @@ namespace work {
 			option = user;
 		}
 
+		// check validity
+		if (option != "uniform" && option != "random" && option != "dynamic") {
+			std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
+			std::cout << "Using default: uniform\n";
+			option = "uniform";
+		}
+
 		// instantiate the scheduling policy
 		std::unique_ptr<SchedulingPolicy> policy;
-		if (option == std::string("random")) {
+		if (option == "random") {
 			policy = std::make_unique<RandomSchedulingPolicy>(getCutOffLevel(network.numNodes()));
 		} else {
-			if (option != std::string("uniform")) {
-				std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
-				std::cout << "Using default: uniform\n";
-			}
+			// the rest is based on a decision tree scheduler
 			policy = std::make_unique<DecisionTreeSchedulingPolicy>(DecisionTreeSchedulingPolicy::createUniform(network.numNodes()));
 		}
 		assert_true(policy);
 
+
 		// start up scheduling service
 		hierarchy.installServiceOnNodes<detail::ScheduleService>(*policy);
 		hierarchy.installServiceOnNodes<data::DataItemIndexService>();
+
+		if (option == "dynamic") {
+			network.installServiceOnNodes<detail::InterNodeLoadBalancer>();
+		}
 	}
 
 } // end of namespace com

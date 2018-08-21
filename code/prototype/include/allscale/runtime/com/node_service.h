@@ -51,9 +51,9 @@ namespace com {
 		// The service registry.
 		std::map<std::type_index,std::unique_ptr<ServiceBase>> services;
 
-		mutable std::mutex lock;
+		mutable std::recursive_mutex lock;
 
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<std::recursive_mutex>;
 
 	public:
 

@@ -4,6 +4,7 @@
 
 #include "allscale/utils/printer/vectors.h"
 
+#include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/mon/dashboard.h"
 
@@ -16,6 +17,8 @@ namespace mon {
 		// create a network
 		auto network = com::Network::create();
 		auto& net = *network;
+
+		utils::installPeriodicExecutorService(net);
 
 		installDashbordService(net);
 
@@ -36,6 +39,9 @@ namespace mon {
 
 		// block before shutdown
 		net.sync();
+
+		// remove periodic executor service
+		utils::removePeriodicExecutorService(net);
 
 		// shutdown dashboard service
 		shutdownDashbordService(net);

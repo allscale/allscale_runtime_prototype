@@ -3,6 +3,7 @@
 
 #include "allscale/runtime/runtime.h"
 
+#include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
 #include "allscale/runtime/work/treeture.h"
@@ -13,6 +14,9 @@ namespace allscale {
 namespace runtime {
 
 	Runtime::Runtime(com::Network& net) : network(net) {
+
+		// start with the basic, periodic executor service
+		utils::installPeriodicExecutorService(network);
 
 		// install data item manager services
 		network.installServiceOnNodes<data::DataItemManagerService>();
@@ -37,6 +41,9 @@ namespace runtime {
 
 		// wait until all network instances are at this point
 		network.sync();
+
+		// start by stopping periodic operations
+		utils::installPeriodicExecutorService(network);
 
 		// shutdown dashboard service
 		mon::shutdownDashbordService(network);

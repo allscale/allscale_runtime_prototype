@@ -10,9 +10,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
 
 // headers for IP socket:
 
@@ -28,6 +25,7 @@
 
 #include "allscale/utils/printer/vectors.h"
 
+#include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/worker.h"
 
@@ -373,21 +371,11 @@ namespace mon {
 		// the node being installed on
 		com::Node& node;
 
-		// TODO: maybe add a general timer service?
-
-		// the thread periodically collecting data and sending it to the dashboard
-		std::thread thread;
-
-		// flag indicating whether this service is still alive
-		std::atomic<bool> alive;
-
-		// condition variable to communicate with reporting thread
-		std::mutex mutex;
-		std::condition_variable condition_var;
-
-		using guard = std::lock_guard<std::mutex>;
+		// a flag determining whether this service is connected to a dashboard
+		bool alive;
 
 		// -- connection to dashboard server --
+
 		int sock;
 
 	public:
@@ -444,23 +432,14 @@ namespace mon {
 			if (!alive) return;
 
 			// start thread
-			thread = std::thread([&]{ run(); });
+			node.getService<utils::PeriodicExecutorService>().runPeriodically(
+				[&](){ update(); return true; },
+				std::chrono::seconds(1)
+			);
 		}
 
 		~DashboardService() {
 			if (!alive) return;
-
-			// set alive to false
-			{
-				guard g(mutex);
-				alive = false;
-			}
-
-			// signal change to worker
-			condition_var.notify_all();
-
-			// wait for thread to finish
-			thread.join();
 
 			// send final info
 			sendShutdownInfo();
@@ -471,26 +450,16 @@ namespace mon {
 
 	private:
 
-		void run() {
-			using namespace std::literals::chrono_literals;
-			while(true) {
-				std::unique_lock<std::mutex> g(mutex);
-				condition_var.wait_for(g, 1s,[&](){ return !alive; });
-				if (!alive) return;
-				node.run([&](com::Node&){
-					update();
-				});
-			}
-		}
-
 		void update() {
+			node.run([&](com::Node&){
 
-			// collect data
-			auto data = getSystemState(network);
+				// collect data
+				auto data = getSystemState(network);
 
-			// send data
-			sendUpdate(data);
+				// send data
+				sendUpdate(data);
 
+			});
 		}
 
 		void sendShutdownInfo() {

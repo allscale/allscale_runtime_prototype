@@ -1,9 +1,9 @@
 
-#include <condition_variable>
 #include <random>
 
 #include "allscale/utils/printer/vectors.h"
 
+#include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/com/hierarchy.h"
 
@@ -282,20 +282,6 @@ namespace work {
 			// the node being installed on
 			com::Node& node;
 
-			// TODO: add this to a general timer service!
-
-			// the thread periodically collecting data adjusting the load balance (only running on locality 0)
-			std::thread thread;
-
-			// flag indicating whether this service is still alive
-			std::atomic<bool> alive;
-
-			// condition variable to communicate with reporting thread
-			std::mutex mutex;
-			std::condition_variable condition_var;
-
-			using guard = std::lock_guard<std::mutex>;
-
 			// -- efficiency measurement --
 
 			time_point lastSampleTime;
@@ -307,32 +293,17 @@ namespace work {
 			InterNodeLoadBalancer(com::Node& local)
 				: network(com::Network::getNetwork()),
 				  node(local),
-				  alive(node.getRank() == 0),
 				  lastSampleTime(now()),
 				  lastProcessTime(0) {
 
-				// start up balancing thread
-				if (!alive) return;
+				// only on rank 0 the balancer shall be started
+				if (node.getRank() != 0) return;
 
-				// start thread
-				thread = std::thread([&]{ run(); });
-			}
-
-
-			~InterNodeLoadBalancer() {
-				if (!alive) return;
-
-				// set alive to false
-				{
-					guard g(mutex);
-					alive = false;
-				}
-
-				// signal change to worker
-				condition_var.notify_all();
-
-				// wait for thread to finish
-				thread.join();
+				// start periodic balancing
+				node.getLocalService<utils::PeriodicExecutorService>().runPeriodically(
+						[&]{ run(); return true; },
+						std::chrono::seconds(2)
+				);
 			}
 
 			// to be called by remote to collect this nodes efficiency
@@ -393,16 +364,9 @@ namespace work {
 			}
 
 			void run() {
-				// run a balancing round every 10 seconds
-				using namespace std::literals::chrono_literals;
-				while(true) {
-					std::unique_lock<std::mutex> g(mutex);
-					condition_var.wait_for(g, 2s,[&](){ return !alive; });
-					if (!alive) return;
-					node.run([&](com::Node&){
-						balance();
-					});
-				}
+				node.run([&](com::Node&){
+					balance();
+				});
 			}
 
 			static time_point now() {

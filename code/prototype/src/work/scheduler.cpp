@@ -128,7 +128,7 @@ namespace work {
 			}
 
 			// requests this scheduler instance to schedule this task.
-			bool schedule(TaskReference task) {
+			void schedule(TaskReference task) {
 
 				// Phase 1: locate virtual node allowed to perform the scheduling
 				DLOG << "Start Scheduling " << task->getId() << " on " << myAddr << " ... \n";
@@ -145,7 +145,8 @@ namespace work {
 					) {
 					// we can schedule it right here!
 					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
-					return scheduleDown(std::move(task),{});
+					scheduleDown(std::move(task),{});
+					return;
 				}
 
 				// TODO: replace this with a schedule-up phase forwarding allowances
@@ -154,13 +155,15 @@ namespace work {
 				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
 				if (!unallocated.empty()) {
 					// take unallocated share and pass along scheduling process
-					return scheduleDown(std::move(task),unallocated);
+					scheduleDown(std::move(task),unallocated);
+					return;
 				}
 
 				// propagate to parent
 				if (!isRoot) {
 					// forward call to parent node
-					return network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
+					network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
+					return;
 				}
 
 				// Phase 2: propagate task down the hierarchy
@@ -170,11 +173,11 @@ namespace work {
 				auto missing = diis.getMissingRegions(task->getProcessRequirements().getWriteRequirements());
 
 				// pass those along with the scheduling process
-				return scheduleDown(std::move(task),missing);
+				scheduleDown(std::move(task),missing);
 
 			}
 
-			bool scheduleDown(TaskReference task, const data::DataItemRegions& allowance) {
+			void scheduleDown(TaskReference task, const data::DataItemRegions& allowance) {
 
 				// make sure this is processed on the right node
 				assert_eq(myAddr.getRank(),com::Node::getLocalRank());
@@ -185,7 +188,8 @@ namespace work {
 				// on leaf level, schedule locally
 				if (myAddr.isLeaf()) {
 					diis.addAllowanceLocal(allowance);
-					return scheduleLocal(std::move(task));
+					scheduleLocal(std::move(task));
+					return;
 				}
 
 				// schedule locally if decided to do so
@@ -201,7 +205,8 @@ namespace work {
 				if (task->isSplitable() && d == Decision::Stay) {	// non-splitable task must not stay on inner level
 //					assert_lt(id.getDepth(),getCutOffLevel());
 					diis.addAllowanceLocal(allowance);
-					return scheduleLocal(std::move(task));
+					scheduleLocal(std::move(task));
+					return;
 				}
 
 				bool targetLeft = (d == Decision::Left);
@@ -228,12 +233,12 @@ namespace work {
 				DLOG << "Dispatching " << id << " on " << myAddr << " to " << next << " with " << subAllowances << " ... \n";
 
 				// forward task
-				return network.getRemoteProcedure(next,&ScheduleService::scheduleDown)(std::move(task),subAllowances);
+				network.getRemoteProcedure(next,&ScheduleService::scheduleDown)(std::move(task),subAllowances);
 			}
 
 
 			// process the task
-			bool scheduleLocal(TaskPtr&& task) {
+			void scheduleLocal(TaskPtr&& task) {
 
 				// make sure this is as it has been intended by the policy
 //				if (task->isSplitable()) {
@@ -246,9 +251,6 @@ namespace work {
 
 				// assign to local worker
 				com::Node::getLocalService<Worker>().schedule(std::move(task));
-
-				// success
-				return true;
 			}
 
 		};

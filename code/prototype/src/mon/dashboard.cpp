@@ -433,7 +433,7 @@ namespace mon {
 
 			// start thread
 			node.getService<utils::PeriodicExecutorService>().runPeriodically(
-				[&](){ update(); return true; },
+				[&](){ update(); return alive; },
 				std::chrono::seconds(1)
 			);
 		}
@@ -488,29 +488,24 @@ namespace mon {
 			std::stringstream msg;
 			msg << "{\"time\":" << time << ",\"type\":\"status\",\"nodes\":" << data << "}";
 
-			// sent to bashboard
-
 			// get as string
 			auto json = msg.str();
 
-			// create send buffer
-			auto bufferSize = sizeof(std::uint64_t) + json.length();
-			char* buffer = new char[bufferSize];
+			// sent to bashboard
+			auto send = [&](const void* msg, int size) {
+				if (!alive) return;
+				if (write(sock,msg,size) != size) {
+					std::cerr << "Lost dashboard connection, ending status broadcasts.";
+					alive = false;
+				}
+			};
 
-			// copy message to buffer
-			auto msgSizeBE = htobe64(json.length());		// conversion to big-endian
-			memcpy(buffer,&msgSizeBE,sizeof(std::uint64_t));
-			memcpy(buffer+sizeof(std::uint64_t),json.c_str(),json.size());
+			// send message size
+			std::uint64_t msgSizeBE = htobe64(json.length());
+			send(&msgSizeBE,sizeof(std::uint64_t));
 
 			// send message
-			int size = write(sock,buffer,bufferSize);
-			if (size != int(bufferSize)) {
-				std::cerr << "Lost dashboard connection, ending status broadcast.";
-				alive = false;
-			}
-
-			// free buffer
-			delete [] buffer;
+			send(json.c_str(),json.length());
 
 		}
 	};

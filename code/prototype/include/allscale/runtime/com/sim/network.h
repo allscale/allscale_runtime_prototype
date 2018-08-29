@@ -338,7 +338,7 @@ namespace sim {
 					// short-cut for local communication
 					if (src == trg) {
 						node->run([&](Node&){
-							(node->getService<S>().*fun)(std::forward<Args>(args)...);
+							(node->template getService<S>().*fun)(std::forward<Args>(args)...);
 						});
 						continue;
 					}
@@ -346,7 +346,7 @@ namespace sim {
 					// perform remote call
 					stats[trg].received_bcasts += 1;
 					node->run([&](Node&){
-						(node->getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+						(node->template getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
 					});
 
 				}

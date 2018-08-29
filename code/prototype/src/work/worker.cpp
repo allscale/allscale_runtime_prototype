@@ -194,8 +194,9 @@ namespace work {
 		if (Worker* worker = tl_current_worker) {
 			worker->step();
 		} else {
-			// yield this thread (not a worker)
-			std::this_thread::yield();
+			// yield this thread (the main thread, not a worker)
+			using namespace std::chrono_literals;
+			std::this_thread::sleep_for(10ms);
 		}
 	}
 

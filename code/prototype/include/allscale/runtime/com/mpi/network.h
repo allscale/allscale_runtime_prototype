@@ -130,11 +130,60 @@ namespace mpi {
 
 	public:
 
+		// TODO: refactor -- move statistic to implementation independent header file.
+
 		/**
 		 * Data and message transfer statistics in this network.
 		 */
 		class Statistics {
 		public:
+
+			/**
+			 * The statistics entry per node.
+			 */
+			struct Entry {
+
+				std::uint64_t sent_bytes = 0;			// < number of sent bytes
+				std::uint64_t received_bytes = 0;		// < number of received bytes
+				std::uint32_t sent_calls = 0;	  		// < number of sent calls
+				std::uint32_t received_calls = 0;		// < number or received calls
+				std::uint32_t sent_bcasts = 0;			// < number of sent broadcasts
+				std::uint32_t received_bcasts = 0;		// < number of received broadcasts
+
+				friend std::ostream& operator<<(std::ostream&,const Entry&);
+
+			};
+
+		private:
+
+			/**
+			 * The per-node statistics data represented.
+			 */
+			std::vector<Entry> stats;
+
+		public:
+
+			/**
+			 * Creates a new statics for the given number of nodes.
+			 */
+			Statistics(size_t size = 1) : stats(size) {}
+
+			/**
+			 * Obtain the statistics of some node.
+			 */
+			Entry& operator[](rank_t rank) {
+				assert_lt(rank, stats.size());
+				return stats[rank];
+			}
+
+			/**
+			 * Obtain the statistics of some node.
+			 */
+			const Entry& operator[](rank_t rank) const {
+				assert_lt(rank, stats.size());
+				return stats[rank];
+			}
+
 
 			/**
 			 * Support printing of statistics.
@@ -358,6 +407,135 @@ namespace mpi {
 
 		};
 
+
+		/**
+		 * A handle for remote procedures.
+		 */
+		template<typename Selector, typename S, typename R, typename ... Args>
+		class RemoteConstProcedure {
+
+			// the local node
+			Node& local;
+
+			// the targeted node
+			rank_t target;
+
+			// the service selector
+			Selector selector;
+
+			// the targeted service function
+			R(S::* fun)(Args...) const;
+
+			// the tuple encoding the arguments
+			using args_tuple = std::tuple<R(S::*)(Args...) const,Selector,std::decay_t<Args>...>;
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			RemoteConstProcedure(Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...) const)
+				: local(local), target(target), selector(selector), fun(fun) {}
+
+			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
+				assert_pred1(isRequestTag,request_tag);
+
+				// unpack archive to obtain arguments
+				auto args = allscale::utils::deserialize<args_tuple>(archive);
+
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request " << request_tag << " ...\n";
+
+				// run service
+				R res = detail::runOperationOn<R>(node, args);
+
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " to source " << source << " ...\n";
+
+				// send back result to source
+				allscale::utils::Archive a = allscale::utils::serialize(res);
+				auto& buffer = a.getBuffer();
+				{
+					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
+				}
+
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " to source " << source << "\n";
+			}
+
+			/**
+			 * Realizes the actual remote procedure call.
+			 */
+			R operator()(Args ... args) {
+				auto src = local.getRank();
+				auto trg = target;
+
+				// short-cut for local communication
+				if (src == trg) {
+					return (selector(local).*fun)(std::forward<Args>(args)...);
+				}
+
+				// perform remote call
+				int request_tag = getFreshRequestTag();
+				int response_tag = getResponseTag(request_tag);
+				{
+					// create an argument tuple and serialize it
+					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
+					auto msg = allscale::utils::serialize(request_msg_t(&handleRequest,aa));
+					auto& buffer = msg.getBuffer();
+					// send to target node
+
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " ...\n";
+
+					{
+						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
+					}
+
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent\n";
+
+				}
+
+				// wait for result
+				// TODO: avoid blocking, yield to worker thread
+//				work::yield();
+				int flag = false;
+				MPI_Status status;
+				while(!flag) {
+					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+				}
+
+				// check validity
+				assert_eq(int(trg),status.MPI_SOURCE);
+				assert_eq(response_tag,status.MPI_TAG);
+
+				// retrieve message
+				int count = 0;
+				{
+					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					MPI_Get_count(&status,MPI_CHAR,&count);
+				}
+
+				// allocate memory
+				std::vector<char> buffer(count);
+
+				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " ...\n";
+
+				// receive message
+				{
+					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+				}
+
+				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
+
+				// unpack result
+				allscale::utils::Archive a(std::move(buffer));
+				return allscale::utils::deserialize<R>(a);
+			}
+
+		};
+
+
 		/**
 		 * A handle for broadcasts.
 		 */
@@ -456,6 +634,15 @@ namespace mpi {
 		auto getRemoteProcedure(rank_t rank, R(S::*fun)(Args...)) {
 			assert_lt(rank,numNodes());
 			return getRemoteProcedure(rank,direct_selector<S>(),fun);
+		}
+
+		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
+		template<typename Selector, typename S, typename R, typename ... Args>
+		RemoteConstProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...) const) {
+			assert_lt(rank,numNodes());
+			return { *localNode, rank, selector, fun };
 		}
 
 		/**

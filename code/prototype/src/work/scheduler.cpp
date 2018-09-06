@@ -1,6 +1,7 @@
 
 #include <random>
 #include <algorithm>
+#include <iomanip>
 
 #include "allscale/utils/printer/vectors.h"
 
@@ -263,6 +264,7 @@ namespace work {
 
 				// make sure this is as it has been intended by the policy
 //				if (task->isSplitable()) {
+//					guard g(policy_lock);
 //					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
 //						<< "Task: " << task->getId() << "\n"
 //						<< "Policy:\n" << policy;
@@ -359,7 +361,7 @@ namespace work {
 
 		private:
 
-			com::rank_t adjustNumNodes(const std::vector<float>& load, com::rank_t currentNumNodes) {
+			com::rank_t adjustNumNodes(const std::vector<float>& load, com::rank_t currentNumNodes, com::rank_t maxNodes) {
 
 				// TODO: improve node adjustment
 
@@ -380,20 +382,17 @@ namespace work {
 				float avg = std::accumulate(load.begin(),load.end(),0.0f) / currentNumNodes;
 				auto res = currentNumNodes;
 
-				// determine new number of nodes
-				if (avg < 0.5) {
-					res = std::max<com::rank_t>(res/2,1);
-				} else if (diff < 0.1 && avg < 0.6) {
-					res = std::max<com::rank_t>(res-1,1);
-				} else if (avg > 0.9) {
-					res = std::min<com::rank_t>(res+1,network.numNodes());
+				// if stable on this distribution
+				if (diff < 0.1) {
+					// compute better number of nodes
+					res = std::max<com::rank_t>(std::min<com::rank_t>(std::ceil(currentNumNodes * avg / 0.9),maxNodes),1);
 				}
 
-				std::cout << "Average load " << avg << ", load difference: " << diff;
+				std::cout << "Average load " << std::setprecision(2) << avg << ", load difference " << std::setprecision(2) << diff << ", total progress: " << std::setprecision(2) << (avg*currentNumNodes);
 				if (res != currentNumNodes) {
 					std::cout << " - switching from " << currentNumNodes << " to " << res << " nodes for next interval ..\n";
 				} else {
-					std::cout << " - using " << res << " for next interval ..\n";
+					std::cout << " - using " << res << " nodes for next interval ..\n";
 				}
 
 				return res;
@@ -409,7 +408,7 @@ namespace work {
 				}
 
 				// adjust number of involved nodes
-				lastNumNodes = adjustNumNodes(load,lastNumNodes);
+				lastNumNodes = adjustNumNodes(load,lastNumNodes,numNodes);
 
 				// compute number of nodes to be used
 				std::vector<bool> mask(numNodes);

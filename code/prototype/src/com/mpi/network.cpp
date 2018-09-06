@@ -1,5 +1,5 @@
 
-#if true || defined(ENABLE_MPI)
+#if defined(ENABLE_MPI)
 
 #include <mpi.h>
 #include <mutex>

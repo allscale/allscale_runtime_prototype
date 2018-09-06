@@ -393,7 +393,17 @@ namespace work {
 				auto res = currentNumNodes;
 				if (var < 0.005) {
 					// compute better number of nodes
-					res = std::max<com::rank_t>(std::min<com::rank_t>(std::ceil(currentNumNodes * avg / 0.9),maxNodes),1);
+					if (avg < 0.5) {
+						res = std::max(res-3,com::rank_t(1));
+					} else if (avg < 0.6) {
+						res = std::max(res-1,com::rank_t(1));
+					} else if (avg > 0.75) {
+						res = std::min(res+1,maxNodes);
+					} else if (avg > 0.9) {
+						res = std::min(res+3,maxNodes);
+					}
+					
+					//res = std::max<com::rank_t>(std::min<com::rank_t>(std::ceil(currentNumNodes * avg / 0.9),maxNodes),1);
 				}
 
 				std::cout

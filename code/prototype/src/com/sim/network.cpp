@@ -1,5 +1,3 @@
-#include <iomanip>
-
 #include "allscale/runtime/com/sim/network.h"
 
 namespace allscale {
@@ -7,10 +5,13 @@ namespace runtime {
 namespace com {
 namespace sim {
 
-	Network::Network(size_t size) : stats(size) {
+	Network::Network(size_t size) {
 		nodes.reserve(size);
 		for(size_t i=0; i<size; i++) {
 			nodes.emplace_back(std::make_unique<Node>(i));
+
+			// start network statistic service on nodes
+			nodes.back()->startService<NetworkStatisticService>();
 		}
 	}
 
@@ -27,25 +28,6 @@ namespace sim {
 	std::unique_ptr<Network> Network::create(size_t num_nodes) {
 		return std::make_unique<Network>(num_nodes);
 	}
-
-	std::ostream& operator<<(std::ostream& out, const Network::Statistics::Entry& entry) {
-		return out
-				<< std::setw(15) << entry.received_bytes << ','
-				<< std::setw(11) << entry.sent_bytes << ','
-				<< std::setw(15) << entry.received_calls << ','
-				<< std::setw(11) << entry.sent_calls
-				<< std::setw(17) << entry.received_bcasts << ','
-				<< std::setw(12) << entry.sent_bcasts;
- 	}
-
-	std::ostream& operator<<(std::ostream& out, const Network::Statistics& stats) {
-		out << std::setw(10);
-		out << "rank, bytes_received, bytes_sent, received_calls, sent_calls, received_bcasts, send_bcasts\n";
-		for(std::size_t i=0; i<stats.stats.size(); i++) {
-			out << std::setw(4) << i << "," << stats.stats[i] << "\n";
-		}
-		return out;
- 	}
 
 	static thread_local Network* tl_current_network;
 
@@ -66,6 +48,26 @@ namespace sim {
 		tl_current_network = nullptr;
 	}
 
+	NetworkStatistics Network::getStatistics() {
+		NetworkStatistics res(numNodes());
+		for(rank_t cur = 0; cur < numNodes(); cur++) {
+			nodes[cur]->run([&](Node&){
+				res[cur] = getRemoteProcedure(cur,&NetworkStatisticService::getNodeStats)();
+			});
+		}
+		return res;
+	}
+
+	void Network::resetStatistics() {
+		for(const auto& cur : nodes) {
+			cur->getService<NetworkStatisticService>().resetNodeStats();
+		}
+	}
+
+	NodeStatistics& Network::getNodeStats(rank_t rank) {
+		assert_lt(rank,numNodes());
+		return nodes[rank]->getService<NetworkStatisticService>().getLocalNodeStats();
+	}
 
 } // end of namespace sim
 } // end of namespace com

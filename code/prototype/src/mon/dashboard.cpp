@@ -257,7 +257,7 @@ namespace mon {
 		time_point last;
 
 		// old network states
-		com::Network::Statistics::Entry last_network_state;
+		com::NodeStatistics last_network_state;
 
 		// old worker state
 		std::uint64_t lastTaskCount = 0;

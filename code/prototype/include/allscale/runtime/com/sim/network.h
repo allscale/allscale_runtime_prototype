@@ -16,6 +16,7 @@
 #include "allscale/utils/serializer.h"
 
 #include "allscale/runtime/com/node.h"
+#include "allscale/runtime/com/statistics.h"
 
 namespace allscale {
 namespace runtime {
@@ -36,109 +37,54 @@ namespace sim {
 		 */
 		std::vector<std::unique_ptr<Node>> nodes;
 
-	public:
+	private:
+
 
 		/**
-		 * Data and message transfer statistics in this network.
+		 * The function to simulate the transfer of data.
 		 */
-		class Statistics {
-		public:
+		template<typename T>
+		static T transfer(NodeStatistics& srcStats, NodeStatistics& trgStats, const T& value) {
+			static_assert(allscale::utils::is_serializable<T>::value, "Encountered non-serializable data element.");
 
-			/**
-			 * The statistics entry per node.
-			 */
-			struct Entry {
+			// shortcut for local communication
+			if (&srcStats == &trgStats) return value;
 
-				std::uint64_t sent_bytes = 0;			// < number of sent bytes
-				std::uint64_t received_bytes = 0;		// < number of received bytes
-				std::uint32_t sent_calls = 0;	  		// < number of sent calls
-				std::uint32_t received_calls = 0;		// < number or received calls
-				std::uint32_t sent_bcasts = 0;			// < number of sent broadcasts
-				std::uint32_t received_bcasts = 0;		// < number of received broadcasts
+			// perform serialization
+			auto archive = allscale::utils::serialize(value);
 
-				friend std::ostream& operator<<(std::ostream&,const Entry&);
+			// record transfer volume
+			auto size = archive.getBuffer().size();
+			srcStats.sent_bytes += size;
+			trgStats.received_bytes += size;
 
-			};
+			// de-serialize value
+			auto res = allscale::utils::deserialize<T>(archive);
 
-		private:
+			// done (avoid extra copy)
+			return std::move(res);
+		}
 
-			/**
-			 * The per-node statistics data represented.
-			 */
-			std::vector<Entry> stats;
+		/**
+		 * A special case for transferring archived data (no extra serialization needed).
+		 */
+		static const allscale::utils::Archive& transfer(NodeStatistics& srcStats, NodeStatistics& trgStats, const allscale::utils::Archive& a) {
 
-		public:
+			// shortcut for local communication
+			if (&srcStats == &trgStats) return a;
 
-			/**
-			 * Creates a new statics for the given number of nodes.
-			 */
-			Statistics(size_t size) : stats(size) {}
+			// record transfer volume
+			auto size = a.getBuffer().size();
+			srcStats.sent_bytes += size;
+			trgStats.received_bytes += size;
 
-			/**
-			 * Obtain the statistics of some node.
-			 */
-			Entry& operator[](rank_t rank) {
-				assert_lt(rank, stats.size());
-				return stats[rank];
-			}
-
-			/**
-			 * Obtain the statistics of some node.
-			 */
-			const Entry& operator[](rank_t rank) const {
-				assert_lt(rank, stats.size());
-				return stats[rank];
-			}
+			// nothing else to do here
+			return a;
+		}
 
 
-			/**
-			 * The function to simulate the transfer of data.
-			 */
-			template<typename T>
-			T transfer(rank_t src, rank_t trg, const T& value) {
-				static_assert(allscale::utils::is_serializable<T>::value, "Encountered non-serializable data element.");
+	public:
 
-				// shortcut for local communication
-				if (src == trg) return value;
-
-				// perform serialization
-				auto archive = allscale::utils::serialize(value);
-
-				// record transfer volume
-				auto size = archive.getBuffer().size();
-				(*this)[src].sent_bytes += size;
-				(*this)[trg].received_bytes += size;
-
-				// de-serialize value
-				auto res = allscale::utils::deserialize<T>(archive);
-
-				// done (avoid extra copy)
-				return std::move(res);
-			}
-
-			/**
-			 * A special case for transferring archived data (no extra serialization needed).
-			 */
-			const allscale::utils::Archive& transfer(rank_t src, rank_t trg, const allscale::utils::Archive& a) {
-
-				// shortcut for local communication
-				if (src == trg) return a;
-
-				// record transfer volume
-				auto size = a.getBuffer().size();
-				(*this)[src].sent_bytes += size;
-				(*this)[trg].received_bytes += size;
-
-				// nothing else to do here
-				return a;
-			}
-
-			/**
-			 * Support printing of statistics.
-			 */
-			friend std::ostream& operator<<(std::ostream&,const Statistics&);
-
-		};
 
 		/**
 		 * A default service selector.
@@ -166,15 +112,16 @@ namespace sim {
 			R(S::* fun)(Args...);
 
 			// the statistics to work with
-			Statistics& stats;
+			NodeStatistics& srcStats;
+			NodeStatistics& trgStats;
 
 		public:
 
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...), Statistics& stats)
-				: node(node), selector(selector), fun(fun), stats(stats) {}
+			RemoteProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...), NodeStatistics& srcStats, NodeStatistics& trgStats)
+				: node(node), selector(selector), fun(fun), srcStats(srcStats), trgStats(trgStats) {}
 
 			/**
 			 * Realizes the actual remote procedure call.
@@ -190,11 +137,13 @@ namespace sim {
 					});
 				}
 
+				// update statistics
+				srcStats.sent_calls += 1;
+				trgStats.received_calls += 1;
+
 				// perform an actual remote call
-				stats[src].sent_calls += 1;
-				stats[trg].received_calls += 1;
 				return node.run([&](Node&){
-					return stats.transfer(trg,src,(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
+					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
 				});
 			}
 
@@ -216,15 +165,16 @@ namespace sim {
 			void(S::* fun)(Args...);
 
 			// the statistics to work with
-			Statistics& stats;
+			NodeStatistics& srcStats;
+			NodeStatistics& trgStats;
 
 		public:
 
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Node& node, const Selector& selector, void(S::*fun)(Args...), Statistics& stats)
-				: node(node), selector(selector), fun(fun), stats(stats) {}
+			RemoteProcedure(Node& node, const Selector& selector, void(S::*fun)(Args...), NodeStatistics& srcStats, NodeStatistics& trgStats)
+				: node(node), selector(selector), fun(fun), srcStats(srcStats), trgStats(trgStats) {}
 
 			/**
 			 * Realizes the actual remote procedure call.
@@ -242,10 +192,10 @@ namespace sim {
 				}
 
 				// perform an actual remote call
-				stats[src].sent_calls += 1;
-				stats[trg].received_calls += 1;
+				srcStats.sent_calls += 1;
+				trgStats.received_calls += 1;
 				node.run([&](Node&){
-					(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+					(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
 				});
 			}
 
@@ -268,15 +218,16 @@ namespace sim {
 			R(S::* fun)(Args...) const;
 
 			// the statistics to work with
-			Statistics& stats;
+			NodeStatistics& srcStats;
+			NodeStatistics& trgStats;
 
 		public:
 
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteConstProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...) const, Statistics& stats)
-				: node(node), selector(selector), fun(fun), stats(stats) {}
+			RemoteConstProcedure(Node& node, const Selector& selector, R(S::*fun)(Args...) const, NodeStatistics& srcStats, NodeStatistics& trgStats)
+				: node(node), selector(selector), fun(fun), srcStats(srcStats), trgStats(trgStats) {}
 
 			/**
 			 * Realizes the actual remote procedure call.
@@ -293,10 +244,10 @@ namespace sim {
 				}
 
 				// perform an actual remote call
-				stats[src].sent_calls += 1;
-				stats[trg].received_calls += 1;
+				srcStats.sent_calls += 1;
+				trgStats.received_calls += 1;
 				return node.run([&](Node&){
-					return stats.transfer(trg,src,(selector(node).*fun)(stats.transfer(src,trg,std::forward<Args>(args))...));
+					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
 				});
 			}
 
@@ -315,23 +266,21 @@ namespace sim {
 			// the targeted service function
 			void(S::* fun)(Args...);
 
-			// the statistics to work with
-			Statistics& stats;
-
 		public:
 
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			Broadcast(std::vector<std::unique_ptr<Node>>& nodes, void(S::*fun)(Args...), Statistics& stats)
-				: nodes(nodes), fun(fun), stats(stats) {}
+			Broadcast(std::vector<std::unique_ptr<Node>>& nodes, void(S::*fun)(Args...))
+				: nodes(nodes), fun(fun) {}
 
 			/**
 			 * Realizes the actual broadcast.
 			 */
 			void operator()(Args ... args) const {
 				auto src = Node::getLocalRank();
-				stats[src].sent_bcasts += 1;
+				auto& srcStats = nodes[src]->template getService<NetworkStatisticService>().getLocalNodeStats();
+				srcStats.sent_bcasts += 1;
 				for(auto& node : nodes) {
 					auto trg = node->getRank();
 
@@ -344,24 +293,16 @@ namespace sim {
 					}
 
 					// perform remote call
-					stats[trg].received_bcasts += 1;
+					auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+					trgStats.received_bcasts += 1;
 					node->run([&](Node&){
-						(node->template getService<S>().*fun)(stats.transfer(src,trg,std::forward<Args>(args))...);
+						(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
 					});
 
 				}
 			}
 
 		};
-
-	private:
-
-		/**
-		 * The statistics recorded for this network.
-		 */
-		Statistics stats;
-
-	public:
 
 		/**
 		 * Creates a network of the given size.
@@ -398,7 +339,7 @@ namespace sim {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...)) {
 			assert_lt(rank,nodes.size());
-			return { *(nodes[rank]), selector, fun, stats };
+			return { *(nodes[rank]), selector, fun, getNodeStats(Node::getLocalRank()), getNodeStats(rank) };
 		}
 
 		/**
@@ -407,7 +348,7 @@ namespace sim {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteConstProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...) const) {
 			assert_lt(rank,nodes.size());
-			return { *(nodes[rank]), selector, fun, stats };
+			return { *(nodes[rank]), selector, fun, getNodeStats(Node::getLocalRank()), getNodeStats(rank) };
 		}
 
 		/**
@@ -420,11 +361,20 @@ namespace sim {
 		}
 
 		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
+		template<typename S, typename R, typename ... Args>
+		auto getRemoteProcedure(rank_t rank, R(S::*fun)(Args...) const) {
+			assert_lt(rank,nodes.size());
+			return getRemoteProcedure(rank,direct_selector<S>(),fun);
+		}
+
+		/**
 		 * Obtains a handle for performing broad-casts on a selected remote service.
 		 */
 		template<typename S, typename ... Args>
 		Broadcast<S,Args...> broadcast(void(S::*fun)(Args...)) {
-			return { nodes, fun, stats };
+			return { nodes, fun };
 		}
 
 		// -------- development and debugging interface --------
@@ -481,16 +431,12 @@ namespace sim {
 		/**
 		 * Obtains the network transfer statistics collected so far.
 		 */
-		const Statistics& getStatistics() const {
-			return stats;
-		}
+		NetworkStatistics getStatistics();
 
 		/**
 		 * Resets the statistics collected so far.
 		 */
-		void resetStatistics() {
-			stats = Statistics(numNodes());
-		}
+		void resetStatistics();
 
 		// -------- utilities --------
 
@@ -504,6 +450,8 @@ namespace sim {
 		void setLocalNetwork() const;
 
 		void resetLocalNetwork() const;
+
+		NodeStatistics& getNodeStats(rank_t rank);
 
 	};
 

@@ -97,6 +97,11 @@ namespace work {
 			// the active scheduling policy
 			ExchangeableSchedulingPolicy policy;
 
+			// the lock for scheduling operations (to avoid policies being exchanged while scheduling)
+			mutable std::recursive_mutex policy_lock;
+
+			using guard = std::lock_guard<std::recursive_mutex>;
+
 		public:
 
 			ScheduleService(com::Network& net, const com::HierarchyAddress& addr)
@@ -118,12 +123,15 @@ namespace work {
 			 */
 
 			// updates the utilized policy
-			const ExchangeableSchedulingPolicy& getPolicy() const {
+			ExchangeableSchedulingPolicy getPolicy() const {
+				guard g(policy_lock);
+				// access
 				return policy;
 			}
 
 			// updates the utilized policy
 			void setPolicy(const ExchangeableSchedulingPolicy& p) {
+				guard g(policy_lock);
 				policy = p;
 			}
 
@@ -137,16 +145,22 @@ namespace work {
 				// check whether current node is allowed to make autonomous scheduling decisions
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
 				auto path = task->getId().getPath();
-				if (!isRoot
-						// decide randomly whether this one is allowed to schedule it
-						&& policy.isInvolved(myAddr,path)
-						// test that this virtual node has control over all required data
-						&& diis.covers(task->getProcessRequirements().getWriteRequirements())
-					) {
-					// we can schedule it right here!
-					DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
-					scheduleDown(std::move(task),{});
-					return;
+				if (!isRoot) {
+
+					// check whether this virtual node is involved in the scheduling
+					bool involved = false;
+					{
+						guard g(policy_lock);
+						involved = policy.isInvolved(myAddr,path);
+					}
+
+					// and that this virtual node has control over all required data
+					if (involved && diis.covers(task->getProcessRequirements().getWriteRequirements())) {
+						// we can schedule it right here!
+						DLOG << "Short-cutting " << task->getId() << " on " << myAddr << "\n";
+						scheduleDown(std::move(task),{});
+						return;
+					}
 				}
 
 				// TODO: replace this with a schedule-up phase forwarding allowances
@@ -195,10 +209,12 @@ namespace work {
 				// schedule locally if decided to do so
 				auto id = task->getId();
 
-				// TODO: check whether left or right node covers all write requirements
-
 				// ask the scheduling policy what to do with this task
-				auto d = policy.decide(myAddr,id.getPath());
+				auto d = Decision::Done;
+				{
+					guard g(policy_lock);
+					d = policy.decide(myAddr,id.getPath());
+				}
 				assert_ne(d,Decision::Done);
 
 				// if it should stay, process it here
@@ -349,7 +365,7 @@ namespace work {
 				auto& scheduleService = node.getService<com::HierarchyService<ScheduleService>>().get(0);
 
 				// get current policy
-				auto& policy = scheduleService.getPolicy();
+				auto policy = scheduleService.getPolicy();
 				assert_true(policy.isa<DecisionTreeSchedulingPolicy>());
 
 				// re-balance load

@@ -328,7 +328,7 @@ namespace work {
 				// start periodic balancing
 				node.getLocalService<utils::PeriodicExecutorService>().runPeriodically(
 						[&]{ run(); return true; },
-						std::chrono::seconds(2)
+						std::chrono::seconds(15)
 				);
 			}
 
@@ -359,6 +359,46 @@ namespace work {
 
 		private:
 
+			com::rank_t adjustNumNodes(const std::vector<float>& load, com::rank_t currentNumNodes) {
+
+				// TODO: improve node adjustment
+
+				// Step 1: stabalize load distribution
+
+				// if load distribution has reached a even enough range
+				float min = load.front();
+				float max = load.front();
+				for(com::rank_t i=0; i<currentNumNodes; i++) {
+					min = std::min(load[i],min);
+					max = std::max(load[i],max);
+				}
+				float diff = max - min;
+
+
+				// Step 2: adjust number of nodes
+
+				float avg = std::accumulate(load.begin(),load.end(),0.0f) / currentNumNodes;
+				auto res = currentNumNodes;
+
+				// determine new number of nodes
+				if (avg < 0.5) {
+					res = std::max<com::rank_t>(res/2,1);
+				} else if (diff < 0.1 && avg < 0.6) {
+					res = std::max<com::rank_t>(res-1,1);
+				} else if (avg > 0.9) {
+					res = std::min<com::rank_t>(res+1,network.numNodes());
+				}
+
+				std::cout << "Average load " << avg << ", load difference: " << diff;
+				if (res != currentNumNodes) {
+					std::cout << " - switching from " << currentNumNodes << " to " << res << " nodes for next interval ..\n";
+				} else {
+					std::cout << " - using " << res << " for next interval ..\n";
+				}
+
+				return res;
+			}
+
 			void balance() {
 
 				// collect the load of all nodes
@@ -368,18 +408,8 @@ namespace work {
 					load[i] = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getEfficiency)();
 				}
 
-
-				// TODO: improve node adjustment
-
-				// determine new number of nodes
-				float avg = std::accumulate(load.begin(),load.end(),0.0f) / lastNumNodes;
-				if (avg < 0.6) {
-					lastNumNodes = std::max<com::rank_t>(lastNumNodes-1,1);
-				} else if (avg > 0.9) {
-					lastNumNodes = std::min<com::rank_t>(lastNumNodes+1,numNodes);
-				}
-
-				std::cout << "Average load " << avg << " - using " << lastNumNodes << " for next step ..\n";
+				// adjust number of involved nodes
+				lastNumNodes = adjustNumNodes(load,lastNumNodes);
 
 				// compute number of nodes to be used
 				std::vector<bool> mask(numNodes);

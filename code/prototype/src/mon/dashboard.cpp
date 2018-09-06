@@ -25,8 +25,9 @@
 
 #include "allscale/utils/printer/vectors.h"
 
-#include "allscale/runtime/utils/timer.h"
+#include "allscale/runtime/com/statistics.h"
 #include "allscale/runtime/data/data_item_manager.h"
+#include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/work/worker.h"
 
 namespace allscale {

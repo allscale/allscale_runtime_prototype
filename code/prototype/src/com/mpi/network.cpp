@@ -1,5 +1,5 @@
 
-#if defined(ENABLE_MPI)
+#if true || defined(ENABLE_MPI)
 
 #include <mpi.h>
 #include <mutex>
@@ -11,10 +11,6 @@ namespace allscale {
 namespace runtime {
 namespace com {
 namespace mpi {
-
-	std::ostream& operator<<(std::ostream& out, const Network::Statistics&) {
-		return out << " -- reporting for MPI not implemented yet --\n";
-	}
 
 	int getFreshRequestTag() {
 		static std::atomic<int> counter(1);
@@ -71,7 +67,7 @@ namespace mpi {
 		int rank;
 		MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 		localNode = std::make_unique<Node>(rank);
-
+std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		// install epoch counter service
 		localNode->startService<detail::EpochService>(epoch_mutex,epoch_condition_var,epoch_counter);
 
@@ -82,6 +78,9 @@ namespace mpi {
 		com_server = std::thread([&]{
 			runRequestServer();
 		});
+
+		// start the network statistic service
+		localNode->startService<NetworkStatisticService>();
 
 		// wait for all nodes to complete the startup phase
 		sync();
@@ -166,6 +165,7 @@ namespace mpi {
 
 			// receive message
 			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " ...\n";
+			Network::getLocalStats().received_bytes += count;
 			{
 				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 				MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
@@ -219,6 +219,19 @@ namespace mpi {
 
 			DEBUG_MPI_NETWORK << "Node " << rank << ": reached epoch " << last_epoch << "\n";
 		}
+	}
+
+	NetworkStatistics Network::getStatistics() {
+
+		NetworkStatistics res(num_nodes);
+		for(rank_t i=0; i<num_nodes; i++) {
+			res[i] = getNetwork().getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+		}
+		return res;
+	}
+
+	NodeStatistics& Network::getLocalStats() {
+		return getNetwork().localNode->getService<NetworkStatisticService>().getLocalNodeStats();
 	}
 
 } // end of namespace mpi

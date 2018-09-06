@@ -24,6 +24,7 @@
 #include "allscale/utils/serializer/tuple.h"
 
 #include "allscale/runtime/com/node.h"
+#include "allscale/runtime/com/statistics.h"
 
 namespace allscale {
 namespace runtime {
@@ -130,68 +131,6 @@ namespace mpi {
 
 	public:
 
-		// TODO: refactor -- move statistic to implementation independent header file.
-
-		/**
-		 * Data and message transfer statistics in this network.
-		 */
-		class Statistics {
-		public:
-
-			/**
-			 * The statistics entry per node.
-			 */
-			struct Entry {
-
-				std::uint64_t sent_bytes = 0;			// < number of sent bytes
-				std::uint64_t received_bytes = 0;		// < number of received bytes
-				std::uint32_t sent_calls = 0;	  		// < number of sent calls
-				std::uint32_t received_calls = 0;		// < number or received calls
-				std::uint32_t sent_bcasts = 0;			// < number of sent broadcasts
-				std::uint32_t received_bcasts = 0;		// < number of received broadcasts
-
-				friend std::ostream& operator<<(std::ostream&,const Entry&);
-
-			};
-
-		private:
-
-			/**
-			 * The per-node statistics data represented.
-			 */
-			std::vector<Entry> stats;
-
-		public:
-
-			/**
-			 * Creates a new statics for the given number of nodes.
-			 */
-			Statistics(size_t size = 1) : stats(size) {}
-
-			/**
-			 * Obtain the statistics of some node.
-			 */
-			Entry& operator[](rank_t rank) {
-				assert_lt(rank, stats.size());
-				return stats[rank];
-			}
-
-			/**
-			 * Obtain the statistics of some node.
-			 */
-			const Entry& operator[](rank_t rank) const {
-				assert_lt(rank, stats.size());
-				return stats[rank];
-			}
-
-
-			/**
-			 * Support printing of statistics.
-			 */
-			friend std::ostream& operator<<(std::ostream&,const Statistics&);
-
-		};
-
 		/**
 		 * A default service selector.
 		 */
@@ -234,6 +173,9 @@ namespace mpi {
 			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
 
+				// count calls
+				getLocalStats().received_calls++;
+
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
@@ -249,6 +191,7 @@ namespace mpi {
 				auto& buffer = a.getBuffer();
 				{
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					getLocalStats().sent_bytes += buffer.size();
 					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
 				}
 
@@ -267,6 +210,9 @@ namespace mpi {
 					return (selector(local).*fun)(std::forward<Args>(args)...);
 				}
 
+				// count calls
+				getLocalStats().sent_calls++;
+
 				// perform remote call
 				int request_tag = getFreshRequestTag();
 				int response_tag = getResponseTag(request_tag);
@@ -281,6 +227,7 @@ namespace mpi {
 
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						getLocalStats().sent_bytes += buffer.size();
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
 					}
 
@@ -317,6 +264,7 @@ namespace mpi {
 				// receive message
 				{
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					getLocalStats().received_bytes += count;
 					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 				}
 
@@ -362,6 +310,9 @@ namespace mpi {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
+				// count calls
+				getLocalStats().received_calls++;
+
 				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request from " << source << " ...\n";
 
 				// run service
@@ -384,6 +335,9 @@ namespace mpi {
 					return;
 				}
 
+				// count calls
+				getLocalStats().sent_calls++;
+
 				// perform remote call
 				{
 					// create an argument tuple and serialize it
@@ -397,6 +351,7 @@ namespace mpi {
 					int msg_tag = getFreshRequestTag();
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						getLocalStats().sent_bytes += buffer.size();
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,msg_tag,point2point);
 					}
 
@@ -440,6 +395,9 @@ namespace mpi {
 			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
 
+				// count calls
+				getLocalStats().received_calls++;
+
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
@@ -455,6 +413,7 @@ namespace mpi {
 				auto& buffer = a.getBuffer();
 				{
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					Network::getLocalStats().sent_bytes += buffer.size();
 					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
 				}
 
@@ -473,6 +432,9 @@ namespace mpi {
 					return (selector(local).*fun)(std::forward<Args>(args)...);
 				}
 
+				// count calls
+				getLocalStats().sent_calls++;
+
 				// perform remote call
 				int request_tag = getFreshRequestTag();
 				int response_tag = getResponseTag(request_tag);
@@ -484,9 +446,9 @@ namespace mpi {
 					// send to target node
 
 					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " ...\n";
-
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						getLocalStats().sent_bytes += buffer.size();
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
 					}
 
@@ -523,6 +485,7 @@ namespace mpi {
 				// receive message
 				{
 					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+					getLocalStats().received_bytes += count;
 					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 				}
 
@@ -569,11 +532,6 @@ namespace mpi {
 		};
 
 	private:
-
-		/**
-		 * The statistics recorded for this network.
-		 */
-		Statistics stats;
 
 		// number of nodes in this network
 		size_t num_nodes;
@@ -646,6 +604,15 @@ namespace mpi {
 		}
 
 		/**
+		 * Obtains a handle for performing a remote procedure call of a selected service.
+		 */
+		template<typename S, typename R, typename ... Args>
+		auto getRemoteProcedure(rank_t rank, R(S::*fun)(Args...) const) {
+			assert_lt(rank,numNodes());
+			return getRemoteProcedure(rank,direct_selector<S>(),fun);
+		}
+
+		/**
 		 * Obtains a handle for performing broad-casts on a selected remote service.
 		 */
 		template<typename R,typename S, typename ... Args>
@@ -714,15 +681,13 @@ namespace mpi {
 		/**
 		 * Obtains the network transfer statistics collected so far.
 		 */
-		const Statistics& getStatistics() const {
-			return stats;
-		}
+		NetworkStatistics getStatistics();
 
 		/**
 		 * Resets the statistics collected so far.
 		 */
 		void resetStatistics() {
-			stats = Statistics();
+			localNode->getService<NetworkStatisticService>().resetNodeStats();
 		}
 
 	private:
@@ -732,6 +697,9 @@ namespace mpi {
 
 		void runRequestServer();
 
+	public:
+
+		static NodeStatistics& getLocalStats();
 	};
 
 } // end of namespace mpi

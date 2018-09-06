@@ -380,15 +380,28 @@ namespace work {
 				// Step 2: adjust number of nodes
 
 				float avg = std::accumulate(load.begin(),load.end(),0.0f) / currentNumNodes;
-				auto res = currentNumNodes;
+
+				// compute the load variance
+				float sum_dist = 0;
+				for(com::rank_t i=0; i<currentNumNodes; i++) {
+					float dist = load[i] - avg;
+					sum_dist +=  dist * dist;
+				}
+				float var = sum_dist / (currentNumNodes - 1);
 
 				// if stable on this distribution
-				if (diff < 0.1) {
+				auto res = currentNumNodes;
+				if (var < 0.005) {
 					// compute better number of nodes
 					res = std::max<com::rank_t>(std::min<com::rank_t>(std::ceil(currentNumNodes * avg / 0.9),maxNodes),1);
 				}
 
-				std::cout << "Average load " << std::setprecision(2) << avg << ", load difference " << std::setprecision(2) << diff << ", total progress: " << std::setprecision(2) << (avg*currentNumNodes);
+				std::cout
+					<< "Average load "      << std::setprecision(2) << avg
+					<< ", load difference " << std::setprecision(2) << diff
+					<< ", load variance "   << std::setprecision(2) << var
+					<< ", total progress: " << std::setprecision(2) << (avg*currentNumNodes);
+
 				if (res != currentNumNodes) {
 					std::cout << " - switching from " << currentNumNodes << " to " << res << " nodes for next interval ..\n";
 				} else {

@@ -267,6 +267,7 @@ namespace work {
 		com::rank_t traceTarget(const DecisionTreeSchedulingPolicy& policy, TaskPath p) {
 			auto res = policy.getTarget(p);
 			while(!res.isLeaf()) {
+				assert_lt(p.getLength(),2*policy.getGranularity());
 				p = p.getLeftChildPath();
 				res = policy.getTarget(p);
 			}
@@ -308,22 +309,25 @@ namespace work {
 		return createUniform(N,std::max(ceilLog2(N)+3,5));
 	}
 
-
 	// create a balanced work distribution based on the given load distribution
 	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load) {
+		std::vector<bool> mask(load.size(),true);
+		return createReBalanced(p,load,mask);
+	}
+
+	// create a balanced work distribution based on the given load distribution
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load, const std::vector<bool>& mask) {
+
+		// check input consistency
+		assert_eq(load.size(),mask.size());
 
 		// get given task distribution mapping
 
-		// update mapping
-		std::vector<com::rank_t> mapping = p.getTaskDistributionMapping();
 
 		// --- estimate costs per task ---
 
 		// get number of nodes
-		com::rank_t numNodes = 0;
-		for(const auto& cur : mapping) {
-			numNodes = std::max<com::rank_t>(numNodes,cur+1);
-		}
+		com::rank_t numNodes = load.size();
 
 		// test that load vector has correct size
 		assert_eq(numNodes,load.size())
@@ -335,7 +339,9 @@ namespace work {
 
 		// count number of tasks per node
 		std::vector<int> oldShare(numNodes,0);
+		std::vector<com::rank_t> mapping = p.getTaskDistributionMapping();
 		for(const auto& cur : mapping) {
+			assert_lt(cur,numNodes);
 			oldShare[cur]++;
 		}
 
@@ -365,12 +371,19 @@ namespace work {
 
 		// --- redistributing costs ---
 
-		float share = totalCosts / numNodes;
+		// get number of now available nodes
+		int availableNodes = 0;
+		for(bool x : mask) if (x) availableNodes++;
 
+		// if there is really none, make it at least one
+		if (availableNodes < 1) availableNodes = 1;
+
+		float share = totalCosts / availableNodes;
 
 		float curCosts = 0;
 		float nextGoal = share;
 		com::rank_t curNode = 0;
+		while(!mask[curNode]) curNode++;
 		std::vector<com::rank_t> newMapping(mapping.size());
 		for(std::size_t i=0; i<mapping.size(); i++) {
 
@@ -384,6 +397,7 @@ namespace work {
 				if (std::abs(curCosts-nextGoal) < std::abs(nextGoal-nextCosts)) {
 					// stopping here is closer to the target
 					curNode++;
+					while(!mask[curNode]) curNode++;
 					nextGoal += share;
 				}
 			}
@@ -430,6 +444,7 @@ namespace work {
 			std::cout << "Task costs:  " << taskCosts << "\n";
 			std::cout << "In-distribution:  " << mapping << "\n";
 			std::cout << "Out-distribution: " << newMapping << "\n";
+			std::cout << toDecisionTree((1<<p.getPresumedRootAddress().getLayer()),newMapping) << "\n";
 			std::cout << "\n";
 		}
 
@@ -475,11 +490,9 @@ namespace work {
 	}
 
 	com::HierarchyAddress DecisionTreeSchedulingPolicy::getTarget(const TaskPath& path) const {
-		// for roots it is easy
-		if (path.isRoot()) return root;
 
-		// for everything else, we walk recursive
-		auto res = getTarget(path.getParentPath());
+		// get location of parent task
+		auto res = (path.isRoot()) ? root : getTarget(path.getParentPath());
 
 		// simulate scheduling
 		switch(decide(res,path)) {

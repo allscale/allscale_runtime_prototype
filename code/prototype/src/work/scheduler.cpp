@@ -1,5 +1,6 @@
 
 #include <random>
+#include <algorithm>
 
 #include "allscale/utils/printer/vectors.h"
 
@@ -215,7 +216,11 @@ namespace work {
 					guard g(policy_lock);
 					d = policy.decide(myAddr,id.getPath());
 				}
-				assert_ne(d,Decision::Done);
+
+				// over-rule done decisions for inner nodes
+				if (d == Decision::Done) {
+					d = Decision::Left;
+				}
 
 				// if it should stay, process it here
 				if (task->isSplitable() && d == Decision::Stay) {	// non-splitable task must not stay on inner level
@@ -306,13 +311,16 @@ namespace work {
 
 			std::chrono::nanoseconds lastProcessTime;
 
+			com::rank_t lastNumNodes;
+
 		public:
 
 			InterNodeLoadBalancer(com::Node& local)
 				: network(com::Network::getNetwork()),
 				  node(local),
 				  lastSampleTime(now()),
-				  lastProcessTime(0) {
+				  lastProcessTime(0),
+				  lastNumNodes(network.numNodes()) {
 
 				// only on rank 0 the balancer shall be started
 				if (node.getRank() != 0) return;
@@ -351,15 +359,34 @@ namespace work {
 
 		private:
 
-			void balance() const {
-
+			void balance() {
 
 				// collect the load of all nodes
 				com::rank_t numNodes = network.numNodes();
-				std::vector<float> load(numNodes);
-				for(com::rank_t i=0; i<numNodes; i++) {
+				std::vector<float> load(numNodes,0.0f);
+				for(com::rank_t i=0; i<lastNumNodes; i++) {
 					load[i] = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getEfficiency)();
 				}
+
+
+				// TODO: improve node adjustment
+
+				// determine new number of nodes
+				float avg = std::accumulate(load.begin(),load.end(),0.0f) / lastNumNodes;
+				if (avg < 0.6) {
+					lastNumNodes = std::max<com::rank_t>(lastNumNodes-1,1);
+				} else if (avg > 0.9) {
+					lastNumNodes = std::min<com::rank_t>(lastNumNodes+1,numNodes);
+				}
+
+				std::cout << "Average load " << avg << " - using " << lastNumNodes << " for next step ..\n";
+
+				// compute number of nodes to be used
+				std::vector<bool> mask(numNodes);
+				for(com::rank_t i=0; i<numNodes; i++) {
+					mask[i] = i < lastNumNodes;
+				}
+
 
 				// get the local scheduler
 				auto& scheduleService = node.getService<com::HierarchyService<ScheduleService>>().get(0);
@@ -370,7 +397,7 @@ namespace work {
 
 				// re-balance load
 				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
-				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load);
+				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
 
 				// check whether something has changed
 				if (curPolicy == newPolicy) return;

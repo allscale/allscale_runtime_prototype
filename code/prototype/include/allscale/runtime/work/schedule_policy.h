@@ -369,16 +369,34 @@ namespace work {
 		 * The resulting policy will distributed load evenly among the available nodes, weighted by the observed load.
 		 *
 		 * @param old the old policy, based on which the measurement has been taken
-		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. Ther must be one entry per node,
+		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. There must be one entry per node,
 		 * 			no entry must be negative.
 		 */
 		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution);
 
+		/**
+		 * Creates an updated load balancing policy based on a given policy, a measured load distribution, and a mask of nodes to be involved.
+		 * The resulting policy will distributed load evenly among the enabled nodes, weighted by the observed load.
+		 *
+		 * @param old the old policy, based on which the measurement has been taken
+		 * @param loadDistribution the load distribution measured, utilized for weighting tasks. There must be one entry per node,
+		 * 			no entry must be negative.
+		 * @param mask a mask indicating which nodes to utilize and which not in the resulting schedule
+		 */
+		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution, const std::vector<bool>& mask);
 
 		// --- observer ---
 
 		const com::HierarchyAddress& getPresumedRootAddress() const {
 			return root;
+		}
+
+		/**
+		 * The scheduling granularity, thus the maximum depth of a task-path still routed
+		 * by this scheduling policy.
+		 */
+		int getGranularity() const {
+			return granulartiy;
 		}
 
 		const DecisionTree& getDecisionTree() const {

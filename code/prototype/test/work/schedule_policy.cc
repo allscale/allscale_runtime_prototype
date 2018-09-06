@@ -447,6 +447,72 @@ namespace work {
 
 	}
 
+
+	TEST(DecisionTreeSchedulingPolicy, Resizing) {
+
+		auto u = DecisionTreeSchedulingPolicy::createUniform(4,5);
+
+		// providing a nicely balanced load should not cause any changes
+		auto loadDist = std::vector<float>(4,1.0);
+		auto mask = std::vector<bool>(4,true);
+		auto b1 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
+
+		// remove node 2
+		mask[2] = false;
+		auto b2 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,3]",toString(b2.getTaskDistributionMapping()));
+
+		// re-enable node 2
+		loadDist[2] = 0;
+		mask[2] = true;
+		auto b3 = DecisionTreeSchedulingPolicy::createReBalanced(b2,loadDist,mask);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b3.getTaskDistributionMapping());
+
+	}
+
+
+	TEST(DecisionTreeSchedulingPolicy, ResizingDownToZero) {
+
+		auto u = DecisionTreeSchedulingPolicy::createUniform(6,5);
+
+		// providing a nicely balanced load should not cause any changes
+		auto loadDist = std::vector<float>(6,1.0);
+		auto mask = std::vector<bool>(6,true);
+		auto b1 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
+		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
+
+		// remove node 2
+		mask[2] = false;
+		auto b2 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
+		EXPECT_EQ("[0,0,0,0,0,0,0,1,1,1,1,1,1,1,3,3,3,3,3,3,4,4,4,4,4,4,5,5,5,5,5,5]",toString(b2.getTaskDistributionMapping()));
+
+		// remove node 4
+		loadDist[2] = 0;
+		mask[4] = false;
+		auto b3 = DecisionTreeSchedulingPolicy::createReBalanced(b2,loadDist,mask);
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5]",toString(b3.getTaskDistributionMapping()));
+
+		// remove node 1
+		loadDist[4] = 0;
+		mask[1] = false;
+		auto b4 = DecisionTreeSchedulingPolicy::createReBalanced(b3,loadDist,mask);
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5]",toString(b4.getTaskDistributionMapping()));
+
+		// remove node 5
+		loadDist[1] = 0;
+		mask[5] = false;
+		auto b5 = DecisionTreeSchedulingPolicy::createReBalanced(b4,loadDist,mask);
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]",toString(b5.getTaskDistributionMapping()));
+
+		// remove node 0
+		loadDist[5] = 0;
+		mask[0] = false;
+		auto b6 = DecisionTreeSchedulingPolicy::createReBalanced(b5,loadDist,mask);
+		EXPECT_EQ("[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]",toString(b6.getTaskDistributionMapping()));
+	}
+
+
 	TEST(DecisionTreeSchedulingPolicy, Scaling) {
 
 		int N = 200;

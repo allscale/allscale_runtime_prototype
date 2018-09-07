@@ -29,6 +29,9 @@
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/work/worker.h"
+#include "allscale/runtime/work/balancer.h"
+
+#include "allscale/runtime/hw/frequency_scaling.h"
 
 namespace allscale {
 namespace runtime {
@@ -68,12 +71,11 @@ namespace mon {
 		out << "{";
 		out << "\"id\":" << rank << ",";
 		out << "\"time\":" << time << ",";
-		out << "\"state\":\"" << (online ? "online\"," : "offline\"");
+		out << "\"state\":\"" << (online ? (active ? "active\"," : "stand-by\",") : "offline\"");
 		if (!online) {
 			out << "}";
 			return;
 		}
-		out << "\"active\":" << (active ? "\"active\"" : "\"standby\"") << ",";
 		out << "\"num_cores\":" << num_cores << ",";
 		out << "\"cpu_load\":" << cpu_load << ",";
 		out << "\"max_frequency\":" << max_frequency.toHz() << ",";
@@ -327,6 +329,8 @@ namespace mon {
 
 		NodeState getState() {
 
+			using namespace std::literals::chrono_literals;
+
 			// make a time step
 			auto now = clock::now();
 
@@ -335,8 +339,8 @@ namespace mon {
 			res.time = getCurrentTime(now);
 			res.online = true;
 
-			// TODO: ask local scheduler
-			res.active = true;
+			// determine scheduling state
+			res.active = work::isLocalNodeActive();
 
 			// -- duration independent values --
 
@@ -397,6 +401,27 @@ namespace mon {
 				processTimeBuffer.push(processTime, now);
 
 			}
+
+			// -- frequency --
+
+			res.cur_frequency = hw::getFrequency(res.rank);
+			res.max_frequency = hw::getFrequencyOptions(res.rank).back();
+
+			// -- power --
+
+			// TODO: factor in CPU core idle rate in cur power
+			res.max_power = (hw::estimateEnergyUsage(res.max_frequency,res.max_frequency * 1s) * res.num_cores) / 1s;
+			res.cur_power = res.active ? (hw::estimateEnergyUsage(res.cur_frequency,res.cur_frequency * 1s) * res.num_cores) / 1s : res.max_power * 0.05;
+
+
+			// the number of productive cycles
+			res.productive_cycles_per_second = res.cur_frequency.toHz() * (1-res.idle_rate);
+
+			// compute aggregated values
+			res.speed = res.productive_cycles_per_second / float(res.max_frequency.toHz());
+			res.efficiency = res.productive_cycles_per_second / float(res.cur_frequency.toHz());
+			res.power = res.cur_power / res.max_power;
+
 
 			// done
 			return res;
@@ -541,7 +566,7 @@ namespace mon {
 			// get as string
 			auto json = msg.str();
 
-			std::cout << "Sending:\n" << json << "\n\n";
+//			std::cout << "Sending:\n" << json << "\n\n";
 
 			// sent to bashboard
 			auto send = [&](const void* msg, int size) {

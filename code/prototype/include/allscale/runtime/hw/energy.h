@@ -138,6 +138,11 @@ namespace hw {
 		return w * 1e-12;
 	}
 
+	template<typename Rep, typename Ratio>
+	Power operator/(const Energy& e, const std::chrono::duration<Rep,Ratio>& d) {
+		return e.toJoule() / std::chrono::duration_cast<std::chrono::duration<double,std::ratio<1>>>(d).count();
+	}
+
 	// -- functionality --
 
 	/**

@@ -315,6 +315,10 @@ namespace work {
 
 			com::rank_t lastNumNodes;
 
+			// -- local state information --
+
+			bool active;
+
 		public:
 
 			InterNodeLoadBalancer(com::Node& local)
@@ -322,7 +326,8 @@ namespace work {
 				  node(local),
 				  lastSampleTime(now()),
 				  lastProcessTime(0),
-				  lastNumNodes(network.numNodes()) {
+				  lastNumNodes(network.numNodes()),
+				  active(true) {
 
 				// only on rank 0 the balancer shall be started
 				if (node.getRank() != 0) return;
@@ -332,6 +337,12 @@ namespace work {
 						[&]{ run(); return true; },
 						std::chrono::seconds(15)
 				);
+			}
+
+			// to be invoked locally to determine whether the local node is active
+			// or in stand-by mode regarding task scheduling operations
+			bool isActive() const {
+				return active;
 			}
 
 			// to be called by remote to collect this nodes efficiency
@@ -352,11 +363,14 @@ namespace work {
 				return res;
 			}
 
-			void updatePolicy(const ExchangeableSchedulingPolicy& policy) {
+			void updatePolicy(const ExchangeableSchedulingPolicy& policy, com::rank_t numActiveNodes) {
 				// get local scheduler service
 				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
 				// update policies
 				service.forAll([&](auto& cur) { cur.setPolicy(policy); });
+
+				// update own active state
+				active = node.getRank() < numActiveNodes;
 			}
 
 		private:
@@ -456,7 +470,7 @@ namespace work {
 
 				// distribute new policy
 				for(com::rank_t i=0; i<numNodes; i++) {
-					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy);
+					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy,lastNumNodes);
 				}
 			}
 
@@ -480,6 +494,15 @@ namespace work {
 	// the main entry point for scheduling
 	void schedule(TaskPtr&& task) {
 		detail::schedule(std::move(task));
+	}
+
+
+	bool isLocalNodeActive() {
+		auto& node = com::Node::getLocalNode();
+		if (node.hasService<detail::InterNodeLoadBalancer>()) {
+			return node.getLocalService<detail::InterNodeLoadBalancer>().isActive();
+		}
+		return true;
 	}
 
 	void installSchedulerService(com::Network& network) {

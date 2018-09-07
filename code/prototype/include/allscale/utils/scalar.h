@@ -26,6 +26,15 @@ namespace utils {
 
 		// - adding -
 
+		Derived& operator+=(const Derived& other) {
+			value += other.value;
+			return asDerived();
+		}
+
+		Derived& operator+(const Derived& other) {
+			return value + other.value;
+		}
+
 		template<typename V>
 		Derived& operator+=(const V& v) {
 			value += v;
@@ -35,6 +44,15 @@ namespace utils {
 		template<typename V>
 		Derived operator+(const V& v) const {
 			return value + v;
+		}
+
+		Derived& operator-=(const Derived& other) {
+			value += other.value;
+			return asDerived();
+		}
+
+		Derived& operator-(const Derived& other) {
+			return value + other.value;
 		}
 
 		template<typename V>
@@ -71,6 +89,10 @@ namespace utils {
 		template<typename S>
 		Derived operator/(const S& s) const {
 			return value / s;
+		}
+
+		double operator/(const Derived& other) const {
+			return double(value) / double(other.value);
 		}
 
 		// - relations -

@@ -15,44 +15,36 @@ namespace hw {
 	/**
 	 * A utility type to represent CPU clock frequency.
 	 */
-	class Frequency : public utils::Scalar<unsigned long long, Frequency> {
+	class Frequency : public allscale::utils::Scalar<unsigned long long, Frequency> {
 
-		using super = utils::Scalar<unsigned long long, Frequency>;
-
-		Frequency(unsigned long long f) : super(f) {};
+		using super = allscale::utils::Scalar<unsigned long long, Frequency>;
 
 	public:
 
 		Frequency() = default;
 
+		Frequency(unsigned long long f) : super(f) {};
+
 
 		// --- factories ---
 
-		static Frequency Hz(unsigned long long f) {
+		template<typename T>
+		static Frequency Hz(const T& f) {
 			return f;
 		}
 
-		static Frequency kHz(unsigned long long f) {
+		template<typename T>
+		static Frequency kHz(const T& f) {
 			return f * 1000;
 		}
 
-		static Frequency kHz(long double f) {
-			return f * 1000;
-		}
-
-		static Frequency MHz(unsigned long long f) {
+		template<typename T>
+		static Frequency MHz(const T& f) {
 			return f * 1000 * 1000;
 		}
 
-		static Frequency MHz(long double f) {
-			return f * 1000 * 1000;
-		}
-
-		static Frequency GHz(unsigned long long f) {
-			return f * 1000 * 1000 * 1000;
-		}
-
-		static Frequency GHz(long double f) {
+		template<typename T>
+		static Frequency GHz(const T& f) {
 			return f * 1000 * 1000 * 1000;
 		}
 

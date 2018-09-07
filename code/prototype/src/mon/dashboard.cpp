@@ -73,7 +73,11 @@ namespace mon {
 			out << "}";
 			return;
 		}
+		out << "\"active\":" << (active ? "\"active\"" : "\"standby\"") << ",";
+		out << "\"num_cores\":" << num_cores << ",";
 		out << "\"cpu_load\":" << cpu_load << ",";
+		out << "\"max_frequency\":" << max_frequency.toHz() << ",";
+		out << "\"cur_frequency\":" << cur_frequency.toHz() << ",";
 		out << "\"mem_load\":" << memory_load << ",";
 		out << "\"total_memory\":" << total_memory << ",";
 		out << "\"task_throughput\":" << task_throughput << ",";
@@ -81,6 +85,12 @@ namespace mon {
 		out << "\"network_in\":" << network_in << ",";
 		out << "\"network_out\":" << network_out << ",";
 		out << "\"idle_rate\":" << idle_rate << ",";
+		out << "\"productive_cycles_per_second\":" << productive_cycles_per_second << ",";
+		out << "\"cur_power\":" << cur_power.toWatt() << ",";
+		out << "\"max_power\":" << max_power.toWatt() << ",";
+		out << "\"speed\":" << speed << ",";
+		out << "\"efficiency\":" << efficiency << ",";
+		out << "\"power\":" << power << ",";
 		out << "\"owned_data\":";
 		ownership.toJSON(out);
 		out << "}";
@@ -93,7 +103,10 @@ namespace mon {
 		out.write(rank);
 		out.write(online);
 		if (!online) return;
+		out.write(active);
 		out.write(cpu_load);
+		out.write(cur_frequency);
+		out.write(max_frequency);
 		out.write(memory_load);
 		out.write(total_memory);
 		out.write(task_throughput);
@@ -102,6 +115,12 @@ namespace mon {
 		out.write(network_out);
 		out.write(idle_rate);
 		out.write(ownership);
+		out.write(productive_cycles_per_second);
+		out.write(cur_power);
+		out.write(max_power);
+		out.write(speed);
+		out.write(efficiency);
+		out.write(power);
 	}
 
 	NodeState NodeState::load(allscale::utils::ArchiveReader& in) {
@@ -110,7 +129,10 @@ namespace mon {
 		res.rank = in.read<com::rank_t>();
 		res.online = in.read<bool>();
 		if (!res.online) return res;
+		res.active = in.read<bool>();
 		res.cpu_load = in.read<float>();
+		res.cur_frequency = in.read<hw::Frequency>();
+		res.max_frequency = in.read<hw::Frequency>();
 		res.memory_load = in.read<std::uint64_t>();
 		res.total_memory = in.read<std::uint64_t>();
 		res.task_throughput = in.read<float>();
@@ -119,7 +141,33 @@ namespace mon {
 		res.network_out = in.read<std::uint64_t>();
 		res.idle_rate = in.read<float>();
 		res.ownership = in.read<data::DataItemRegions>();
+		res.productive_cycles_per_second = in.read<hw::cycles>();
+		res.cur_power = in.read<hw::Power>();
+		res.max_power = in.read<hw::Power>();
+		res.speed = in.read<float>();
+		res.efficiency = in.read<float>();
+		res.power = in.read<float>();
 		return res;
+	}
+
+
+	// -- system state --
+
+	std::ostream& operator<<(std::ostream& out,const SystemState& state) {
+		state.toJSON(out);
+		return out;
+	}
+
+	void SystemState::toJSON(std::ostream& out) const {
+		out << "{";
+		out << "\"type\" : \"status\",";
+		out << "\"time\" : " << time << ",";
+		out << "\"speed\":" << speed << ",";
+		out << "\"efficiency\":" << efficiency << ",";
+		out << "\"power\":" << power << ",";
+		out << "\"score\":" << score << ",";
+		out << "\"nodes\" : " << nodes;
+		out << "}";
 	}
 
 	namespace {
@@ -286,6 +334,9 @@ namespace mon {
 			res.rank = localNode.getRank();
 			res.time = getCurrentTime(now);
 			res.online = true;
+
+			// TODO: ask local scheduler
+			res.active = true;
 
 			// -- duration independent values --
 
@@ -466,13 +517,14 @@ namespace mon {
 		void sendShutdownInfo() {
 
 			// create shutdown info
-			std::vector<NodeState> info;
+			SystemState info;
+			info.time = getCurrentTime() + 1;  // to make sure it does not collide with the last update
 			for(com::rank_t i = 0; i<network.numNodes(); i++) {
 				NodeState state;
 				state.rank = i;
-				state.time = getCurrentTime() + 1; // to make sure it does not collide with the last update
+				state.time = info.time;
 				state.online = false;
-				info.push_back(state);
+				info.nodes.push_back(state);
 			}
 
 			// send shutdown info
@@ -480,17 +532,16 @@ namespace mon {
 
 		}
 
-		void sendUpdate(const std::vector<NodeState>& data) {
-
-			// extract time
-			auto time = data[0].time;
+		void sendUpdate(const SystemState& state) {
 
 			// create JSON data block
 			std::stringstream msg;
-			msg << "{\"time\":" << time << ",\"type\":\"status\",\"nodes\":" << data << "}";
+			state.toJSON(msg);
 
 			// get as string
 			auto json = msg.str();
+
+			std::cout << "Sending:\n" << json << "\n\n";
 
 			// sent to bashboard
 			auto send = [&](const void* msg, int size) {
@@ -523,13 +574,40 @@ namespace mon {
 		net.removeServiceOnNodes<NodeStateService>();
 	}
 
-	std::vector<NodeState> getSystemState(com::Network& net) {
+	SystemState getSystemState(com::Network& net) {
+
+		using namespace std::literals::chrono_literals;
 
 		// simply collect state from all nodes
-		std::vector<NodeState> res;
+		SystemState res;
 		for(com::rank_t cur = 0; cur < net.numNodes(); cur++) {
-			res.push_back(net.getRemoteProcedure(cur,&NodeStateService::getState)());
+			res.nodes.push_back(net.getRemoteProcedure(cur,&NodeStateService::getState)());
 		}
+
+		// update global state
+		res.time = res.nodes[0].time;
+
+		// compute overall speed
+		std::uint64_t total_productive =0;
+		std::uint64_t total_available =0;
+		std::uint64_t max_available =0;
+
+		hw::Power cur_power = 0;
+		hw::Power max_power = 0;
+
+		for(const auto& cur : res.nodes) {
+			if (cur.active) {
+				total_productive += cur.productive_cycles_per_second;
+				total_available += cur.num_cores * cur.cur_frequency * 1s;
+				cur_power += cur.power;
+			}
+			max_available += cur.num_cores * cur.max_frequency * 1s;
+			max_power += cur.max_power;
+		}
+
+		res.speed = (max_available > 0) ? total_productive / float(max_available) : 0;
+		res.efficiency = (total_available > 0) ? total_available / float(total_available) : 0;
+		res.power = (max_power > 0) ? cur_power / max_power : 0;
 
 		// done
 		return res;

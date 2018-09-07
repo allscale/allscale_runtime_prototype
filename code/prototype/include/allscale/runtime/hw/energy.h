@@ -14,9 +14,9 @@ namespace hw {
 	 * A type to present energy. Energy is represented
 	 * as a scalar value, storing the amount of joules.
 	 */
-	class Energy : public utils::Scalar<double,Energy> {
+	class Energy : public allscale::utils::Scalar<double,Energy> {
 
-		using super = utils::Scalar<double,Energy>;
+		using super = allscale::utils::Scalar<double,Energy>;
 
 	public:
 
@@ -72,6 +72,70 @@ namespace hw {
 
 	inline Energy operator "" _pJ(unsigned long long j) {
 		return j * 1e-12;
+	}
+
+	/**
+	 * A type to present power. Power is represented
+	 * as a scalar value, storing the amount of watts.
+	 */
+	class Power : public allscale::utils::Scalar<double,Power> {
+
+		using super = allscale::utils::Scalar<double,Power>;
+
+	public:
+
+		Power() = default;
+
+		Power(double value) : super(value) {}
+
+		double toWatt() const {
+			return getValue();
+		}
+
+		friend std::ostream& operator<<(std::ostream& out, const Power& e) {
+			return out << e.getValue() << " W";
+		}
+
+	};
+
+	inline Power operator "" _W(long double w) {
+		return w;
+	}
+
+	inline Power operator "" _w(unsigned long long w) {
+		return w;
+	}
+
+	inline Power operator "" _mW(long double w) {
+		return w * 1e-3;
+	}
+
+	inline Power operator "" _mW(unsigned long long w) {
+		return w * 1e-3;
+	}
+
+	inline Power operator "" _uW(long double w) {
+		return w * 1e-6;
+	}
+
+	inline Power operator "" _uW(unsigned long long w) {
+		return w * 1e-6;
+	}
+
+	inline Power operator "" _nW(long double w) {
+		return w * 1e-9;
+	}
+
+	inline Power operator "" _nW(unsigned long long w) {
+		return w * 1e-9;
+	}
+
+	inline Power operator "" _pW(long double w) {
+		return w * 1e-12;
+	}
+
+	inline Power operator "" _pW(unsigned long long w) {
+		return w * 1e-12;
 	}
 
 	// -- functionality --

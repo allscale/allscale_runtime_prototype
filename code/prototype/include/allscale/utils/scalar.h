@@ -51,7 +51,7 @@ namespace utils {
 			return asDerived();
 		}
 
-		Derived& operator-(const Derived& other) {
+		Derived operator-(const Derived& other) {
 			return value + other.value;
 		}
 

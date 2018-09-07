@@ -319,6 +319,8 @@ namespace mon {
 
 		CPULoadSensor cpu_sensor;
 
+		hw::Energy lastEnergy;
+
 	public:
 
 		NodeStateService(com::Node& node)
@@ -411,7 +413,15 @@ namespace mon {
 
 			// TODO: factor in CPU core idle rate in cur power
 			res.max_power = (hw::estimateEnergyUsage(res.max_frequency,res.max_frequency * 1s) * res.num_cores) / 1s;
-			res.cur_power = res.active ? (hw::estimateEnergyUsage(res.cur_frequency,res.cur_frequency * 1s) * res.num_cores) / 1s : res.max_power * 0.05;
+
+			if (hw::providesEnergyMeasurement(res.rank)) {
+				auto currentEnergy = hw::getEnergyConsumedOn(res.rank);
+				res.cur_power = (currentEnergy - lastEnergy) / interval;
+				lastEnergy = currentEnergy;
+			} else {
+				// estimated power consumption
+				res.cur_power = res.active ? (hw::estimateEnergyUsage(res.cur_frequency,res.cur_frequency * 1s) * res.num_cores) / 1s : res.max_power * 0.05;
+			}
 
 
 			// the number of productive cycles
@@ -621,18 +631,22 @@ namespace mon {
 		hw::Power max_power = 0;
 
 		for(const auto& cur : res.nodes) {
-			if (cur.active) {
+			if (cur.online && cur.active) {
 				total_productive += cur.productive_cycles_per_second;
 				total_available += cur.num_cores * cur.cur_frequency * 1s;
-				cur_power += cur.power;
+				cur_power += cur.cur_power;
 			}
 			max_available += cur.num_cores * cur.max_frequency * 1s;
 			max_power += cur.max_power;
 		}
 
+		// compute system-wide ratings
 		res.speed = (max_available > 0) ? total_productive / float(max_available) : 0;
-		res.efficiency = (total_available > 0) ? total_available / float(total_available) : 0;
+		res.efficiency = (total_available > 0) ? total_productive / float(total_available) : 0;
 		res.power = (max_power > 0) ? cur_power / max_power : 0;
+
+		// TODO: compute score based on objective function
+		res.score = res.speed * res.efficiency * (1-res.power); // TODO: make exponents customizable
 
 		// done
 		return res;

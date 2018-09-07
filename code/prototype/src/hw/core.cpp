@@ -1,6 +1,6 @@
 #include "allscale/runtime/hw/core.h"
 
-#include <algorithm>
+#include <numeric>
 #include <thread>
 
 namespace allscale {

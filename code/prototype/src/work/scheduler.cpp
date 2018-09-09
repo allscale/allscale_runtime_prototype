@@ -18,6 +18,10 @@
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/data/data_item_index.h"
 
+#include "allscale/runtime/hw/energy.h"
+#include "allscale/runtime/hw/frequency_scaling.h"
+
+#include "allscale/runtime/work/optimizer.h"
 #include "allscale/runtime/work/schedule_policy.h"
 
 namespace allscale {
@@ -313,7 +317,22 @@ namespace work {
 
 			std::chrono::nanoseconds lastProcessTime;
 
-			com::rank_t lastNumNodes;
+			// -- global tuning data --
+
+			// the number of currently active nodes
+			com::rank_t numActiveNodes;
+
+			// the frequency currently selected for all nodes
+			hw::Frequency activeFrequency;
+
+			using config = std::pair<com::rank_t,hw::Frequency>;
+
+
+			// hill climbing data
+			config best;						// < best known option so far
+			float best_score = 0;				// < score of best option
+			std::vector<config> explore;		// < list of options to explore
+
 
 			// -- local state information --
 
@@ -326,7 +345,10 @@ namespace work {
 				  node(local),
 				  lastSampleTime(now()),
 				  lastProcessTime(0),
-				  lastNumNodes(network.numNodes()),
+				  numActiveNodes(network.numNodes()),
+				  activeFrequency(hw::getFrequency(node.getRank())),
+				  best({numActiveNodes,activeFrequency}),
+				  best_score(0),
 				  active(true) {
 
 				// only on rank 0 the balancer shall be started
@@ -335,7 +357,7 @@ namespace work {
 				// start periodic balancing
 				node.getLocalService<utils::PeriodicExecutorService>().runPeriodically(
 						[&]{ run(); return true; },
-						std::chrono::seconds(15)
+						std::chrono::seconds(5)
 				);
 			}
 
@@ -363,7 +385,7 @@ namespace work {
 				return res;
 			}
 
-			void updatePolicy(const ExchangeableSchedulingPolicy& policy, com::rank_t numActiveNodes) {
+			void updatePolicy(const ExchangeableSchedulingPolicy& policy, com::rank_t numActiveNodes, hw::Frequency frequency) {
 				// get local scheduler service
 				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
 				// update policies
@@ -371,86 +393,165 @@ namespace work {
 
 				// update own active state
 				active = node.getRank() < numActiveNodes;
+
+				// update CPU clock frequency
+				hw::setFrequency(node.getRank(), frequency);
 			}
 
 		private:
 
-			com::rank_t adjustNumNodes(const std::vector<float>& load, com::rank_t currentNumNodes, com::rank_t maxNodes) {
+			void tune(const std::vector<float>& load) {
+				using namespace std::literals::chrono_literals;
 
-				// TODO: improve node adjustment
+				// This demo implements a simple hill climbing like tuner.
 
-				// Step 1: stabalize load distribution
+				// --- rate current state ---
 
-				// if load distribution has reached a even enough range
-				float min = load.front();
-				float max = load.front();
-				for(com::rank_t i=0; i<currentNumNodes; i++) {
-					min = std::min(load[i],min);
-					max = std::max(load[i],max);
-				}
-				float diff = max - min;
+				const int cores_per_node = 1; // for the prototype so far
 
+				// compute current performance score
+				auto maxFrequnzy = hw::getFrequencyOptions(0).back();
 
-				// Step 2: adjust number of nodes
+				std::uint64_t used_cycles = 0;
+				std::uint64_t avail_cycles = 0;
+				std::uint64_t max_cycles = 0;
+				hw::Power used_power = 0;
+				hw::Power max_power = 0;
 
-				float avg = std::accumulate(load.begin(),load.end(),0.0f) / currentNumNodes;
-
-				// compute the load variance
-				float sum_dist = 0;
-				for(com::rank_t i=0; i<currentNumNodes; i++) {
-					float dist = load[i] - avg;
-					sum_dist +=  dist * dist;
-				}
-				float var = sum_dist / (currentNumNodes - 1);
-
-				// if stable on this distribution
-				auto res = currentNumNodes;
-				if (var < 0.005) {
-					// compute better number of nodes
-					if (avg < 0.5) {
-						res = std::max(res-3,com::rank_t(1));
-					} else if (avg < 0.6) {
-						res = std::max(res-1,com::rank_t(1));
-					} else if (avg > 0.75) {
-						res = std::min(res+1,maxNodes);
-					} else if (avg > 0.9) {
-						res = std::min(res+3,maxNodes);
+				for(com::rank_t i=0; i<network.numNodes(); i++) {
+					if (i<numActiveNodes) {
+						used_cycles += load[i] * activeFrequency.toHz() * cores_per_node;
+						avail_cycles += activeFrequency.toHz() * cores_per_node;
+						used_power += hw::estimateEnergyUsage(activeFrequency,activeFrequency * 1s) / 1s;
 					}
-					
-					//res = std::max<com::rank_t>(std::min<com::rank_t>(std::ceil(currentNumNodes * avg / 0.9),maxNodes),1);
+					max_cycles += maxFrequnzy.toHz() * cores_per_node;
+					max_power += hw::estimateEnergyUsage(maxFrequnzy,maxFrequnzy * 1s) / 1s;
 				}
 
-				std::cout
-					<< "Average load "      << std::setprecision(2) << avg
-					<< ", load difference " << std::setprecision(2) << diff
-					<< ", load variance "   << std::setprecision(2) << var
-					<< ", total progress: " << std::setprecision(2) << (avg*currentNumNodes);
+				float speed = used_cycles / float(max_cycles);
+				float efficiency = used_cycles / float(avail_cycles);
+				float power = used_power / max_power;
 
-				if (res != currentNumNodes) {
-					std::cout << " - switching from " << currentNumNodes << " to " << res << " nodes for next interval ..\n";
-				} else {
-					std::cout << " - using " << res << " nodes for next interval ..\n";
+				// compute current score
+				auto obj = getActiveTuningObjectiv();
+				float score = obj.getScore(speed,efficiency,power);
+
+				std::cout << "\tSystem state:"
+						<<  " spd=" << std::setprecision(2) << speed
+						<< ", eff=" << std::setprecision(2) << efficiency
+						<< ", pow=" << std::setprecision(2) << power
+						<< " => score: " << std::setprecision(2) << score
+						<< " for objective " << obj << "\n";
+
+
+				// record current solution
+				if (score > best_score) {
+					best = { numActiveNodes, activeFrequency };
+					best_score = score;
 				}
 
-				return res;
+				// pick next state
+
+				if (explore.empty()) {
+
+					// nothing left to explore => generate new points
+					std::cout << "\t\tPrevious best option " << best.first << " @ " << best.second << " with score " << best_score << "\n";
+
+					// get nearby frequencies
+					auto options = hw::getFrequencyOptions(0);
+					auto cur = std::find(options.begin(), options.end(), best.second);
+					assert_true(cur != options.end());
+					auto pos = cur - options.begin();
+
+					std::vector<hw::Frequency> frequencies;
+					if (pos != 0) frequencies.push_back(options[pos-1]);
+					frequencies.push_back(options[pos]);
+					if (pos+1<int(options.size())) frequencies.push_back(options[pos+1]);
+
+					// get nearby node numbers
+					std::vector<com::rank_t> numNodes;
+					if (best.first > 1) numNodes.push_back(best.first-1);
+					numNodes.push_back(best.first);
+					if (best.first+1 < network.numNodes()) numNodes.push_back(best.first+1);
+
+
+					// create new options
+					for(const auto& a : numNodes) {
+						for(const auto& b : frequencies) {
+							std::cout << "\t\tAdding option " << a << " @ " << b << "\n";
+							explore.push_back({a,b});
+						}
+					}
+
+					// reset best options
+					best_score = 0;
+				}
+
+				// if there are still no options, there is nothing to do
+				if (explore.empty()) return;
+
+				// take next option and evaluate
+				auto next = explore.back();
+				explore.pop_back();
+
+				numActiveNodes = next.first;
+				activeFrequency = next.second;
+
+				std::cout << "\t\tSwitching to " << numActiveNodes << " @ " << activeFrequency << "\n";
 			}
 
 			void balance() {
 
+				// The load balancing / optimization is split into two parts:
+				//  Part A: the balance function, attempting to even out resource utilization between nodes
+				//			for a given number of active nodes and a CPU clock frequency
+				//  Part B: in evenly balanced cases, the tune function is evaluating the current
+				//          performance score and searching for better alternatives
+
+
+				// -- Step 1: collect node distribution --
+
 				// collect the load of all nodes
 				com::rank_t numNodes = network.numNodes();
 				std::vector<float> load(numNodes,0.0f);
-				for(com::rank_t i=0; i<lastNumNodes; i++) {
+				for(com::rank_t i=0; i<numActiveNodes; i++) {
 					load[i] = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getEfficiency)();
 				}
 
-				// adjust number of involved nodes
-				lastNumNodes = adjustNumNodes(load,lastNumNodes,numNodes);
+				// compute the load variance
+				float avg = std::accumulate(load.begin(),load.end(),0.0f) / numActiveNodes;
+
+				float sum_dist = 0;
+				for(com::rank_t i=0; i<numActiveNodes; i++) {
+					float dist = load[i] - avg;
+					sum_dist +=  dist * dist;
+				}
+				float var = sum_dist / (numActiveNodes - 1);
+
+
+				std::cout
+					<< "Average load "      << std::setprecision(2) << avg
+					<< ", load variance "   << std::setprecision(2) << var
+					<< ", total progress " << std::setprecision(2) << (avg*numActiveNodes)
+					<< " on " << numActiveNodes << " nodes\n";
+
+
+				// -- Step 2: if stable, adjust number of nodes and clock speed
+
+				// if stable enough, allow meta-optimizer to manage load
+				if (var < 0.01) {
+
+					// adjust number of nodes and CPU frequency
+					tune(load);
+
+				}
+
+				// -- Step 3: enforce selected number of nodes and clock speed, keep system balanced
 
 				// compute number of nodes to be used
 				std::vector<bool> mask(numNodes);
 				for(com::rank_t i=0; i<numNodes; i++) {
-					mask[i] = i < lastNumNodes;
+					mask[i] = i < numActiveNodes;
 				}
 
 
@@ -465,12 +566,9 @@ namespace work {
 				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
 				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
 
-				// check whether something has changed
-				if (curPolicy == newPolicy) return;
-
 				// distribute new policy
 				for(com::rank_t i=0; i<numNodes; i++) {
-					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy,lastNumNodes);
+					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy,numActiveNodes,activeFrequency);
 				}
 			}
 

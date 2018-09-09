@@ -23,7 +23,7 @@ namespace work {
 	}
 
 	std::ostream& operator<<(std::ostream& out, const TuningObjective& o) {
-		return out << "t^" << o.speedExponent << "e^" << o.efficiencyExponent << "p^" << o.powerExponent;
+		return out << "max ( t^" << o.speedExponent << " * e^" << o.efficiencyExponent << " * p^" << o.powerExponent << " )";
 	}
 
 	namespace {

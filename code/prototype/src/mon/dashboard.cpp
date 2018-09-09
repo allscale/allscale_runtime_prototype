@@ -30,6 +30,7 @@
 #include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/work/worker.h"
 #include "allscale/runtime/work/balancer.h"
+#include "allscale/runtime/work/optimizer.h"
 
 #include "allscale/runtime/hw/frequency_scaling.h"
 
@@ -645,8 +646,8 @@ namespace mon {
 		res.efficiency = (total_available > 0) ? total_productive / float(total_available) : 0;
 		res.power = (max_power > 0) ? cur_power / max_power : 0;
 
-		// TODO: compute score based on objective function
-		res.score = res.speed * res.efficiency * (1-res.power); // TODO: make exponents customizable
+		// compute score based on objective function
+		res.score = work::getActiveTuningObjectiv().getScore(res.speed,res.efficiency,res.power);
 
 		// done
 		return res;

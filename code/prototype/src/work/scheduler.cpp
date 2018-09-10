@@ -472,7 +472,7 @@ namespace work {
 					std::vector<com::rank_t> numNodes;
 					if (best.first > 1) numNodes.push_back(best.first-1);
 					numNodes.push_back(best.first);
-					if (best.first+1 < network.numNodes()) numNodes.push_back(best.first+1);
+					if (best.first < network.numNodes()) numNodes.push_back(best.first+1);
 
 
 					// create new options

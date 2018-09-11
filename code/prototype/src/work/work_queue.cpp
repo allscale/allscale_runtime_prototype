@@ -39,7 +39,7 @@ namespace work {
 		queue.pop_front();
 		assert_true(res);
 		assert_true(res->isReady());
-		return std::move(res);
+		return res;
 	}
 
 	TaskPtr WorkQueue::dequeueBack() {
@@ -49,7 +49,7 @@ namespace work {
 		queue.pop_back();
 		assert_true(res);
 		assert_true(res->isReady());
-		return std::move(res);
+		return res;
 	}
 
 

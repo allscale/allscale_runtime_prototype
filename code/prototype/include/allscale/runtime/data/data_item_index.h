@@ -342,7 +342,7 @@ namespace data {
 				});
 			}
 
-			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const {
+			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const override {
 				assert_true(myAddress.isLeaf());
 				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
 					auto pos = indices.find(r.getDataItemReference());
@@ -351,7 +351,7 @@ namespace data {
 				});
 			}
 
-			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) {
+			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) override {
 				assert_true(myAddress.isLeaf());
 				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r) {
 					auto pos = indices.find(r.getDataItemReference());

@@ -155,7 +155,7 @@ namespace data {
 			});
 
 			// done
-			return std::move(res);
+			return res;
 		}
 
 		// supports printing requirements

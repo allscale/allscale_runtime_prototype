@@ -196,7 +196,7 @@ namespace work {
 			policy->store(out);
 		}
 
-		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const {
+		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
 			policy->store(out);
 		}
 
@@ -268,7 +268,7 @@ namespace work {
 
 		// --- serialization support ---
 
-		void storeInternal(allscale::utils::ArchiveWriter& out) const;
+		void storeInternal(allscale::utils::ArchiveWriter& out) const override;
 
 	private:
 
@@ -426,7 +426,7 @@ namespace work {
 		/**
 		 * Tests whether the given address is a valid target for a task with the given task.
 		 */
-		bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const {
+		bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const override {
 			return addr == getTarget(path);
 		}
 
@@ -459,7 +459,7 @@ namespace work {
 
 		static std::unique_ptr<SchedulingPolicy> loadAsUniquePtr(allscale::utils::ArchiveReader&);
 
-		void storeInternal(allscale::utils::ArchiveWriter&) const;
+		void storeInternal(allscale::utils::ArchiveWriter&) const override;
 
 	};
 

@@ -122,7 +122,7 @@ namespace data {
 				return std::make_unique<Entry>(*this);
 			}
 
-			virtual bool operator==(const EntryBase& entry) const {
+			virtual bool operator==(const EntryBase& entry) const override {
 				if (!dynamic_cast<const Entry*>(&entry)) return false;
 				const Entry& other = static_cast<const Entry&>(entry);
 

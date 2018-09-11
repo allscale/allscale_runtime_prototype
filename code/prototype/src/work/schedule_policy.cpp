@@ -171,7 +171,7 @@ namespace work {
 			fillTree(res,TaskPath::root(), 0, ceilLog2(num_nodes), 0, num_nodes, &*map.begin(),&*map.end());
 
 			// done
-			return std::move(res);
+			return res;
 		}
 
 	}

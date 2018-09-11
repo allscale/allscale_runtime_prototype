@@ -33,13 +33,12 @@ namespace utils {
 			};
 
 			#pragma GCC diagnostic push
-			#pragma GCC diagnostic ignored "-Wpmf-conversions"
 			#pragma GCC diagnostic ignored "-Wstrict-aliasing"
 
 			static void store(ArchiveWriter& writer, const FP& value) {
 
 				// get name of symbol addressed by the pointer
-				void* addr = reinterpret_cast<void*>(value);
+				void* addr = *(void**)(&value);
 
 				// get symbol information
 				Dl_info info;

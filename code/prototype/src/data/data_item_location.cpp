@@ -20,7 +20,7 @@ namespace data {
 		for(const auto& cur : entries) {
 			cur.second->addCoveredRegions(res);
 		}
-		return std::move(res);
+		return res;
 	}
 
 	bool DataItemLocationInfos::operator==(const DataItemLocationInfos& other) const {
@@ -70,7 +70,7 @@ namespace data {
 			auto cur = EntryBase::load(in);
 			res.entries[cur.first] = std::move(cur.second);
 		}
-		return std::move(res);
+		return res;
 	}
 
 

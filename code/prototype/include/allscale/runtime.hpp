@@ -192,7 +192,7 @@ namespace runtime {
 	// creates dependencies from a list of dependencies
 	template<typename ... TaskRefs>
 	typename std::enable_if<(sizeof...(TaskRefs) > 0), dependencies>::type
-	after(TaskRefs&& ... task_refs) {
+	after(TaskRefs&& ... /* task_refs */) {
 		assert_not_implemented() << "Dependencies not yet supported in prototype!";
 		return after();
 	}
@@ -235,6 +235,12 @@ namespace runtime {
 	// the parallel treeture connector
 	treeture<void> treeture_parallel(const dependencies& /* ignored */, treeture<void>&& a, treeture<void>&& b) {
 		return allscale::runtime::work::treeture_parallel(std::move(a),std::move(b));
+	}
+
+	// the parallel treeture connector
+	template<typename A, typename B, typename Comp>
+	treeture<std::result_of_t<Comp(A,B)>> treeture_combine(const dependencies& /* ignored */, treeture<A>&& a, treeture<B>&& b, const Comp& comp) {
+		return allscale::runtime::work::treeture_combine(std::move(a),std::move(b),comp);
 	}
 
 	// ---- Data Items ----

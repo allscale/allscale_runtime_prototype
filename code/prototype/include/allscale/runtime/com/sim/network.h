@@ -39,7 +39,6 @@ namespace sim {
 
 	private:
 
-
 		/**
 		 * The function to simulate the transfer of data.
 		 */
@@ -49,6 +48,32 @@ namespace sim {
 
 			// shortcut for local communication
 			if (&srcStats == &trgStats) return value;
+
+			// perform serialization
+			auto archive = allscale::utils::serialize(value);
+
+			// record transfer volume
+			auto size = archive.getBuffer().size();
+			srcStats.sent_bytes += size;
+			trgStats.received_bytes += size;
+
+			// de-serialize value
+			auto res = allscale::utils::deserialize<T>(archive);
+
+			// done (avoid extra copy)
+			return std::move(res);
+		}
+
+
+		/**
+		 * The function to simulate the transfer of data.
+		 */
+		template<typename T>
+		static T transfer(NodeStatistics& srcStats, NodeStatistics& trgStats, T&& value) {
+			static_assert(allscale::utils::is_serializable<T>::value, "Encountered non-serializable data element.");
+
+			// shortcut for local communication
+			if (&srcStats == &trgStats) return std::move(value);
 
 			// perform serialization
 			auto archive = allscale::utils::serialize(value);

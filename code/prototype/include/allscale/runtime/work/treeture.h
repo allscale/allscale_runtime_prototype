@@ -87,7 +87,7 @@ namespace work {
 				results[toPosition(path)] = std::move(value);
 			}
 
-			opt_result_t getResult(const TaskPath& path) const {
+			opt_result_t getResult(const TaskPath& path) {
 				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
 				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
 				return std::move(results[toPosition(path)]);
@@ -183,7 +183,7 @@ namespace work {
 			// retrieve the current result state
 			auto pos = states.find(id.getRootID());
 			assert_true(pos != states.end()) << "Invalid state: targeted task not registered!";
-			auto res = static_cast<const detail::TreetureStateService<R>&>(*pos->second).getResult(id.getPath());
+			auto res = static_cast<detail::TreetureStateService<R>&>(*pos->second).getResult(id.getPath());
 
 			// if this result is present, this is the last thing we will here from this task
 			if (bool(res)) freeTaskStateInternal(id);
@@ -540,6 +540,14 @@ namespace work {
 	 * A connector for treetures producing a void treeture waiting for the completion of the given treetures.
 	 */
 	treeture<void> treeture_parallel(treeture<void>&& a, treeture<void>&& b);
+
+	template<typename A, typename B, typename Comp>
+	treeture<std::result_of_t<Comp(A,B)>> treeture_combine(treeture<A>&& a, treeture<B>&& b, const Comp& comp) {
+		// wait eagerly
+		auto va = a.get_result();
+		auto vb = b.get_result();
+		return comp(std::move(va),std::move(vb));
+	}
 
 } // end of namespace com
 } // end of namespace runtime

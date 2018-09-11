@@ -343,7 +343,7 @@ namespace work {
 		}
 
 		// saves a copy of the task to the given stream
-		virtual void storeInternal(allscale::utils::ArchiveWriter&) const {
+		virtual void storeInternal(allscale::utils::ArchiveWriter&) const override {
 			assert_fail() << "No serialization supported for this task.";
 		}
 
@@ -353,7 +353,7 @@ namespace work {
 		}
 
 		// retrieves the function capable of de-serializing a task instance
-		virtual load_fun_t getLoadFunction() const {
+		virtual load_fun_t getLoadFunction() const override {
 			return &load;
 		}
 
@@ -415,7 +415,7 @@ namespace work {
 		}
 
 		// saves a copy of the task to the given stream
-		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const {
+		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
 			out.write<closure_type>(closure);
 		}
 
@@ -424,7 +424,7 @@ namespace work {
 		}
 
 		// retrieves the function capable of de-serializing a task instance
-		virtual load_fun_t getLoadFunction() const {
+		virtual load_fun_t getLoadFunction() const override {
 			return &load;
 		}
 

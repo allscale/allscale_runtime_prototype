@@ -11,6 +11,7 @@
 #include <allscale/utils/vector.h>
 #include <assert.h>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include <stdint.h>
 #include <utility>
 #include <vector>
+#include <random>
 
 #ifdef __cplusplus
 #define INS_INIT(...) __VA_ARGS__
@@ -42,6 +44,12 @@
 				#include <initializer_list>  // force libstdc++ to include its config
 				#undef _GLIBCXX_HAVE_GETS    // correct broken config
 #endif
+
+using std::sqrt;
+using std::pow;
+using std::fabs;
+using std::exp;
+using std::log;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"

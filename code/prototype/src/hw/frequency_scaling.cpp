@@ -7,6 +7,8 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/finalize.h"
+#include "allscale/utils/string_utils.h"
+
 #include "allscale/runtime/hw/core.h"
 
 namespace allscale {
@@ -96,11 +98,46 @@ namespace hw {
 			return {};
 		}
 
+		// list returned by this function is expected to be in ascending order, we may get descending
+		std::sort(frequencies.begin(), frequencies.end());
+
 		return frequencies;
 	}
 
-	Frequency getFrequency(Core) {
-		return 10000;
+	Frequency getFrequency(Core coreid) {
+		char path_to_cpufreq[FREQ_PATH_MAX_LENGTH];
+		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_CUR_STRING);
+
+		std::ifstream file(path_to_cpufreq, std::ios::binary);
+
+		auto freqs = getFrequencyOptions(coreid);
+
+		if(!file) {
+			FREQ_DBG("hw::getFrequencyOptions: Unable to open frequency file %s for reading, reason: %s\n", path_to_cpufreq, strerror(errno));
+			return freqs[0];
+		}
+
+		int freq_in_khz = 0;
+		file >> freq_in_khz;
+		if(!file) {
+			FREQ_DBG("hw::getFrequencyOptions: Unable to read frequency from file %s, reason: %s\n", path_to_cpufreq, strerror(errno));
+			return freqs[0];
+		}
+
+		auto read_freq = Frequency::kHz(freq_in_khz);
+
+		// the frequency we get from FREQ_CUR_STRING might not exactly be in the list for the given core
+		// the rest of the system expects it to be, so we fix that here by choosing the closest
+		auto it = std::find_if(freqs.cbegin(), freqs.cend(), [&](Frequency f) { return f >= read_freq; });
+		if(it == freqs.cend()) {
+			FREQ_DBG("hw::getFrequencyOptions: Unexpectedly high frequency in file %s: %s\n", path_to_cpufreq, toString(read_freq).c_str());
+			return freqs.back();
+		}
+		if(it == freqs.cbegin()) return *it;
+		auto smaller = *it--;
+		auto larger = *it;
+		if(read_freq - smaller > larger - read_freq) return larger;
+		else return smaller;
 	}
 
 	bool setFrequency(Core, Frequency) {

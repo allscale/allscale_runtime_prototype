@@ -63,16 +63,36 @@ namespace hw {
 
 	TEST(Cpufreq, GetFrequencyOptions) {
 		auto frequencies = getFrequencyOptions(0);
+
+		// sanity checks
 		ASSERT_GT(frequencies.size(), 1);
 		EXPECT_GT(frequencies[0], 1_MHz);
 		EXPECT_LT(frequencies[0], 10_GHz);
 
+		// check order
+		auto prev_freq = frequencies.front();
+		for(auto freq : frequencies) {
+			EXPECT_LE(prev_freq, freq);
+			prev_freq = freq;
+		}
+
+		// debug output
 		std::cout << "Core 0 frequencies:\n";
 		for(auto freq : frequencies) {
 			std::cout << freq << "\n";
 		}
 	}
 
+	TEST(Cpufreq, GetFrequency) {
+		auto f = getFrequency(0);
+		auto freqs = getFrequencyOptions(0);
+		EXPECT_GE(f, freqs.front());
+		EXPECT_LE(f, freqs.back());
+		EXPECT_NE(std::find(freqs.cbegin(), freqs.cend(), f), freqs.cend());
+
+		// debug output
+		std::cout << "Core 0 cur_freq: " << f << "\n";
+	}
 
 #endif
 

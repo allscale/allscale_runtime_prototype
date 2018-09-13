@@ -1,5 +1,7 @@
 #pragma once
 
+#include <type_traits>
+
 #include "allscale/utils/serializer.h"
 
 namespace allscale {
@@ -30,42 +32,21 @@ namespace utils {
 			value += other.value;
 			return asDerived();
 		}
-
-		Derived& operator+(const Derived& other) {
-			return value + other.value;
-		}
-
 		template<typename V>
-		Derived& operator+=(const V& v) {
+		std::enable_if_t<!std::is_same<V,Derived>::value, Derived&> operator+=(const V& v) {
 			value += v;
 			return asDerived();
 		}
 
-		template<typename V>
-		Derived operator+(const V& v) const {
-			return value + v;
-		}
-
 		Derived& operator-=(const Derived& other) {
-			value += other.value;
+			value -= other.value;
 			return asDerived();
 		}
-
-		Derived operator-(const Derived& other) {
-			return value + other.value;
-		}
-
 		template<typename V>
 		Derived& operator-=(const V& v) {
 			value -= v;
 			return asDerived();
 		}
-
-		template<typename V>
-		Derived operator-(const V& v) const {
-			return value - v;
-		}
-
 
 		// - scaling -
 
@@ -139,13 +120,40 @@ namespace utils {
 
 	};
 
+	// addition
+
+	template<typename T, typename Derived>
+	Derived operator+(const Scalar<T,Derived>& a, const Scalar<T,Derived>& b) {
+		return a.getValue() + b.getValue();
+	}
 	template<typename T, typename Derived, typename V>
-	Derived operator+(const V& a,const Scalar<T,Derived>& b) {
-		return b + a;
+	std::enable_if_t<!std::is_same<V,Derived>::value, Derived> operator+(const V& a, const Scalar<T,Derived>& b) {
+		return a + b.getValue();
+	}
+	template<typename T, typename Derived, typename V>
+	std::enable_if_t<!std::is_same<V,Derived>::value, Derived> operator+(const Scalar<T,Derived>& a, const V& b) {
+		return a.getValue() + b;
 	}
 
+	// subtraction
+
+	template<typename T, typename Derived>
+	Derived operator-(const Scalar<T,Derived>& a, const Scalar<T,Derived>& b) {
+		return a.getValue() - b.getValue();
+	}
+	template<typename T, typename Derived, typename V>
+	std::enable_if_t<!std::is_same<V,Derived>::value, Derived> operator-(const V& a, const Scalar<T,Derived>& b) {
+		return a - b.getValue();
+	}
+	template<typename T, typename Derived, typename V>
+	std::enable_if_t<!std::is_same<V,Derived>::value, Derived> operator-(const Scalar<T,Derived>& a, const V& b) {
+		return a.getValue() - b;
+	}
+
+	// scaling
+
 	template<typename T, typename Derived, typename S>
-	Derived operator*(const S& a,const Scalar<T,Derived>& b) {
+	std::enable_if_t<!std::is_same<S,Derived>::value, Derived> operator*(const S& a, const Scalar<T,Derived>& b) {
 		return b * a;
 	}
 

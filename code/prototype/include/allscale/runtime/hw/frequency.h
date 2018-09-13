@@ -28,23 +28,19 @@ namespace hw {
 
 		// --- factories ---
 
-		template<typename T>
-		static Frequency Hz(const T& f) {
+		static Frequency Hz(unsigned long long f) {
 			return f;
 		}
 
-		template<typename T>
-		static Frequency kHz(const T& f) {
+		static Frequency kHz(unsigned long long f) {
 			return f * 1000;
 		}
 
-		template<typename T>
-		static Frequency MHz(const T& f) {
+		static Frequency MHz(unsigned long long f) {
 			return f * 1000 * 1000;
 		}
 
-		template<typename T>
-		static Frequency GHz(const T& f) {
+		static Frequency GHz(unsigned long long f) {
 			return f * 1000 * 1000 * 1000;
 		}
 

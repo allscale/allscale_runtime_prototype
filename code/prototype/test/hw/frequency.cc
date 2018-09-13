@@ -31,9 +31,16 @@ namespace hw {
 		EXPECT_TRUE(utils::is_trivially_serializable<Frequency>::value);
 	}
 
+	TEST(Frequency, Factories) {
+		EXPECT_EQ(25000, Frequency::kHz(25).getValue());
+		EXPECT_EQ(100000000, Frequency::MHz(100).getValue());
+		EXPECT_EQ(50000000000, Frequency::GHz(50).getValue());
+	}
+
 	TEST(Frequency, Literals) {
 		EXPECT_EQ("25000 Hz",toString(25_kHz));
 		EXPECT_EQ("100000000 Hz",toString(100_MHz));
+		EXPECT_EQ("50000000000 Hz",toString(50_GHz));
 	}
 
 	TEST(Frequency, Cycles) {

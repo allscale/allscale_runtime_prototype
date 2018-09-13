@@ -14,6 +14,11 @@ include(build_settings)
 include(coverage)
 include(doxygen)
 
+option(USE_LINUX_CPUFREQ "Use a Linux cpufreq-based implementation of DVFS" OFF)
+IF(USE_LINUX_CPUFREQ)
+    ADD_DEFINITIONS(-DUSE_LINUX_CPUFREQ)
+ENDIF(USE_LINUX_CPUFREQ)
+
 # -- Dependency Settings
 include(dependencies/pthread)
 include(dependencies/googletest)

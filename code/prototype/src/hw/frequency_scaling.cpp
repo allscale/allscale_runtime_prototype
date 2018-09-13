@@ -1,12 +1,17 @@
 #include "allscale/runtime/hw/energy.h"
 
 #include <algorithm>
+#include <map>
+#include <iostream>
+#include <fstream>
 
 #include "allscale/utils/assert.h"
+#include "allscale/utils/finalize.h"
 #include "allscale/runtime/hw/core.h"
 
 namespace allscale {
 namespace runtime {
+#ifndef USE_LINUX_CPUFREQ
 namespace hw {
 
 	// a dummy implementation
@@ -41,5 +46,69 @@ namespace hw {
 	}
 
 } // end of namespace hw
+#else // USE_LINUX_CPUFREQ
+namespace hw {
+
+	constexpr int FREQ_PATH_MAX_LENGTH = 128;
+	constexpr const char* FREQ_PATH_STRING = "/sys/devices/system/cpu/cpu%u/cpufreq/%s";
+	constexpr const char* FREQ_MIN_STRING = "scaling_min_freq";
+	constexpr const char* FREQ_MAX_STRING = "scaling_max_freq";
+	constexpr const char* FREQ_CUR_STRING = "scaling_cur_freq";
+
+	#define FREQ_DBG(...) fprintf(stderr, __VA_ARGS__)
+
+	namespace testing {
+		// internally used to unit test caching
+		thread_local int getFrequencyOptions_num_file_accesses = 0;
+	}
+
+	std::vector<Frequency> getFrequencyOptions(Core coreid) {
+		static thread_local std::map<Core, std::vector<Frequency>> frequencies_cache;
+		if(frequencies_cache.find(coreid) != frequencies_cache.end()) return frequencies_cache[coreid];
+
+		// we need this construct to prevent move construction of the return value so as not to invalidate the vector for cache_inserter
+		std::vector<Frequency> frequency_storage;
+		auto& frequencies = frequency_storage;
+
+		auto cache_inserter = utils::run_finally([&] {
+			frequencies_cache.insert({ coreid, frequencies });
+		});
+
+		char path_to_cpufreq[FREQ_PATH_MAX_LENGTH];
+		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, "scaling_available_frequencies");
+		std::ifstream file(path_to_cpufreq, std::ios::binary);
+		testing::getFrequencyOptions_num_file_accesses++;
+
+		if(!file) {
+			FREQ_DBG("hw::getFrequencyOptions: Unable to open frequency file for reading for core %u, file %s, reason: %s\n", coreid, path_to_cpufreq, strerror(errno));
+			return {};
+		}
+
+		while(file) {
+			// all frequencies are provided in kHz
+			int freq_in_khz = 0;
+			file >> freq_in_khz;
+			if(file) frequencies.push_back(Frequency::kHz(freq_in_khz));
+		}
+
+		if(frequencies.empty()) {
+			FREQ_DBG("hw::getFrequencyOptions: Unable to read available frequencies for core %u, file %s, reason: %s\n", coreid, path_to_cpufreq, strerror(errno));
+			return {};
+		}
+
+		return frequencies;
+	}
+
+	Frequency getFrequency(Core) {
+		return 10000;
+	}
+
+	bool setFrequency(Core, Frequency) {
+		//assert_true(std::binary_search(dummy::options.begin(),dummy::options.end(),f));
+		//dummy::currentFrequencies[c] = f;
+		return true; // update successful
+	}
+} // end of namespace hw
+#endif // USE_LINUX_CPUFREQ
 } // end of namespace runtime
 } // end of namespace allscale

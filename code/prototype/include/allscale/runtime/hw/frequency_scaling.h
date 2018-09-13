@@ -29,12 +29,19 @@ namespace hw {
 	 * Updates the frequency on the given core. Returns true on success,
 	 * false otherwise.
 	 *
-	 * @param core the core which's frequency should be altered
+	 * @param core the core id for which the frequency should be altered
 	 * @param f the frequency to be set, must be an element of the option vector.
-	 * @param true if successfull, false otherwise
+	 * @param true if successful, false otherwise
 	 */
 	bool setFrequency(Core core, Frequency);
 
+#ifdef USE_LINUX_CPUFREQ
+	// internal testing details
+	namespace testing {
+		// internally used to unit test caching
+		extern thread_local int getFrequencyOptions_num_file_accesses;
+	}
+#endif
 
 } // end of namespace hw
 } // end of namespace runtime

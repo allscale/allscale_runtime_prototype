@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "allscale/runtime/hw/frequency.h"
+#include "allscale/runtime/hw/frequency_scaling.h"
 
 #include <type_traits>
 
@@ -46,6 +47,34 @@ namespace hw {
 		EXPECT_EQ(1, 10ns * f);
 
 	}
+
+#ifdef USE_LINUX_CPUFREQ
+
+	TEST(Cpufreq, GetFrequencyOptions_Caching) {
+		// note: we can't be sure when this test case is executed, so
+		// the only thing we can check is that repeated calls only increment
+		// the counter by 1 at most
+		auto start_num = testing::getFrequencyOptions_num_file_accesses;
+		getFrequencyOptions(0);
+		getFrequencyOptions(0);
+		getFrequencyOptions(0);
+		EXPECT_LE(testing::getFrequencyOptions_num_file_accesses, start_num+1);
+	}
+
+	TEST(Cpufreq, GetFrequencyOptions) {
+		auto frequencies = getFrequencyOptions(0);
+		ASSERT_GT(frequencies.size(), 1);
+		EXPECT_GT(frequencies[0], 1_MHz);
+		EXPECT_LT(frequencies[0], 10_GHz);
+
+		std::cout << "Core 0 frequencies:\n";
+		for(auto freq : frequencies) {
+			std::cout << freq << "\n";
+		}
+	}
+
+
+#endif
 
 } // end of namespace hw
 } // end of namespace runtime

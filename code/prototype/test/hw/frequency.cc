@@ -4,6 +4,7 @@
 #include "allscale/runtime/hw/frequency_scaling.h"
 
 #include <type_traits>
+#include <thread>
 
 #include "allscale/utils/string_utils.h"
 
@@ -99,6 +100,27 @@ namespace hw {
 
 		// debug output
 		std::cout << "Core 0 cur_freq: " << f << "\n";
+	}
+
+	TEST(Cpufreq, SetFrequency) {
+		using namespace std::literals;
+
+		auto freqs = getFrequencyOptions(0);
+		ASSERT_GE(freqs.size(), 2) << "Need at least 2 frequencies available for this test";
+
+		// the sleep period required is system-dependent, but 500 ms should be enough for everyone
+
+		EXPECT_TRUE(setFrequency(0, freqs.front()));
+		std::this_thread::sleep_for(500ms);
+		EXPECT_EQ(getFrequency(0), freqs.front());
+
+		EXPECT_TRUE(setFrequency(0, freqs[1]));
+		std::this_thread::sleep_for(500ms);
+		EXPECT_EQ(getFrequency(0), freqs[1]);
+
+		EXPECT_TRUE(setFrequency(0, freqs.front()));
+		std::this_thread::sleep_for(500ms);
+		EXPECT_EQ(getFrequency(0), freqs.front());
 	}
 
 #endif

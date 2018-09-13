@@ -113,14 +113,14 @@ namespace hw {
 		auto freqs = getFrequencyOptions(coreid);
 
 		if(!file) {
-			FREQ_DBG("hw::getFrequencyOptions: Unable to open frequency file %s for reading, reason: %s\n", path_to_cpufreq, strerror(errno));
+			FREQ_DBG("hw::getFrequency: Unable to open frequency file %s for reading, reason: %s\n", path_to_cpufreq, strerror(errno));
 			return freqs[0];
 		}
 
 		int freq_in_khz = 0;
 		file >> freq_in_khz;
 		if(!file) {
-			FREQ_DBG("hw::getFrequencyOptions: Unable to read frequency from file %s, reason: %s\n", path_to_cpufreq, strerror(errno));
+			FREQ_DBG("hw::getFrequency: Unable to read frequency from file %s, reason: %s\n", path_to_cpufreq, strerror(errno));
 			return freqs[0];
 		}
 
@@ -130,20 +130,50 @@ namespace hw {
 		// the rest of the system expects it to be, so we fix that here by choosing the closest
 		auto it = std::find_if(freqs.cbegin(), freqs.cend(), [&](Frequency f) { return f >= read_freq; });
 		if(it == freqs.cend()) {
-			FREQ_DBG("hw::getFrequencyOptions: Unexpectedly high frequency in file %s: %s\n", path_to_cpufreq, toString(read_freq).c_str());
+			FREQ_DBG("hw::getFrequency: Unexpectedly high frequency in file %s: %s\n", path_to_cpufreq, toString(read_freq).c_str());
 			return freqs.back();
 		}
 		if(it == freqs.cbegin()) return *it;
-		auto smaller = *it--;
+		auto smaller = *(it-1);
 		auto larger = *it;
 		if(read_freq - smaller > larger - read_freq) return larger;
 		else return smaller;
 	}
 
-	bool setFrequency(Core, Frequency) {
-		//assert_true(std::binary_search(dummy::options.begin(),dummy::options.end(),f));
-		//dummy::currentFrequencies[c] = f;
-		return true; // update successful
+	bool setFrequency(Core coreid, Frequency freq) {
+
+		auto setFreq = [&](const char* path) {
+			std::ofstream file(path, std::ios::binary);
+
+			if(!file) {
+				FREQ_DBG("hw::setFrequency: Unable to open frequency file %s for writing, reason: %s\n", path, strerror(errno));
+				return false;
+			}
+
+			file << freq.tokHz();
+
+			if(!file) {
+				FREQ_DBG("hw::setFrequency: Unable to write frequency to file %s, reason: %s\n", path, strerror(errno));
+				return false;
+			}
+
+			return true;
+		};
+
+		// We are not allowed to write a lower min than max frequency, or a higher max than min
+		// we could read it out first, or try to do some internal caching to know in which direction we are going
+		// but simply writing it 3 times instead of twice reliably works
+
+		bool success = true;
+		char path_to_cpufreq[FREQ_PATH_MAX_LENGTH];
+		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
+		success &= setFreq(path_to_cpufreq);
+		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MAX_STRING);
+		success &= setFreq(path_to_cpufreq);
+		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
+		success &= setFreq(path_to_cpufreq);
+
+		return success;
 	}
 } // end of namespace hw
 #endif // USE_LINUX_CPUFREQ

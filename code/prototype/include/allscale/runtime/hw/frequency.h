@@ -15,39 +15,43 @@ namespace hw {
 	/**
 	 * A utility type to represent CPU clock frequency.
 	 */
-	class Frequency : public allscale::utils::Scalar<unsigned long long, Frequency> {
+	class Frequency : public allscale::utils::Scalar<cycles, Frequency> {
 
-		using super = allscale::utils::Scalar<unsigned long long, Frequency>;
+		using super = allscale::utils::Scalar<cycles, Frequency>;
 
 	public:
 
 		Frequency() = default;
 
-		Frequency(unsigned long long f) : super(f) {};
+		Frequency(cycles f) : super(f) {};
 
 
 		// --- factories ---
 
-		static Frequency Hz(unsigned long long f) {
+		static Frequency Hz(cycles f) {
 			return f;
 		}
 
-		static Frequency kHz(unsigned long long f) {
+		static Frequency kHz(cycles f) {
 			return f * 1000;
 		}
 
-		static Frequency MHz(unsigned long long f) {
+		static Frequency MHz(cycles f) {
 			return f * 1000 * 1000;
 		}
 
-		static Frequency GHz(unsigned long long f) {
+		static Frequency GHz(cycles f) {
 			return f * 1000 * 1000 * 1000;
 		}
 
 		// - observer -
 
-		unsigned long long toHz() const {
+		cycles toHz() const {
 			return getValue();
+		}
+
+		cycles tokHz() const {
+			return getValue() / 1000;
 		}
 
 		// - interaction with time -
@@ -66,19 +70,19 @@ namespace hw {
 
 	// -- Literals --
 
-	inline Frequency operator "" _Hz(unsigned long long f) {
+	inline Frequency operator "" _Hz(cycles f) {
 		return Frequency::Hz(f);
 	}
 
-	inline Frequency operator "" _kHz(unsigned long long f) {
+	inline Frequency operator "" _kHz(cycles f) {
 		return Frequency::kHz(f);
 	}
 
-	inline Frequency operator "" _MHz(unsigned long long f) {
+	inline Frequency operator "" _MHz(cycles f) {
 		return Frequency::MHz(f);
 	}
 
-	inline Frequency operator "" _GHz(unsigned long long f) {
+	inline Frequency operator "" _GHz(cycles f) {
 		return Frequency::GHz(f);
 	}
 

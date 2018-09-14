@@ -1,4 +1,4 @@
-#include "allscale/runtime/hw/energy.h"
+#include "allscale/runtime/hw/frequency_scaling.h"
 
 #include <algorithm>
 #include <map>
@@ -47,6 +47,10 @@ namespace hw {
 		return true; // update successful
 	}
 
+	void resetFrequency(Core core) {
+		// nothing to do in the dummy implementation
+	}
+
 } // end of namespace hw
 #else // USE_LINUX_CPUFREQ
 namespace hw {
@@ -58,11 +62,6 @@ namespace hw {
 	constexpr const char* FREQ_CUR_STRING = "scaling_cur_freq";
 
 	#define FREQ_DBG(...) fprintf(stderr, __VA_ARGS__)
-
-	namespace testing {
-		// internally used to unit test caching
-		thread_local int getFrequencyOptions_num_file_accesses = 0;
-	}
 
 	std::vector<Frequency> getFrequencyOptions(Core coreid) {
 		static thread_local std::map<Core, std::vector<Frequency>> frequencies_cache;
@@ -140,9 +139,8 @@ namespace hw {
 		else return smaller;
 	}
 
-	bool setFrequency(Core coreid, Frequency freq) {
-
-		auto setFreq = [&](const char* path) {
+	namespace {
+		bool setFrequencyPath(const char* path, Frequency freq) {
 			std::ofstream file(path, std::ios::binary);
 
 			if(!file) {
@@ -158,23 +156,41 @@ namespace hw {
 			}
 
 			return true;
-		};
+		}
 
-		// We are not allowed to write a lower min than max frequency, or a higher max than min
-		// we could read it out first, or try to do some internal caching to know in which direction we are going
-		// but simply writing it 3 times instead of twice reliably works
+		bool setFrequencyInternal(Core coreid, Frequency minFreq, Frequency maxFreq) {
 
-		bool success = true;
-		char path_to_cpufreq[FREQ_PATH_MAX_LENGTH];
-		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
-		success &= setFreq(path_to_cpufreq);
-		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MAX_STRING);
-		success &= setFreq(path_to_cpufreq);
-		sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
-		success &= setFreq(path_to_cpufreq);
+			// We are not allowed to write a lower min than max frequency, or a higher max than min
+			// we could read it out first, or try to do some internal caching to know in which direction we are going
+			// but simply writing it 3 times instead of twice reliably works
 
-		return success;
+			bool success = true;
+			char path_to_cpufreq[FREQ_PATH_MAX_LENGTH];
+			sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
+			success &= setFrequencyPath(path_to_cpufreq, minFreq);
+			sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MAX_STRING);
+			success &= setFrequencyPath(path_to_cpufreq, maxFreq);
+			sprintf(path_to_cpufreq, FREQ_PATH_STRING, coreid, FREQ_MIN_STRING);
+			success &= setFrequencyPath(path_to_cpufreq, minFreq);
+
+			return success;
+		}
 	}
+
+	bool setFrequency(Core coreid, Frequency freq) {
+		return setFrequencyInternal(coreid, freq, freq);
+	}
+
+	void resetFrequency(Core core) {
+		auto freqs = getFrequencyOptions(core);
+		if(!freqs.empty()) setFrequencyInternal(core, freqs.front(), freqs.back());
+	}
+
+	namespace testing {
+		// internally used to unit test caching
+		thread_local int getFrequencyOptions_num_file_accesses = 0;
+	}
+
 } // end of namespace hw
 #endif // USE_LINUX_CPUFREQ
 } // end of namespace runtime

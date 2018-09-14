@@ -35,6 +35,12 @@ namespace hw {
 	 */
 	bool setFrequency(Core core, Frequency);
 
+	/**
+	 * Resets the state of a core to allow it to use its entire frequency range.
+	 * Should be called before exit on every adjusted core.
+	 */
+	void resetFrequency(Core core);
+
 #ifdef USE_LINUX_CPUFREQ
 	// internal testing details
 	namespace testing {

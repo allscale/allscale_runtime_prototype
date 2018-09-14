@@ -121,6 +121,8 @@ namespace hw {
 		EXPECT_TRUE(setFrequency(0, freqs.front()));
 		std::this_thread::sleep_for(500ms);
 		EXPECT_EQ(getFrequency(0), freqs.front());
+
+		resetFrequency(0);
 	}
 
 #endif

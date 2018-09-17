@@ -1,6 +1,7 @@
 
 #include "allscale/runtime/work/optimizer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -49,21 +50,36 @@ namespace work {
 				return TuningObjective::power();
 			}
 
-			if (obj == "se") {
-				return TuningObjective(1,1,0);
+			// sort the string
+			std::sort(obj.begin(),obj.end());
+
+			float speed = 0;
+			float power = 0;
+			float efficiency = 0;
+
+			auto it = obj.begin();
+			while(it != obj.end() && *it == 'e') {
+				efficiency += 1;
+				++it;
+			}
+			while(it != obj.end() && *it == 'p') {
+				power += 1;
+				++it;
+			}
+			while(it != obj.end() && *it == 's') {
+				speed += 1;
+				++it;
 			}
 
-			if (obj == "sp") {
-				return TuningObjective(1,0,1);
+			// check that everything has been consumed
+			if (it != obj.end()) {
+				std::cerr << "Unknown tuning objective: " << obj << " -- using default objective: speed\n";
+				return TuningObjective::speed();
 			}
 
-			if (obj == "spe") {
-				return TuningObjective(1,1,1);
-			}
+			// build result
+			return TuningObjective(speed,efficiency,power);
 
-			std::cerr << "Unknown tuning objective: " << obj << " -- using default objective: speed\n";
-
-			return TuningObjective::speed();
 		}
 
 	}

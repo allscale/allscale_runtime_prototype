@@ -88,15 +88,15 @@ namespace hw {
 
 
 	inline Frequency operator "" _kHz(long double f) {
-		return Frequency::kHz(f);
+		return Frequency::Hz(f * 1000);
 	}
 
 	inline Frequency operator "" _MHz(long double f) {
-		return Frequency::MHz(f);
+		return Frequency::Hz(f * 1000 * 1000);
 	}
 
 	inline Frequency operator "" _GHz(long double f) {
-		return Frequency::GHz(f);
+		return Frequency::Hz(f * 1000 * 1000 * 1000);
 	}
 
 	template<typename Rep, typename Period>

@@ -32,7 +32,7 @@ namespace hw {
 
 	std::vector<Frequency> getFrequencyOptions(Core) {
 		// dummy options
-		return dummy::options;	// currently no options are available
+		return dummy::options;
 	}
 
 	Frequency getFrequency(Core c) {
@@ -47,7 +47,7 @@ namespace hw {
 		return true; // update successful
 	}
 
-	void resetFrequency(Core core) {
+	void resetFrequency(Core) {
 		// nothing to do in the dummy implementation
 	}
 

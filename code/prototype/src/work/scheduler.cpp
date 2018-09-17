@@ -171,13 +171,13 @@ namespace work {
 
 				// TODO: replace this with a schedule-up phase forwarding allowances
 
-				// if there are unallocated allowances still to process, do so
-				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
-				if (!unallocated.empty()) {
-					// take unallocated share and pass along scheduling process
-					scheduleDown(std::move(task),unallocated);
-					return;
-				}
+//				// if there are unallocated allowances still to process, do so
+//				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
+//				if (!unallocated.empty()) {
+//					// take unallocated share and pass along scheduling process
+//					scheduleDown(std::move(task),unallocated);
+//					return;
+//				}
 
 				// propagate to parent
 				if (!isRoot) {
@@ -205,35 +205,56 @@ namespace work {
 				// obtain access to the co-located data item index service
 				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
 
-				// on leaf level, schedule locally
-				if (myAddr.isLeaf()) {
-					diis.addAllowanceLocal(allowance);
-					scheduleLocal(std::move(task));
-					return;
-				}
+				// add allowances
+				diis.addAllowanceLocal(allowance);
 
-				// schedule locally if decided to do so
+				// get the id of the task, as the foundation for any decision
 				auto id = task->getId();
 
-				// ask the scheduling policy what to do with this task
+				// obtain scheduling decisions from policy
+				bool involved = false;
 				auto d = Decision::Done;
 				{
+					// lock to obtain save, consistent access to policy
 					guard g(policy_lock);
-					d = policy.decide(myAddr,id.getPath());
+					involved = policy.isInvolved(myAddr,id.getPath());
+					if (involved) {
+						d = policy.decide(myAddr,id.getPath());
+					}
 				}
 
-				// over-rule done decisions for inner nodes
-				if (d == Decision::Done) {
-					d = Decision::Left;
+				// if this not is not involved, send task to parent
+				if (!involved) {
+					assert_false(isRoot) << "Root should always be involved!";
+					std::cout << "Invalid routed task " << id << " @ " << myAddr << "\n";
+					// => if not, forward to parent
+					network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
+					return;
 				}
 
-				// if it should stay, process it here
-				if (task->isSplitable() && d == Decision::Stay) {	// non-splitable task must not stay on inner level
-//					assert_lt(id.getDepth(),getCutOffLevel());
-					diis.addAllowanceLocal(allowance);
+				// if task is no longer splitable, push it down to level 0 on this rank
+				if (!task->isSplitable()) {
+
+
+				}
+
+				// on leaf level, schedule locally (ignore decision)
+				if (myAddr.isLeaf()) {
 					scheduleLocal(std::move(task));
 					return;
 				}
+
+				// if not a leaf, the policy should not state done
+				assert_ne(d,Decision::Done);
+
+				// if it should stay, process it here
+				if (d == Decision::Stay) {
+					scheduleLocal(std::move(task));
+					return;
+				}
+
+				// here there should only be options left and right left
+				assert_true(d == Decision::Left || d == Decision::Right) << "Actual: " << d;
 
 				bool targetLeft = (d == Decision::Left);
 
@@ -241,6 +262,13 @@ namespace work {
 				com::HierarchyAddress next = (targetLeft)
 						? myAddr.getLeftChild()
 						: myAddr.getRightChild();
+
+//				assert_true(policy.isInvolved(next,id.getPath()))
+//					<< "Node " << myAddr << ": next step " << next << " is not involved in scheduling of path " << id.getPath() << "\n"
+//					<< "Current node is involved: " << policy.isInvolved(myAddr,id.getPath()) << "\n"
+//					<< "Decision: " << d << " vs " << policy.decide(myAddr,id.getPath()) << "\n"
+//					<< "Splittable: " << task->isSplitable() << "\n"
+//					<< "Target: " << policy.getPolicy<DecisionTreeSchedulingPolicy>().getTarget(id.getPath()) << "\n";
 
 				// reconsider if right is to far right
 				if (next.getRank() >= network.numNodes()) {
@@ -264,20 +292,48 @@ namespace work {
 
 
 			// process the task
-			void scheduleLocal(TaskPtr&& task) {
+			void scheduleLocal(TaskPtr&& task, const data::DataItemRegions& allowance = data::DataItemRegions()) {
+
+				// obtain access to the co-located data item index service
+				auto& diis = network.getLocalService<data::DataItemIndexService>(myAddr.getLayer());
+
+				// add allowances
+				if (!allowance.empty()) {
+					// add allowances
+					diis.addAllowanceLocal(allowance);
+				}
 
 				// make sure this is as it has been intended by the policy
-//				if (task->isSplitable()) {
-//					guard g(policy_lock);
-//					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
-//						<< "Task: " << task->getId() << "\n"
-//						<< "Policy:\n" << policy;
-//				}
+				if (task->isSplitable()) {
+					guard g(policy_lock);
+					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
+						<< "Task: " << task->getId() << "\n"
+						<< "Policy:\n" << policy;
+				}
 
-				DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
+				// if this is a leaf or the task can be further split, hand task over to worker here
+				if (myAddr.isLeaf() || task->isSplitable()) {
 
-				// assign to local worker
-				com::Node::getLocalService<Worker>().schedule(std::move(task));
+					DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
+
+					// assign to local worker
+					com::Node::getLocalService<Worker>().schedule(std::move(task));
+
+					// done
+					return;
+				}
+
+				// for everything else, pass on to left child on same node
+				assert_false(task->isSplitable()) << "Local scheduling for splitable tasks not supported on non-leaf node " << myAddr;
+
+				// compute allowances for this task
+				auto reqs = task->getProcessRequirements().getWriteRequirements();
+				auto subAllowances = diis.addAllowanceLeft(allowance,reqs);
+
+				// forward task
+				auto& childService = com::HierarchicalOverlayNetwork(network).getLocalService<ScheduleService>(myAddr.getLayer()-1);
+				childService.scheduleLocal(std::move(task),subAllowances);
+
 			}
 
 		};

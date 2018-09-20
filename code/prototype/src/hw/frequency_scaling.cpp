@@ -36,12 +36,16 @@ namespace hw {
 	}
 
 	Frequency getFrequency(Core c) {
-		assert_lt(c,dummy::currentFrequencies.size());
+		if (c >= dummy::currentFrequencies.size()) {
+			dummy::currentFrequencies.resize(c+1,2.2_GHz);
+		}
 		return dummy::currentFrequencies[c];
 	}
 
 	bool setFrequency(Core c, Frequency f) {
-		assert_lt(c,dummy::currentFrequencies.size());
+		if (c >= dummy::currentFrequencies.size()) {
+			dummy::currentFrequencies.resize(c+1,2.2_GHz);
+		}
 		assert_true(std::binary_search(dummy::options.begin(),dummy::options.end(),f));
 		dummy::currentFrequencies[c] = f;
 		return true; // update successful

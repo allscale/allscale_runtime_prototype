@@ -52,6 +52,9 @@ namespace work {
 
 		SchedulingPolicy(const load_fun& loader) : loader(loader) {};
 
+		// a virtual destructor for derived types
+		virtual ~SchedulingPolicy() {}
+
 		/**
 		 * Determines whether the node with the given address is part of the dispatching of a task with the given path.
 		 *

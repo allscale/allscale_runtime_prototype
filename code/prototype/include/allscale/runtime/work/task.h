@@ -67,7 +67,7 @@ namespace work {
 
 		virtual ~Task() {
 			// make sure all tasks are processed
-			assert_eq(state,Finished) << "Destroying incomplete task!";
+			assert_eq(state,Finished) << "Destroying incomplete task: " << id;
 		}
 
 		// ----- observer -----

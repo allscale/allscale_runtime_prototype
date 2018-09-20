@@ -226,16 +226,9 @@ namespace work {
 				// if this not is not involved, send task to parent
 				if (!involved) {
 					assert_false(isRoot) << "Root should always be involved!";
-					std::cout << "Invalid routed task " << id << " @ " << myAddr << "\n";
 					// => if not, forward to parent
 					network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
 					return;
-				}
-
-				// if task is no longer splitable, push it down to level 0 on this rank
-				if (!task->isSplitable()) {
-
-
 				}
 
 				// on leaf level, schedule locally (ignore decision)
@@ -303,13 +296,15 @@ namespace work {
 					diis.addAllowanceLocal(allowance);
 				}
 
-				// make sure this is as it has been intended by the policy
-				if (task->isSplitable()) {
-					guard g(policy_lock);
-					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
-						<< "Task: " << task->getId() << "\n"
-						<< "Policy:\n" << policy;
-				}
+//				// make sure this is as it has been intended by the policy
+//				// -- for debugging only, in dynamic settings policy may have changed --
+//				if (task->isSplitable()) {
+//					guard g(policy_lock);
+//					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
+//						<< "Local: " << myAddr << "\n"
+//						<< "Task: " << task->getId() << "\n"
+//						<< "Policy:\n" << policy;
+//				}
 
 				// if this is a leaf or the task can be further split, hand task over to worker here
 				if (myAddr.isLeaf() || task->isSplitable()) {

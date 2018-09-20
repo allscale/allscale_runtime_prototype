@@ -282,7 +282,10 @@ namespace data {
 			}
 
 			// make sure everything has been located
-			assert_eq(regions,res.getCoveredRegions());
+			assert_eq(regions,res.getCoveredRegions())
+				<< "Available: " << getAvailableData() << "\n"
+				<< "Located: " << res << "\n"
+				<< "Missing: " << difference(regions,res.getCoveredRegions());
 
 			// done
 			return res;

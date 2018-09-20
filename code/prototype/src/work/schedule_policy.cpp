@@ -457,8 +457,33 @@ namespace work {
 
 	bool DecisionTreeSchedulingPolicy::isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const {
 
-		// only the root node is involved in scheduling the root path
-		if (path.isRoot()) return addr == root;
+		// the root node is always involved
+		if (addr == root) return true;
+
+		// base case - the root path
+		if (path.isRoot()) {
+
+			// trace out the path of the root node
+			auto cur = root;
+			auto d= Decision::Left;
+			while(d != Decision::Stay && d != Decision::Done && !cur.isLeaf()) {
+
+				// move on one step
+				switch(d = decide(cur,path)) {
+				case Decision::Left:  cur = cur.getLeftChild(); break;
+				case Decision::Right: cur = cur.getRightChild(); break;
+				case Decision::Stay:  /* nothing */ break;
+				case Decision::Done:  /* nothing */ break;
+				}
+
+				// if we are at the node we want to test => fine
+				if (cur == addr) return true;
+			}
+
+			// not passed by
+			return false;
+
+		}
 
 		// TODO: implement this in O(logN) instead of O(logN^2)
 

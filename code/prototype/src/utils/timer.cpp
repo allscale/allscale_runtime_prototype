@@ -55,15 +55,20 @@ namespace utils {
 				var.wait(g);
 			} else {
 				// wait for next event to be ready
-				var.wait_until(g,queue.top().next, [&]{
-					return !alive || clock::now() >= queue.top().next;
-				});
+				auto next = queue.top().next;
+				var.wait_until(g, next);
 
 				// kill if done
 				if (!alive) return;
 
-				// run the next task
+				// check whether it is time
 				auto now = clock::now();
+				if (now <= queue.top().next) {
+					// this was a spurious wake up or a notify for a new task => sleep again
+					continue;
+				}
+
+				// run the next task
 				while (!queue.empty() && now >= queue.top().next) {
 					Entry entry = queue.top();
 					queue.pop();

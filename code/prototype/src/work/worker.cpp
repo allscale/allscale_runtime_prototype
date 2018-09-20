@@ -106,7 +106,7 @@ namespace work {
 			while(step()) {}
 
 			// if terminated => terminate thread
-			if (state != Running) return;
+			if (state > Running) return;
 
 			// otherwise yield thread to allow other threads to run
 			std::this_thread::yield();

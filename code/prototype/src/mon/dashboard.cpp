@@ -247,7 +247,7 @@ namespace mon {
 
 			fclose(fp);
 
-			return std::make_pair((total - available),available);
+			return std::make_pair((total - available)*1024,available*1024);
 		}
 
 	}

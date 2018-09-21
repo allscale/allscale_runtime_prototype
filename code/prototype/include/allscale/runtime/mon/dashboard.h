@@ -47,10 +47,10 @@ namespace mon {
 
 		// -- memory state --
 
-		// the current memory usage
+		// the current memory usage (in bytes)
 		std::uint64_t memory_load = 0;
 
-		// the total available physical memory
+		// the total available physical memory (in bytes)
 		std::uint64_t total_memory = 0;
 
 
@@ -68,10 +68,10 @@ namespace mon {
 
 		// -- network I/O --
 
-		// received network throughput
+		// received network throughput (in bytes/s)
 		std::uint64_t network_in = 0;
 
-		// transmitted network throughput
+		// transmitted network throughput (in bytes/s)
 		std::uint64_t network_out = 0;
 
 

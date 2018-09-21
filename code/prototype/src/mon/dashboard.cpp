@@ -460,18 +460,25 @@ namespace mon {
 		com::Node& node;
 
 		// a flag determining whether this service is connected to a dashboard
-		bool alive;
+		std::atomic<bool> alive;
+
+		std::atomic<bool> shutdown;
 
 		// -- connection to dashboard server --
 
 		int sock;
+
+		std::mutex socket_lock;
+
+		using guard = std::lock_guard<std::mutex>;
 
 	public:
 
 		DashboardService(com::Node& node)
 			: network(com::Network::getNetwork()),
 			  node(node),
-			  alive(node.getRank() == 0) {
+			  alive(node.getRank() == 0),
+			  shutdown(false) {
 
 			// only on node 0
 			if (!alive) return;
@@ -521,13 +528,16 @@ namespace mon {
 
 			// start thread
 			node.getService<utils::PeriodicExecutorService>().runPeriodically(
-				[&](){ update(); return alive; },
+				[&]()->bool { if (alive && !shutdown) update(); return alive; },
 				std::chrono::seconds(1)
 			);
 		}
 
 		~DashboardService() {
 			if (!alive) return;
+
+			// move to shutdown mode
+			shutdown = true;
 
 			// send final info
 			sendShutdownInfo();
@@ -548,6 +558,7 @@ namespace mon {
 				sendUpdate(data);
 
 			});
+
 		}
 
 		void sendShutdownInfo() {
@@ -564,11 +575,11 @@ namespace mon {
 			}
 
 			// send shutdown info
-			sendUpdate(info);
+			sendUpdate(info,true);
 
 		}
 
-		void sendUpdate(const SystemState& state) {
+		void sendUpdate(const SystemState& state, bool isShutdownMsg = false) {
 
 			// create JSON data block
 			std::stringstream msg;
@@ -587,6 +598,12 @@ namespace mon {
 					alive = false;
 				}
 			};
+
+			// serialized access on socket from here
+			guard g(socket_lock);
+
+			// do not send this message if system is shutting down
+			if (shutdown && !isShutdownMsg) return;
 
 			// send message size
 			std::uint64_t msgSizeBE = htobe64(json.length());

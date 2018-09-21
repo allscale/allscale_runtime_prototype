@@ -139,12 +139,18 @@ namespace data {
 
 		allscale::utils::Archive extract(const region_type& region) const {
 			allscale::utils::ArchiveWriter out;
-			fragment.extract(out,region_type::intersect(region,getDataItemSize()));
+			{
+				// lock down this fragment
+				guard g(lock);
+				fragment.extract(out,region_type::intersect(region,getDataItemSize()));
+			}
 			return std::move(out).toArchive();
 
 		}
 
 		void insert(allscale::utils::Archive& data) {
+			// lock down this fragment
+			guard g(lock);
 			allscale::utils::ArchiveReader in(data);
 			fragment.insert(in);
 		}

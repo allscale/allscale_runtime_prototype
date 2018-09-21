@@ -436,7 +436,10 @@ namespace data {
 			<< "Node " << child << " is not a child of " << myAddress;
 
 		// Phase 1: walk toward node covering all required regions
+		lock.lock();
 		if (!isRoot && !isSubRegion(regions,getAvailableData())) {
+
+			lock.unlock();
 
 			// forward to parent
 			auto data = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(regions,myAddress);
@@ -471,7 +474,7 @@ namespace data {
 		}
 
 		// Phase 2: this is the top-node, lock it
-		guard g(lock);
+		//guard g(lock);
 
 		// Phase 3: recursively collect transfer data
 		auto res = collectOwnershipFromChildren(regions);
@@ -483,9 +486,17 @@ namespace data {
 		if (child == rightChild) {
 			removeRegionsLeft(regions);
 			addRegionsRight(regions);
+
+			assert_true(intersect(getAvailableDataLeft(),regions).empty());
+			assert_eq(intersect(getAvailableDataRight(),regions),regions);
+
 		} else {
 			removeRegionsRight(regions);
 			addRegionsLeft(regions);
+
+			assert_eq(intersect(getAvailableDataLeft(),regions),regions);
+			assert_true(intersect(getAvailableDataRight(),regions).empty());
+
 		}
 
 		// make sure new management knowledge is consistent (for the requested part)
@@ -500,6 +511,8 @@ namespace data {
 
 		// lock child node for ownership transfer
 		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)();
+
+		lock.unlock();
 
 		// return data migration information, thereby abandoning the local lock
 		return res;

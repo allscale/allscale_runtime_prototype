@@ -38,32 +38,15 @@ foreach(test ${prototype_integration_tests})
     add_executable(${tgt} ${test})
     target_link_libraries(${tgt} prototype)
     add_test(NAME ${tgt}_uniform COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_random  COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
+    add_test(NAME ${tgt}_random  COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
     add_test(NAME ${tgt}_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
 
-#    add_test(NAME ${tgt}_N1_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=1 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N1_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=1 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N1_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=1 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
-
-    add_test(NAME ${tgt}_N2_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=2 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N2_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=2 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_N2_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=2 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
-
-    add_test(NAME ${tgt}_N3_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=3 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N3_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=3 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_N3_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=3 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
-
-    add_test(NAME ${tgt}_N5_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=5 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N5_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=5 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_N5_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=5 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
-
-    add_test(NAME ${tgt}_N15_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=15 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N15_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=15 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_N15_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=15 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
-
-    add_test(NAME ${tgt}_N16_uniform COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=16 ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-#    add_test(NAME ${tgt}_N16_random  COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=16 ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_N16_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=16 ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
+    # add additional node/policy combination tests
+    foreach( num_nodes 2 3 4 5 15 16 )
+        foreach( policy uniform dynamic random )
+            add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=${num_nodes} ART_SCHEDULER=${policy} $<TARGET_FILE:${tgt}>)
+        endforeach(policy)
+    endforeach(num_nodes)
 
 endforeach(test)
 

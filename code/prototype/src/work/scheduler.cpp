@@ -171,13 +171,13 @@ namespace work {
 
 				// TODO: replace this with a schedule-up phase forwarding allowances
 
-//				// if there are unallocated allowances still to process, do so
-//				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
-//				if (!unallocated.empty()) {
-//					// take unallocated share and pass along scheduling process
-//					scheduleDown(std::move(task),unallocated);
-//					return;
-//				}
+				// if there are unallocated allowances still to process, do so
+				auto unallocated = diis.getManagedUnallocatedRegion(task->getProcessRequirements().getWriteRequirements());
+				if (!unallocated.empty()) {
+					// take unallocated share and pass along scheduling process
+					scheduleDown(std::move(task),unallocated);
+					return;
+				}
 
 				// propagate to parent
 				if (!isRoot) {

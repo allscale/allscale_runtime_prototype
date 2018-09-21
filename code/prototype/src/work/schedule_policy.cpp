@@ -45,10 +45,13 @@ namespace work {
 
 
 	bool RandomSchedulingPolicy::isInvolved(const com::HierarchyAddress&, const TaskPath&) const {
-		return policy(generator) < 0.2;
+		return true; // every node may be involved
 	}
 
 	Decision RandomSchedulingPolicy::decide(const com::HierarchyAddress&, const TaskPath& path) const {
+		// spread up tasks on root level, to avoid strong biases in task distribution depending on root decision
+		if (path.getLength() < 3) return Decision::Stay;
+
 		auto r = policy(generator);
 		return (r < 0.33) ? Decision::Left  :
 			   (r < 0.66) ? Decision::Right :

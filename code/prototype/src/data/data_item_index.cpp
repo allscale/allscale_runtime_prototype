@@ -436,9 +436,10 @@ namespace data {
 			<< "Node " << child << " is not a child of " << myAddress;
 
 		// Phase 1: walk toward node covering all required regions
-		lock.lock();
+		lock.lock();	// lock this node for the next test
 		if (!isRoot && !isSubRegion(regions,getAvailableData())) {
 
+			// to avoid dead locks, abandon local lock while descending in tree; decent will aquire it again
 			lock.unlock();
 
 			// forward to parent
@@ -474,7 +475,7 @@ namespace data {
 		}
 
 		// Phase 2: this is the top-node, lock it
-		//guard g(lock);
+		// we preserve the acquired lock from above
 
 		// Phase 3: recursively collect transfer data
 		auto res = collectOwnershipFromChildren(regions);
@@ -486,17 +487,9 @@ namespace data {
 		if (child == rightChild) {
 			removeRegionsLeft(regions);
 			addRegionsRight(regions);
-
-			assert_true(intersect(getAvailableDataLeft(),regions).empty());
-			assert_eq(intersect(getAvailableDataRight(),regions),regions);
-
 		} else {
 			removeRegionsRight(regions);
 			addRegionsLeft(regions);
-
-			assert_eq(intersect(getAvailableDataLeft(),regions),regions);
-			assert_true(intersect(getAvailableDataRight(),regions).empty());
-
 		}
 
 		// make sure new management knowledge is consistent (for the requested part)
@@ -512,6 +505,7 @@ namespace data {
 		// lock child node for ownership transfer
 		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)();
 
+		// give up the local lock
 		lock.unlock();
 
 		// return data migration information, thereby abandoning the local lock

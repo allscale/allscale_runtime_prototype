@@ -234,11 +234,11 @@ namespace data {
 			}
 
 			void takeOwnership(const DataItemMigrationData& data) override {
-				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::optional<allscale::utils::Archive>& archive){
+				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::Archive& archive){
 					if (region.empty()) return;
 					auto& fragment = get(ref);
 					assert_pred2(allscale::api::core::isSubRegion,region,fragment.getExclusiveRegion());
-					if (bool(archive)) fragment.insert(*archive);
+					fragment.insert(archive);
 				});
 			}
 

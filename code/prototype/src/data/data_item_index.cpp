@@ -413,23 +413,23 @@ namespace data {
 		auto leftChild = myAddress.getLeftChild();
 		auto rightChild = myAddress.getRightChild();
 
-		// make sure local management knowledge is consistent (for the requested part)
-		{
-			guard g(lock);
-			assert_eq(
-					intersect(getAvailableData(),regions),
-					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
-				) << "Node:    " << myAddress << "\n"
-				  << "Regions: " << regions << "\n"
-				  << "Available: " << getAvailableData() << "\n"
-				  << "Left:      " << getAvailableDataLeft() << "\n"
-				  << "Right:     " << getAvailableDataRight() << "\n"
-				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
-				  << " -- intersected --\n"
-				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
-				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
-				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
-		}
+//		// make sure local management knowledge is consistent (for the requested part)
+//		{
+//			guard g(lock);
+//			assert_eq(
+//					intersect(getAvailableData(),regions),
+//					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
+//				) << "Node:    " << myAddress << "\n"
+//				  << "Regions: " << regions << "\n"
+//				  << "Available: " << getAvailableData() << "\n"
+//				  << "Left:      " << getAvailableDataLeft() << "\n"
+//				  << "Right:     " << getAvailableDataRight() << "\n"
+//				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
+//				  << " -- intersected --\n"
+//				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
+//				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
+//				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
+//		}
 
 		// make sure the given child is really a child of this node
 		assert_true(child == leftChild || child == rightChild)
@@ -533,22 +533,22 @@ namespace data {
 		// make sure a owned part of the tree is requested
 		assert_pred2(isSubRegion,regions,getAvailableData());
 
-		// make sure local management knowledge is consistent
-		if (!myAddress.isLeaf()) {
-			assert_eq(
-					intersect(getAvailableData(),regions),
-					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
-				) << "Node:    " << myAddress << "\n"
-				  << "Regions: " << regions << "\n"
-				  << "Available: " << getAvailableData() << "\n"
-				  << "Left:      " << getAvailableDataLeft() << "\n"
-				  << "Right:     " << getAvailableDataRight() << "\n"
-				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
-				  << " -- intersected --\n"
-				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
-				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
-				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
-		}
+//		// make sure local management knowledge is consistent
+//		if (!myAddress.isLeaf()) {
+//			assert_eq(
+//					intersect(getAvailableData(),regions),
+//					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
+//				) << "Node:    " << myAddress << "\n"
+//				  << "Regions: " << regions << "\n"
+//				  << "Available: " << getAvailableData() << "\n"
+//				  << "Left:      " << getAvailableDataLeft() << "\n"
+//				  << "Right:     " << getAvailableDataRight() << "\n"
+//				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
+//				  << " -- intersected --\n"
+//				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
+//				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
+//				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
+//		}
 
 
 		// -- handle leafs  --
@@ -644,12 +644,33 @@ namespace data {
 			}
 		}
 
-		// this should cover all
-		assert_true(missing.empty())
-			<< "Unable to locate: " << missing << "\n"
-			<< "Owning: " << getAvailableData() << "\n"
-			<< "Left:   " << getAvailableDataLeft() << "\n"
-			<< "Right:  " << getAvailableDataRight() << "\n";
+		// if there is something left, it is managed by this node, but it has not been allocated yet
+		if (!missing.empty()) {
+
+			// make sure this is correct, the data is indeed missing
+			assert_pred2(isSubRegion,missing,getAvailableData());
+
+			assert_true(intersect(getAvailableDataLeft(),missing).empty())
+				<< "Available Left: " << getAvailableDataLeft() << "\n"
+				<< "Missing Region: " << missing << "\n"
+				<< "Intersected:    " << intersect(getAvailableDataLeft(),missing) << "\n";
+
+			assert_true(intersect(getAvailableDataRight(),missing).empty())
+				<< "Available Left: " << getAvailableDataRight() << "\n"
+				<< "Missing Region: " << missing << "\n"
+				<< "Intersected:    " << intersect(getAvailableDataRight(),missing) << "\n";
+
+			// add the missing data to the result as something that can be default initialized
+			res.addDefaultInitRegions(missing);
+
+		}
+
+//		// this should cover all
+//		assert_true(missing.empty())
+//			<< "Unable to locate: " << missing << "\n"
+//			<< "Owning: " << getAvailableData() << "\n"
+//			<< "Left:   " << getAvailableDataLeft() << "\n"
+//			<< "Right:  " << getAvailableDataRight() << "\n";
 
 		// done
 		return res;

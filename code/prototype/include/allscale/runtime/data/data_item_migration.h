@@ -83,7 +83,7 @@ namespace data {
 
 			using ref_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
-			using data_type = allscale::utils::optional<allscale::utils::Archive>;
+			using data_type = allscale::utils::Archive;
 
 			struct Part {
 				region_type region;
@@ -134,14 +134,6 @@ namespace data {
 				elements[ref].emplace_back(Part{region,archive});
 			}
 
-			void add(const ref_type& ref, const region_type& region, const allscale::utils::Archive& archive) {
-				add(ref,region,data_type(std::move(archive)));
-			}
-
-			void addDefault(const ref_type& ref, const region_type& region) {
-				add(ref,region,data_type());
-			}
-
 			template<typename Op>
 			void forEach(const Op& op) {
 				for(auto& cur : elements) {
@@ -188,6 +180,9 @@ namespace data {
 		// the list of located entries
 		std::map<std::type_index,std::unique_ptr<EntryBase>> entries;
 
+		// the list of located entries, that can be default-initialized
+		DataItemRegions initRegions;
+
 	public:
 
 		// --- constructors ---
@@ -205,7 +200,7 @@ namespace data {
 		 * Determines whether this location info record is empty.
 		 */
 		bool empty() const {
-			return entries.empty();
+			return entries.empty() && initRegions.empty();
 		}
 
 		/**
@@ -220,6 +215,13 @@ namespace data {
 			static_cast<Entry<DataItem>&>(*pos->second).forEach(op);
 		}
 
+		/**
+		 * Obtains the regions allowed to be default-initialized on the target nodes.
+		 */
+		const DataItemRegions& getDefaultInitializableRegions() const {
+			return initRegions;
+		}
+
 		// --- mutators ---
 
 		/**
@@ -228,6 +230,14 @@ namespace data {
 		template<typename DataItem>
 		void add(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region, const allscale::utils::Archive& data) {
 			get<DataItem>().add(ref,region,data);
+		}
+
+		/**
+		 * Adds the given region to the set default initializable regions to be transfered.
+		 */
+		void addDefaultInitRegions(const DataItemRegions& regions) {
+			if (regions.empty()) return;
+			initRegions = merge(initRegions,regions);
 		}
 
 		// --- set operations ---

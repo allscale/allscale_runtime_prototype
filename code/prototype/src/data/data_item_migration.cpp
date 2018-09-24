@@ -8,7 +8,7 @@ namespace runtime {
 namespace data {
 
 
-	DataItemMigrationData::DataItemMigrationData(const DataItemMigrationData& other) {
+	DataItemMigrationData::DataItemMigrationData(const DataItemMigrationData& other) : initRegions(other.initRegions) {
 		for(const auto& cur : other.entries) {
 			entries[cur.first] = cur.second->clone();
 		}
@@ -16,7 +16,7 @@ namespace data {
 
 
 	DataItemRegions DataItemMigrationData::getCoveredRegions() const {
-		DataItemRegions res;
+		DataItemRegions res = initRegions;
 		for(const auto& cur : entries) {
 			cur.second->addCoveredRegions(res);
 		}
@@ -34,6 +34,7 @@ namespace data {
 				entries[cur.first] = cur.second->clone();
 			}
 		}
+		addDefaultInitRegions(other.getDefaultInitializableRegions());
 		return *this;
 	}
 
@@ -43,6 +44,7 @@ namespace data {
 		for(const auto& cur : entries) {
 			cur.second->store(out);
 		}
+		out.write(initRegions);
 	}
 
 	DataItemMigrationData DataItemMigrationData::load(allscale::utils::ArchiveReader& in) {
@@ -53,6 +55,7 @@ namespace data {
 			auto cur = EntryBase::load(in);
 			res.entries[cur.first] = std::move(cur.second);
 		}
+		res.initRegions = in.read<DataItemRegions>();
 		return res;
 	}
 
@@ -60,7 +63,7 @@ namespace data {
 	std::ostream& operator<<(std::ostream& out,const DataItemMigrationData& infos) {
 		return out << "Data(" << allscale::utils::join(",",infos.entries,[](std::ostream& out, const auto& cur){
 			out << *cur.second;
-		}) << ")";
+		}) << "," << infos.initRegions << ")";
 	}
 
 

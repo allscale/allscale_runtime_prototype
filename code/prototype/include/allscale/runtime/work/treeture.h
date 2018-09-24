@@ -46,7 +46,7 @@ namespace work {
 		using TaskPath = allscale::api::core::impl::reference::TaskPath;
 
 		// the maximum level of tasks
-		static constexpr unsigned MAX_TASK_LEVELS = 10;
+		static constexpr unsigned MAX_TASK_LEVELS = 20;
 
 
 

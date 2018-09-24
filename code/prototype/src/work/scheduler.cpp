@@ -50,7 +50,7 @@ namespace work {
 		 */
 		int getCutOffLevel(int numNodes) {
 			// the cut-off level for "forced" distribution
-			return ceilLog2(numNodes) + 3;
+			return ceilLog2(numNodes) * 2 + 3;
 		}
 
 		/**

@@ -413,24 +413,6 @@ namespace data {
 		auto leftChild = myAddress.getLeftChild();
 		auto rightChild = myAddress.getRightChild();
 
-//		// make sure local management knowledge is consistent (for the requested part)
-//		{
-//			guard g(lock);
-//			assert_eq(
-//					intersect(getAvailableData(),regions),
-//					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
-//				) << "Node:    " << myAddress << "\n"
-//				  << "Regions: " << regions << "\n"
-//				  << "Available: " << getAvailableData() << "\n"
-//				  << "Left:      " << getAvailableDataLeft() << "\n"
-//				  << "Right:     " << getAvailableDataRight() << "\n"
-//				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
-//				  << " -- intersected --\n"
-//				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
-//				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
-//				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
-//		}
-
 		// make sure the given child is really a child of this node
 		assert_true(child == leftChild || child == rightChild)
 			<< "Node " << child << " is not a child of " << myAddress;
@@ -532,23 +514,6 @@ namespace data {
 
 		// make sure a owned part of the tree is requested
 		assert_pred2(isSubRegion,regions,getAvailableData());
-
-//		// make sure local management knowledge is consistent
-//		if (!myAddress.isLeaf()) {
-//			assert_eq(
-//					intersect(getAvailableData(),regions),
-//					merge(intersect(getAvailableDataLeft(),regions),intersect(getAvailableDataRight(),regions))
-//				) << "Node:    " << myAddress << "\n"
-//				  << "Regions: " << regions << "\n"
-//				  << "Available: " << getAvailableData() << "\n"
-//				  << "Left:      " << getAvailableDataLeft() << "\n"
-//				  << "Right:     " << getAvailableDataRight() << "\n"
-//				  << "Merged:    " << merge(getAvailableDataLeft(),getAvailableDataRight()) << "\n"
-//				  << " -- intersected --\n"
-//				  << "Available: " << intersect(getAvailableData(),regions) << "\n"
-//				  << "Left:      " << intersect(getAvailableDataLeft(),regions) << "\n"
-//				  << "Right:     " << intersect(getAvailableDataRight(),regions) << "\n";
-//		}
 
 
 		// -- handle leafs  --
@@ -664,13 +629,6 @@ namespace data {
 			res.addDefaultInitRegions(missing);
 
 		}
-
-//		// this should cover all
-//		assert_true(missing.empty())
-//			<< "Unable to locate: " << missing << "\n"
-//			<< "Owning: " << getAvailableData() << "\n"
-//			<< "Left:   " << getAvailableDataLeft() << "\n"
-//			<< "Right:  " << getAvailableDataRight() << "\n";
 
 		// done
 		return res;

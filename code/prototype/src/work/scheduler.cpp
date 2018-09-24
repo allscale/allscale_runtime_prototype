@@ -389,9 +389,11 @@ namespace work {
 
 			bool active;
 
+			bool withTuning;
+
 		public:
 
-			InterNodeLoadBalancer(com::Node& local)
+			InterNodeLoadBalancer(com::Node& local, bool withTuning)
 				: network(com::Network::getNetwork()),
 				  node(local),
 				  lastSampleTime(now()),
@@ -400,7 +402,8 @@ namespace work {
 				  activeFrequency(hw::getFrequency(node.getRank())),
 				  best({numActiveNodes,activeFrequency}),
 				  best_score(0),
-				  active(true) {
+				  active(true),
+				  withTuning(withTuning) {
 
 				// only on rank 0 the balancer shall be started
 				if (node.getRank() != 0) return;
@@ -590,7 +593,7 @@ namespace work {
 				// -- Step 2: if stable, adjust number of nodes and clock speed
 
 				// if stable enough, allow meta-optimizer to manage load
-				if (var < 0.01) {
+				if (withTuning && var < 0.01) {
 
 					// adjust number of nodes and CPU frequency
 					tune(load);
@@ -664,7 +667,7 @@ namespace work {
 		}
 
 		// check validity
-		if (option != "uniform" && option != "random" && option != "dynamic") {
+		if (option != "uniform" && option != "random" && option != "dynamic" && option != "tuned") {
 			std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
 			std::cout << "Using default: uniform\n";
 			option = "uniform";
@@ -685,8 +688,8 @@ namespace work {
 		hierarchy.installServiceOnNodes<detail::ScheduleService>(*policy);
 		hierarchy.installServiceOnNodes<data::DataItemIndexService>();
 
-		if (option == "dynamic") {
-			network.installServiceOnNodes<detail::InterNodeLoadBalancer>();
+		if (option == "dynamic" || option == "tuned") {
+			network.installServiceOnNodes<detail::InterNodeLoadBalancer>(option == "tuned");
 		}
 	}
 

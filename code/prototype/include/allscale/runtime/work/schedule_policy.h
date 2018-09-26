@@ -16,6 +16,7 @@
 
 #include "allscale/runtime/com/hierarchy.h"
 #include "allscale/runtime/work/task_id.h"
+#include "allscale/runtime/mon/task_stats.h"
 
 namespace allscale {
 namespace runtime {
@@ -387,6 +388,16 @@ namespace work {
 		 * @param mask a mask indicating which nodes to utilize and which not in the resulting schedule
 		 */
 		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution, const std::vector<bool>& mask);
+
+		/**
+		 * Creates an updated load balancing policy based on a given policy, a measured task time summary, and a mask of nodes to be involved.
+		 * The resulting policy will distributed load evenly among the enabled nodes, weighted by the observed task times.
+		 *
+		 * @param old the old policy, based on which the measurement has been taken
+		 * @param task times measured, utilized for re-assigning tasks.
+		 * @param mask a mask indicating which nodes to utilize and which not in the resulting schedule
+		 */
+		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const mon::TaskTimes& taskTimes, const std::vector<bool>& mask);
 
 		// --- observer ---
 

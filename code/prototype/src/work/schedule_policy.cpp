@@ -312,6 +312,105 @@ namespace work {
 		return createUniform(N,std::max(ceilLog2(N)+3,5));
 	}
 
+	namespace {
+
+		// create a balanced work distribution based on the given load distribution
+		DecisionTreeSchedulingPolicy rebalanceTasks(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& taskCosts, const std::vector<bool>& mask) {
+
+			// check input
+			std::size_t mappingSize = 1<<p.getGranularity();
+			assert_eq(mappingSize,taskCosts.size());
+
+			com::rank_t numNodes = mask.size();
+
+			// --- redistributing costs ---
+
+			// get number of now available nodes
+			int availableNodes = 0;
+			for(bool x : mask) if (x) availableNodes++;
+
+			// if there is really none, make it at least one
+			if (availableNodes < 1) availableNodes = 1;
+
+			float totalCosts = std::accumulate(taskCosts.begin(),taskCosts.end(), 0.0f);
+			float share = totalCosts / availableNodes;
+
+			float curCosts = 0;
+			float nextGoal = share;
+			com::rank_t curNode = 0;
+			while(!mask[curNode]) curNode++;
+			std::vector<com::rank_t> newMapping(mappingSize);
+			for(std::size_t i=0; i<mappingSize; i++) {
+
+				// compute next costs
+				auto nextCosts = curCosts + taskCosts[i];
+
+				// if we cross a boundary
+				if (curNode < (numNodes-1)) {
+
+					// decide whether to switch to next node
+					if (std::abs(curCosts-nextGoal) < std::abs(nextGoal-nextCosts)) {
+						// stopping here is closer to the target
+						curNode++;
+						while(!mask[curNode]) curNode++;
+						nextGoal += share;
+					}
+				}
+
+				// else, just add current task to current node
+				newMapping[i] = curNode;
+				curCosts = nextCosts;
+			}
+
+//			// for development, to estimate quality:
+//
+//			const bool DEBUG = false;
+//			if (DEBUG) {
+//				// --- compute new load distribution ---
+//				std::vector<float> newEstCosts(numNodes,0);
+//				for(std::size_t i=0; i<mappingSize; i++) {
+//					newEstCosts[newMapping[i]] += costs[mapping[i]];
+//				}
+//
+//				// compute initial load imbalance variance
+//				auto mean = [](const std::vector<float>& v)->float {
+//					float s = 0;
+//					for(const auto& cur : v) {
+//						s += cur;
+//					}
+//					return s / v.size();
+//				};
+//				auto variance = [&](const std::vector<float>& v)->float {
+//					float m = mean(v);
+//					float s = 0;
+//					for(const auto& cur : v) {
+//						auto d = cur - m;
+//						s += d*d;
+//					}
+//					return s / (v.size()-1);
+//				};
+//
+//
+//				std::cout << "Load vector: " << load << " - " << mean(load) << " / " << variance(load) << "\n";
+//				std::cout << "Est. vector: " << newEstCosts << " - " << mean(newEstCosts) << " / " << variance(newEstCosts) << "\n";
+//				std::cout << "Target Load: " << share << "\n";
+//				std::cout << "Task shared: " << oldShare << "\n";
+//				std::cout << "Node costs:  " << costs << "\n";
+//				std::cout << "Task costs:  " << taskCosts << "\n";
+//				std::cout << "In-distribution:  " << mapping << "\n";
+//				std::cout << "Out-distribution: " << newMapping << "\n";
+//				std::cout << toDecisionTree((1<<p.getPresumedRootAddress().getLayer()),newMapping) << "\n";
+//				std::cout << "\n";
+//			}
+
+			// create new scheduling policy
+			auto root = p.getPresumedRootAddress();
+			auto log2 = root.getLayer();
+			return { root, p.getGranularity(), toDecisionTree((1<<log2),newMapping) };
+		}
+
+	}
+
 	// create a balanced work distribution based on the given load distribution
 	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load) {
 		std::vector<bool> mask(load.size(),true);
@@ -364,97 +463,49 @@ namespace work {
 		}
 
 		// create vector of costs per task
-		float totalCosts = 0;
 		std::vector<float> taskCosts(mapping.size());
 		for(std::size_t i=0; i<mapping.size(); i++) {
 			taskCosts[i] = costs[mapping[i]];
-			totalCosts += taskCosts[i];
 		}
 
 
 		// --- redistributing costs ---
 
-		// get number of now available nodes
-		int availableNodes = 0;
-		for(bool x : mask) if (x) availableNodes++;
+		return rebalanceTasks(p,taskCosts,mask);
+	}
 
-		// if there is really none, make it at least one
-		if (availableNodes < 1) availableNodes = 1;
+	namespace {
 
-		float share = totalCosts / availableNodes;
+		void sampleTaskTimes(const mon::TaskTimes& times, TaskPath cur, std::size_t depth, std::vector<float>& res) {
 
-		float curCosts = 0;
-		float nextGoal = share;
-		com::rank_t curNode = 0;
-		while(!mask[curNode]) curNode++;
-		std::vector<com::rank_t> newMapping(mapping.size());
-		for(std::size_t i=0; i<mapping.size(); i++) {
-
-			// compute next costs
-			auto nextCosts = curCosts + taskCosts[i];
-
-			// if we cross a boundary
-			if (curNode < (numNodes-1)) {
-
-				// decide whether to switch to next node
-				if (std::abs(curCosts-nextGoal) < std::abs(nextGoal-nextCosts)) {
-					// stopping here is closer to the target
-					curNode++;
-					while(!mask[curNode]) curNode++;
-					nextGoal += share;
-				}
+			// if we are deep enough ..
+			if (cur.getLength() == depth) {
+				res[cur.getPath()] = times.getTime(cur).count() / 1e6;
+				return;
 			}
 
-			// else, just add current task to current node
-			newMapping[i] = curNode;
-			curCosts = nextCosts;
+			// otherwise process left and right
+			sampleTaskTimes(times, cur.getLeftChildPath(), depth, res);
+			sampleTaskTimes(times, cur.getRightChildPath(), depth, res);
 		}
 
-		// for development, to estimate quality:
+	}
 
-		const bool DEBUG = false;
-		if (DEBUG) {
-			// --- compute new load distribution ---
-			std::vector<float> newEstCosts(numNodes,0);
-			for(std::size_t i=0; i<mapping.size(); i++) {
-				newEstCosts[newMapping[i]] += costs[mapping[i]];
-			}
+	// create a balanced work distribution based on the given load distribution
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const mon::TaskTimes& times, const std::vector<bool>& mask) {
 
-			// compute initial load imbalance variance
-			auto mean = [](const std::vector<float>& v)->float {
-				float s = 0;
-				for(const auto& cur : v) {
-					s += cur;
-				}
-				return s / v.size();
-			};
-			auto variance = [&](const std::vector<float>& v)->float {
-				float m = mean(v);
-				float s = 0;
-				for(const auto& cur : v) {
-					auto d = cur - m;
-					s += d*d;
-				}
-				return s / (v.size()-1);
-			};
+		// extract task cost vector from task times
+		std::size_t mappingSize = 1 << p.getGranularity();
+		std::vector<float> taskCosts(mappingSize);
 
+		// sample measured times
+		sampleTaskTimes(times, TaskPath::root(), p.getGranularity(), taskCosts);
 
-			std::cout << "Load vector: " << load << " - " << mean(load) << " / " << variance(load) << "\n";
-			std::cout << "Est. vector: " << newEstCosts << " - " << mean(newEstCosts) << " / " << variance(newEstCosts) << "\n";
-			std::cout << "Target Load: " << share << "\n";
-			std::cout << "Task shared: " << oldShare << "\n";
-			std::cout << "Node costs:  " << costs << "\n";
-			std::cout << "Task costs:  " << taskCosts << "\n";
-			std::cout << "In-distribution:  " << mapping << "\n";
-			std::cout << "Out-distribution: " << newMapping << "\n";
-			std::cout << toDecisionTree((1<<p.getPresumedRootAddress().getLayer()),newMapping) << "\n";
-			std::cout << "\n";
-		}
+		std::cout << "Task costs: " << taskCosts << "\n";
 
-		// create new scheduling policy
-		auto root = p.getPresumedRootAddress();
-		auto log2 = root.getLayer();
-		return { root, p.granulartiy, toDecisionTree((1<<log2),newMapping) };
+		// compute new schedule
+		return rebalanceTasks(p,taskCosts,mask);
+
 	}
 
 

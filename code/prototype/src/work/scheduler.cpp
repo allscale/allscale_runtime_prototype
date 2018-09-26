@@ -24,6 +24,8 @@
 #include "allscale/runtime/work/optimizer.h"
 #include "allscale/runtime/work/schedule_policy.h"
 
+#include "allscale/runtime/mon/task_stats.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -364,9 +366,15 @@ namespace work {
 
 			// -- efficiency measurement --
 
-			time_point lastSampleTime;
+			time_point lastEfficiencySampleTime;
 
 			std::chrono::nanoseconds lastProcessTime;
+
+			// -- task time measurement --
+
+			time_point lastTaskTimesSampleTime;
+
+			mon::TaskTimes lastTaskTimes;
 
 			// -- global tuning data --
 
@@ -396,8 +404,9 @@ namespace work {
 			InterNodeLoadBalancer(com::Node& local, bool withTuning)
 				: network(com::Network::getNetwork()),
 				  node(local),
-				  lastSampleTime(now()),
+				  lastEfficiencySampleTime(now()),
 				  lastProcessTime(0),
+				  lastTaskTimesSampleTime(lastEfficiencySampleTime),
 				  numActiveNodes(network.numNodes()),
 				  activeFrequency(hw::getFrequency(node.getRank())),
 				  best({numActiveNodes,activeFrequency}),
@@ -428,12 +437,29 @@ namespace work {
 				auto curProcess = node.getService<work::Worker>().getProcessTime();
 
 				// compute efficiency
-				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastSampleTime);
+				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastEfficiencySampleTime);
 				auto res = (curProcess - lastProcessTime)/ interval;
 
 				// keep track of data
-				lastSampleTime = curTime;
+				lastEfficiencySampleTime = curTime;
 				lastProcessTime = curProcess;
+
+				// done
+				return res;
+			}
+
+			mon::TaskTimes getTaskTimes() {
+				// take a sample
+				auto curTime = now();
+				auto curTimes = node.getService<work::Worker>().getTaskTimeSummary();
+
+				// normalize to one second
+				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastTaskTimesSampleTime);
+				auto res = (curTimes - lastTaskTimes) / interval.count();
+
+				// keep track of data
+				lastTaskTimesSampleTime = curTime;
+				lastTaskTimes = curTimes;
 
 				// done
 				return res;
@@ -563,6 +589,7 @@ namespace work {
 				//          performance score and searching for better alternatives
 
 
+
 				// -- Step 1: collect node distribution --
 
 				// collect the load of all nodes
@@ -588,6 +615,14 @@ namespace work {
 					<< ", load variance "   << std::setprecision(2) << var
 					<< ", total progress " << std::setprecision(2) << (avg*numActiveNodes)
 					<< " on " << numActiveNodes << " nodes\n";
+
+
+				// -- Step 1b: collect task processing times
+				mon::TaskTimes taskTimes;
+				for(com::rank_t i=0; i<numActiveNodes; i++) {
+					taskTimes += network.getRemoteProcedure(i,&InterNodeLoadBalancer::getTaskTimes)();
+				}
+				std::cout << "Aggregated task times: " << taskTimes << "\n";
 
 
 				// -- Step 2: if stable, adjust number of nodes and clock speed
@@ -618,7 +653,8 @@ namespace work {
 
 				// re-balance load
 				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
-				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
+//				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
+				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,taskTimes,mask);
 
 				// distribute new policy
 				for(com::rank_t i=0; i<numNodes; i++) {
@@ -667,8 +703,9 @@ namespace work {
 		}
 
 		// check validity
-		if (option != "uniform" && option != "random" && option != "dynamic" && option != "tuned") {
+		if (option != "uniform" && option != "random" && option != "balanced" && option != "tuned") {
 			std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
+			std::cout << "\tSupported options: uniform, random, balanced, or tuned\n";
 			std::cout << "Using default: uniform\n";
 			option = "uniform";
 		}
@@ -688,7 +725,7 @@ namespace work {
 		hierarchy.installServiceOnNodes<detail::ScheduleService>(*policy);
 		hierarchy.installServiceOnNodes<data::DataItemIndexService>();
 
-		if (option == "dynamic" || option == "tuned") {
+		if (option == "balanced" || option == "tuned") {
 			network.installServiceOnNodes<detail::InterNodeLoadBalancer>(option == "tuned");
 		}
 	}

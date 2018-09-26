@@ -14,6 +14,7 @@
 #include "allscale/runtime/com/node.h"
 
 #include "allscale/runtime/work/work_queue.h"
+#include "allscale/runtime/mon/task_stats.h"
 
 namespace allscale {
 namespace runtime {
@@ -74,6 +75,14 @@ namespace work {
 
 		// amount of time spend in processing tasks (in nanoseconds)
 		std::atomic<std::chrono::nanoseconds> processTime;
+
+		// a statistic for the observed task execution times
+		mon::TaskTimes taskTimes;
+
+		// a lock to synchronize on task time statistic updates
+		mutable std::mutex taskTimesLock;
+
+		using guard = std::lock_guard<std::mutex>;
 
 	public:
 
@@ -137,6 +146,14 @@ namespace work {
 		 */
 		std::chrono::nanoseconds getProcessTime() const {
 			return processTime;
+		}
+
+		/**
+		 * Obtains a summary of the task execution time processed by this worker.
+		 */
+		mon::TaskTimes getTaskTimeSummary() const {
+			guard g(taskTimesLock);
+			return taskTimes;
 		}
 
 		/**

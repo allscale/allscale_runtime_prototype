@@ -9,6 +9,7 @@
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
+#include "allscale/runtime/mon/task_stats.h"
 
 
 namespace allscale {
@@ -178,6 +179,13 @@ namespace work {
 
 				// increment processing time
 				processTime = processTime.load() + (end - begin);
+
+				// keep task statistics up to date
+				{
+					guard g(taskTimesLock);
+					taskTimes.add(t->getId(),(end-begin));
+				}
+
 			}
 
 			return true;

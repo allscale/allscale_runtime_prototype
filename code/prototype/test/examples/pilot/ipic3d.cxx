@@ -2346,7 +2346,7 @@ template<> struct to_std_array_type<allscale_type_2273> { using type = std::arra
 int32_t IMP_main(int32_t var_0, char** var_1) {
 
 	char* def[] = {
-			"ipic3d", ":U:500000"
+			"ipic3d", ":U:5000"
 	};
 
 	if (var_0 == 1) {

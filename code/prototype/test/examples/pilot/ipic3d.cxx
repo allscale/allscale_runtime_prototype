@@ -2450,9 +2450,6 @@ int32_t IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus
     return 1;
 }
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_benchmark_dot_h_139_19_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_benchmark_dot_h_139_19::operator allscale_type_42() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 struct DummyCtorParamType {
     ;
     ;
@@ -3522,10 +3519,6 @@ double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus_
 }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_261_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::operator allscale_type_695() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_261_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::store(allscale::utils::ArchiveWriter& var_1) const { }
 /* ------- Function Definitions --------- */
 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_261_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_261_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::load(allscale::utils::ArchiveReader& var_0) {
@@ -4242,10 +4235,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_256_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::operator allscale_type_695() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 void IMP_ipic3d_colon__colon_detail_colon__colon_default_particle_mover::store(allscale::utils::ArchiveWriter& var_1) const { }
@@ -6678,10 +6667,6 @@ bool __wi_allscale_wi_9_can_split::call(hpx::util::tuple<IMP_allscale_colon__col
 /* ------- Function Definitions --------- */
 double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_256_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::operator()(double const& var_1, int64_t const& var_2) const {
     return var_1 * (double)var_2;
-}
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_256_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::operator allscale_type_2221() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
 }
 /* ------- Function Definitions --------- */
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_256_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::store(allscale::utils::ArchiveWriter& var_1) const { }

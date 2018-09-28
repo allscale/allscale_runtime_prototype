@@ -1900,10 +1900,6 @@ IMP_ipic3d_colon__colon_distribution_colon__colon_uniform_pos_normal_speed_struc
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_249_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::operator allscale_type_499() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_249_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::store(allscale::utils::ArchiveWriter& var_1) const { }
 /* ------- Function Definitions --------- */
 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_249_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_249_26_double_const_space_double_space__ampersand__const_space_double_space__ampersand_::load(allscale::utils::ArchiveReader& var_0) {
@@ -1917,10 +1913,6 @@ double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus_
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_244_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::operator allscale_type_291() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_244_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::store(allscale::utils::ArchiveWriter& var_1) const { }
 /* ------- Function Definitions --------- */
 double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_244_26_double_const_space_double_space__ampersand__const_space_long_space__ampersand_::operator()(double const& var_1, int64_t const& var_2) const {
@@ -1932,10 +1924,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
 }
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_src_slash_pic_tracer_dot_cxx_256_16_ParticleCount_ParticleCount_space__ampersand__ampersand__const_space_ParticleCount_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_src_slash_pic_tracer_dot_cxx_256_16::operator allscale_type_530() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */

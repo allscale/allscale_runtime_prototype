@@ -233,10 +233,6 @@ struct __wi_main_variant_1 {
 
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::operator allscale_type_15() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15_void_int_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_test_slash_pfor_slash_empty_loop_slash_empty_loop_dot_cpp_8_15::load(allscale::utils::ArchiveReader&) {
     return {};
 }

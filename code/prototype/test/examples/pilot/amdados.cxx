@@ -3628,10 +3628,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
     return {};
 }
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_608_34_void_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_608_34::operator allscale_type_1262() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
@@ -3651,10 +3647,6 @@ void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__p
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_613_24_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_613_24::operator allscale_type_1427() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_613_24_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_613_24::operator()(double const& var_1) const {
     return var_1;
@@ -3689,10 +3681,6 @@ void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__p
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_675_34_void_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_675_34::operator allscale_type_1262() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23::store(allscale::utils::ArchiveWriter& var_1) const { }
 /* ------- Function Definitions --------- */
 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23::load(allscale::utils::ArchiveReader& var_0) {
@@ -3702,10 +3690,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23::operator allscale_type_1427() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_680_23::operator()(double const& var_1) const {
     return var_1;
@@ -3783,10 +3767,6 @@ void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__p
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_828_18_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_828_18::operator allscale_type_1427() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 double IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_828_18_double_const_space_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_828_18::operator()(double const& var_1) const {
     return var_1;
@@ -4053,10 +4033,6 @@ void IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__p
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_723_48_void_double_space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_723_48::operator allscale_type_1262() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
@@ -4100,10 +4076,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
     return {};
 }
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_790_13_bool_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_2_gt__space__ampersand__IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_simulation_dot_cpp_790_13::operator allscale_type_1531() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
@@ -5998,10 +5970,6 @@ IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_compiler_slash_api_slash_code_slash_utils_slash_include_slash_allscale_slash_utils_slash_vector_dot_h_249_26_long_const_space_long_space__ampersand__const_space_long_space__ampersand_::operator allscale_type_578() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
-/* ------- Function Definitions --------- */
 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20_long_double_long_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20 IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20_long_double_long_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20::load(allscale::utils::ArchiveReader& var_0) {
     return {};
 }
@@ -6012,10 +5980,6 @@ int64_t IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus
     return var_3;
 }
 /* ------- Function Definitions --------- */
-/* ------- Function Definitions --------- */
-IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20_long_double_long_IMLOC__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_amdados_slash_code_slash_app_slash_src_slash_scenario_benchmark_dot_cpp_62_20::operator allscale_type_546() const {
-    assert((bool)false && (bool)"This is an Insieme generated dummy function which should never be called");
-}
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */
 /* ------- Function Definitions --------- */

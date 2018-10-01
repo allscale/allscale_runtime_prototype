@@ -13,6 +13,10 @@ namespace mon {
 
 	using time_t = std::chrono::nanoseconds;
 
+	/**
+	 * A utility class to track the execution time of tasks and sub-tasks.
+	 * Internally, times of tasks are aggregated on a unspecified level.
+	 */
 	struct TaskTimes {
 
 		std::vector<time_t> times;

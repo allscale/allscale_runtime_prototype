@@ -44,25 +44,32 @@ namespace work {
 
 
 
-	bool RandomSchedulingPolicy::isInvolved(const com::HierarchyAddress&, const TaskPath&) const {
-		return true; // every node may be involved
+	bool RandomSchedulingPolicy::isInvolved(const com::HierarchyAddress& addr, const TaskPath& path) const {
+
+		// the root is always involved
+		if (addr == root) return true;
+
+		// check whether task has been decomposed sufficiently for the current level
+		return int(path.getLength()) - 3 >= int(root.getLayer()) - int(addr.getLayer());
 	}
 
-	Decision RandomSchedulingPolicy::decide(const com::HierarchyAddress&, const TaskPath& path) const {
+	Decision RandomSchedulingPolicy::decide(const com::HierarchyAddress& addr, const TaskPath& path) const {
 		// spread up tasks on root level, to avoid strong biases in task distribution depending on root decision
 		if (path.getLength() < 3) return Decision::Stay;
 
+		// if we are on the tasks's involvement limit layer => stay
+		if (int(path.getLength() - 3 == int(root.getLayer()) - int(addr.getLayer()))) {
+			return Decision::Stay;
+		}
+
+		// decide whether to send left or right randomly
 		auto r = policy(generator);
-		return (r < 0.33) ? Decision::Left  :
-			   (r < 0.66) ? Decision::Right :
-				  	        (path.getLength() < cutOffLevel)
-							  	  ? Decision::Stay
-								  : (( r < 0.83 ) ? Decision::Left : Decision::Right) ;
+		return (r < 0.5) ? Decision::Left : Decision::Right;
 	}
 
 
 	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::clone() const {
-		return std::make_unique<RandomSchedulingPolicy>(cutOffLevel);
+		return std::make_unique<RandomSchedulingPolicy>(root,cutOffLevel);
 	}
 
 	void RandomSchedulingPolicy::printTo(std::ostream& out) const {
@@ -70,11 +77,14 @@ namespace work {
 	}
 
 	void RandomSchedulingPolicy::storeInternal(allscale::utils::ArchiveWriter& out) const {
+		out.write(root);
 		out.write(cutOffLevel);
 	}
 
 	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::loadAsUniquePtr(allscale::utils::ArchiveReader& in) {
-		return std::make_unique<RandomSchedulingPolicy>(in.read<int>());
+		auto root = in.read<com::HierarchyAddress>();
+		auto cut = in.read<int>();
+		return std::make_unique<RandomSchedulingPolicy>(root,cut);
 	}
 
 

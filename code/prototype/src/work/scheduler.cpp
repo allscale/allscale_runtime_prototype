@@ -159,7 +159,7 @@ namespace work {
 					bool involved = false;
 					{
 						guard g(policy_lock);
-						involved = policy.isInvolved(myAddr,path);
+						involved = policy.isInvolved(myAddr,(path.isRoot() ? path : path.getParentPath()));
 					}
 
 					// and that this virtual node has control over all required data
@@ -713,7 +713,7 @@ namespace work {
 		// instantiate the scheduling policy
 		std::unique_ptr<SchedulingPolicy> policy;
 		if (option == "random") {
-			policy = std::make_unique<RandomSchedulingPolicy>(getCutOffLevel(network.numNodes()));
+			policy = std::make_unique<RandomSchedulingPolicy>(hierarchy.getRootAddress(), getCutOffLevel(network.numNodes()));
 		} else {
 			// the rest is based on a decision tree scheduler
 			policy = std::make_unique<DecisionTreeSchedulingPolicy>(DecisionTreeSchedulingPolicy::createUniform(network.numNodes()));

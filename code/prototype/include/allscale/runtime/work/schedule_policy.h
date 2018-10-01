@@ -224,6 +224,9 @@ namespace work {
 	 */
 	class RandomSchedulingPolicy : public SchedulingPolicy {
 
+		// the root node of the network to be scheduling for
+		com::HierarchyAddress root;
+
 		// the task-cut-off level (determining granulartiy of processed tasks)
 		int cutOffLevel;
 
@@ -235,7 +238,8 @@ namespace work {
 
 	public:
 
-		RandomSchedulingPolicy(int cutOffLevel = 0) : SchedulingPolicy(loadAsUniquePtr), cutOffLevel(cutOffLevel) {}
+		RandomSchedulingPolicy(const com::HierarchyAddress& root, int cutOffLevel)
+			: SchedulingPolicy(loadAsUniquePtr), root(root), cutOffLevel(cutOffLevel) {}
 
 
 		// --- the main interface for the scheduler ---

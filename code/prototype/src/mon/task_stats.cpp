@@ -11,7 +11,7 @@ namespace allscale {
 namespace runtime {
 namespace mon {
 
-	constexpr int TRACKING_LEVEL = 6;
+	constexpr int TRACKING_LEVEL = 14;
 
 
 	TaskTimes::TaskTimes() : times(1<<TRACKING_LEVEL) {}

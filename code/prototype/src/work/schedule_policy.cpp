@@ -511,8 +511,6 @@ namespace work {
 		// sample measured times
 		sampleTaskTimes(times, TaskPath::root(), p.getGranularity(), taskCosts);
 
-		std::cout << "Task costs: " << taskCosts << "\n";
-
 		// compute new schedule
 		return rebalanceTasks(p,taskCosts,mask);
 

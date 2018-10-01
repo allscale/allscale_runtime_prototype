@@ -4,6 +4,7 @@
 #include <iomanip>
 
 #include "allscale/utils/printer/vectors.h"
+#include "allscale/utils/serializer/pairs.h"
 
 #include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/com/network.h"
@@ -465,6 +466,10 @@ namespace work {
 				return res;
 			}
 
+			std::pair<float,mon::TaskTimes> getStatus() {
+				return std::make_pair(getEfficiency(),getTaskTimes());
+			}
+
 			void updatePolicy(const ExchangeableSchedulingPolicy& policy, com::rank_t numActiveNodes, hw::Frequency frequency) {
 				// get local scheduler service
 				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
@@ -595,8 +600,11 @@ namespace work {
 				// collect the load of all nodes
 				com::rank_t numNodes = network.numNodes();
 				std::vector<float> load(numNodes,0.0f);
+				mon::TaskTimes taskTimes;
 				for(com::rank_t i=0; i<numActiveNodes; i++) {
-					load[i] = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getEfficiency)();
+					auto cur = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getStatus)();
+					load[i] = cur.first;
+					taskTimes += cur.second;
 				}
 
 				// compute the load variance
@@ -616,13 +624,6 @@ namespace work {
 					<< ", total progress " << std::setprecision(2) << (avg*numActiveNodes)
 					<< " on " << numActiveNodes << " nodes\n";
 
-
-				// -- Step 1b: collect task processing times
-				mon::TaskTimes taskTimes;
-				for(com::rank_t i=0; i<numActiveNodes; i++) {
-					taskTimes += network.getRemoteProcedure(i,&InterNodeLoadBalancer::getTaskTimes)();
-				}
-				std::cout << "Aggregated task times: " << taskTimes << "\n";
 
 
 				// -- Step 2: if stable, adjust number of nodes and clock speed

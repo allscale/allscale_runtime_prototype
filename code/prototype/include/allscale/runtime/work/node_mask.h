@@ -107,7 +107,7 @@ namespace work {
 			for(std::size_t i=0; i<size; i++) {
 				res[i] = in.read<bool>();
 			}
-			return res;
+			return std::move(res);
 		}
 
 		// -- printer support --

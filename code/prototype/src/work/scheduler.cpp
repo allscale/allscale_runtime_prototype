@@ -227,11 +227,10 @@ namespace work {
 					}
 				}
 
-				// if this not is not involved, send task to parent
+				// if this not is not involved ..
 				if (!involved) {
-					assert_false(isRoot) << "Root should always be involved!";
-					// => if not, forward to parent
-					network.getRemoteProcedure(myAddr.getParent(),&ScheduleService::schedule)(std::move(task));
+					// there has been a scheduler change => process task here
+					scheduleLocal(std::move(task));
 					return;
 				}
 
@@ -570,6 +569,9 @@ namespace work {
 				// update policies
 				service.forAll([&](auto& cur) { cur.setPolicy(policy); });
 
+				// update local knowledge of active nodes
+				this->activeNodeMask = activeNodes;
+
 				// update own active state
 				active = activeNodes.isActive(node.getRank());
 
@@ -589,6 +591,7 @@ namespace work {
 				switch(newType) {
 				case SchedulerType::Random : {
 					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel(numNodes));
+					activeNodeMask = NodeMask(numNodes);
 					updatePolicy(random,activeNodeMask,defaultFrequency);
 					break;
 				}

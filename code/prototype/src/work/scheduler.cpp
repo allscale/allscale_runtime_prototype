@@ -812,6 +812,7 @@ namespace work {
 
 	bool isLocalNodeActive() {
 		auto& node = com::Node::getLocalNode();
+		if (!node.hasService<detail::StrategicScheduler>()) return true;
 		return node.getLocalService<detail::StrategicScheduler>().isActive();
 	}
 
@@ -836,6 +837,7 @@ namespace work {
 	}
 
 	SchedulerType getCurrentSchedulerType() {
+		if (!com::Node::getLocalNode().hasService<detail::StrategicScheduler>()) return SchedulerType::Uniform;
 		return com::Node::getLocalService<detail::StrategicScheduler>().getActiveSchedulerType();
 	}
 

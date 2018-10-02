@@ -562,9 +562,6 @@ namespace data {
 				// update management information
 				removeRegionsLeft(part);
 
-				// make sure left knowledge is consistent
-				assert_eq(getAvailableDataLeft(),network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::getAvailableData)());
-
 				// update remaining missing area
 				missing = difference(missing,part);
 
@@ -586,9 +583,6 @@ namespace data {
 
 				// update management information
 				removeRegionsRight(part);
-
-				// make sure right knowledge is consistent
-				assert_eq(getAvailableDataRight(),network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::getAvailableData)());
 
 				// update remaining missing area
 				missing = difference(missing,part);

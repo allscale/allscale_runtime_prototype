@@ -350,40 +350,28 @@ namespace data {
 	}
 
 
-
-	namespace {
-
-		DataItemMigrationData createMigrationAllowance(const DataItemRegions&) {
-
-			// if this assertion is failing, investigate cause, and if necessary create return allowances for requested regions
-			assert_fail() << "This should not be necessary, all data should be somewhere!";
-
-			assert_not_implemented();
-			return {};
-		}
-
-	}
-
-
-
-	DataItemMigrationData DataItemIndexService::acquire(const DataItemRegions& regions) {
+	void DataItemIndexService::acquire(const DataItemRegions& regions) {
 
 		// this entry point is only to be called on the leaf level
 		assert_true(myAddress.isLeaf());
-
-		// if this is the root node, there is no place to retrieve data from
-		if (isRoot) {
-			// client code is requesting unallocated data
-			assert_pred2(isDisjoint,getAvailableData(),regions);
-			// create default-initialized data through allowances
-			return createMigrationAllowance(regions);
-		}
 
 		// compute the missing regions
 		auto missing = difference(regions,getAvailableData());
 
 		// if there is nothing missing, there is nothing to do
-		if (missing.empty()) return {};
+		if (missing.empty()) return;
+
+		// if this is the root node, there is no place to retrieve data from
+		if (isRoot) {
+			// client code is requesting unallocated data
+			assert_pred2(isDisjoint,getAvailableData(),regions);
+
+			// create default-initialized data through allowances
+			addRegions(regions);
+
+			// done
+			return;
+		}
 
 		// send request to parent
 		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(missing,myAddress);
@@ -397,11 +385,12 @@ namespace data {
 		// register ownership
 		addRegions(regions);
 
+		// insert data locally
+		com::Node::getLocalService<DataItemManagerService>().takeOwnership(res);
+
 		// free the local lock
 		lock.unlock();
 
-		// done
-		return res;
 	}
 
 	DataItemMigrationData DataItemIndexService::acquireOwnershipFor(const DataItemRegions& regions, com::HierarchyAddress child) {

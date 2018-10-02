@@ -104,9 +104,12 @@ namespace data {
 		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
 
 		// forward this call to the index server
-		auto data = diis.acquire(regions);
+		diis.acquire(regions);
 
-		// insert data locally
+	}
+
+	void DataItemManagerService::takeOwnership(const DataItemMigrationData& data) {
+		// import data into actual data fragment managers ...
 		for(const auto& cur : registers) {
 			cur.second->takeOwnership(data);
 		}

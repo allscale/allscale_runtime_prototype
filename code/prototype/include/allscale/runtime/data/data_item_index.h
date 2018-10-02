@@ -504,7 +504,7 @@ namespace data {
 		 * Retrieves the current state and ownership for the specified regions.
 		 * This is the entry point for e.g. the data item manager.
 		 */
-		DataItemMigrationData acquire(const DataItemRegions& regions);
+		void acquire(const DataItemRegions& regions);
 
 		/**
 		 * This function handles phase 1,2, and 4.

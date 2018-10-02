@@ -319,7 +319,7 @@ namespace data {
 
 		/**
 		 * Releases the specified data requirements.
-		 * TODO: this could also matched to an allocate call through some handler
+		 * TODO: this could also be matched to an allocate call through some handler
 		 */
 		void release(const DataItemRequirements& reqs);
 
@@ -374,6 +374,8 @@ namespace data {
 			regions.add(ref,region);
 			acquire(regions);
 		}
+
+		void takeOwnership(const DataItemMigrationData& data);
 
 		template<typename DataItem>
 		typename DataItem::region_type getExclusiveRegion(const DataItemReference<DataItem>& ref) const {

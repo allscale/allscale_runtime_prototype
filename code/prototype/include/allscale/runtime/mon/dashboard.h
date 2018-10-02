@@ -9,6 +9,7 @@
 #include "allscale/runtime/data/data_item_region.h"
 #include "allscale/runtime/hw/energy.h"
 #include "allscale/runtime/hw/frequency.h"
+#include "allscale/runtime/work/scheduler.h"
 
 namespace allscale {
 namespace runtime {
@@ -136,6 +137,9 @@ namespace mon {
 		// the overall system-wide score of the objective function
 		float score = 0;
 
+		// -- scheduler state --
+
+		work::SchedulerType scheduler;
 
 		// -- the node states --
 

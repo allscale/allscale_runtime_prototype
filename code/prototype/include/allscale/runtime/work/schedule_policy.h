@@ -15,6 +15,7 @@
 #include "allscale/utils/serializer/functions.h"
 
 #include "allscale/runtime/com/hierarchy.h"
+#include "allscale/runtime/work/node_mask.h"
 #include "allscale/runtime/work/task_id.h"
 #include "allscale/runtime/mon/task_stats.h"
 
@@ -357,6 +358,23 @@ namespace work {
 
 		/**
 		 * Creates a scheduling policy distributing work on the given scheduling granularity
+		 * level evenly (as close as possible) among the nodes enabled in the given mask.
+		 *
+		 * @param a bit set of nodes to be included in the schedule (one bit must at least be set)
+		 * @param granularity the negative exponent of the acceptable load imbalance; e.g. 0 => 2^0 = 100%, 5 => 2^-5 = 3.125%
+		 */
+		static DecisionTreeSchedulingPolicy createUniform(const NodeMask& mask, int granularity);
+
+		/**
+		 * Creates a scheduling policy distributing work uniformly among the given set of nodes. The
+		 * granulartiy will be adjusted accordingly, such that ~8 tasks per node are created.
+		 *
+		 * @param a bit set of nodes to be included in the schedule (one bit must at least be set)
+		 */
+		static DecisionTreeSchedulingPolicy createUniform(const NodeMask& mask);
+
+		/**
+		 * Creates a scheduling policy distributing work on the given scheduling granularity
 		 * level evenly (as close as possible) among the N available nodes.
 		 *
 		 * @param N the number of nodes to distribute work on
@@ -391,7 +409,7 @@ namespace work {
 		 * 			no entry must be negative.
 		 * @param mask a mask indicating which nodes to utilize and which not in the resulting schedule
 		 */
-		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution, const std::vector<bool>& mask);
+		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const std::vector<float>& loadDistribution, const NodeMask& mask);
 
 		/**
 		 * Creates an updated load balancing policy based on a given policy, a measured task time summary, and a mask of nodes to be involved.
@@ -401,7 +419,7 @@ namespace work {
 		 * @param task times measured, utilized for re-assigning tasks.
 		 * @param mask a mask indicating which nodes to utilize and which not in the resulting schedule
 		 */
-		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const mon::TaskTimes& taskTimes, const std::vector<bool>& mask);
+		static DecisionTreeSchedulingPolicy createReBalanced(const DecisionTreeSchedulingPolicy& old, const mon::TaskTimes& taskTimes, const NodeMask& mask);
 
 		// --- observer ---
 

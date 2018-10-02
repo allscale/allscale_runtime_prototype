@@ -454,7 +454,7 @@ namespace work {
 
 		// providing a nicely balanced load should not cause any changes
 		auto loadDist = std::vector<float>(4,1.0);
-		auto mask = std::vector<bool>(4,true);
+		auto mask = NodeMask(4);
 		auto b1 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
 		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
 
@@ -478,7 +478,7 @@ namespace work {
 
 		// providing a nicely balanced load should not cause any changes
 		auto loadDist = std::vector<float>(6,1.0);
-		auto mask = std::vector<bool>(6,true);
+		auto mask = NodeMask(6);
 		auto b1 = DecisionTreeSchedulingPolicy::createReBalanced(u,loadDist,mask);
 		EXPECT_EQ(u.getTaskDistributionMapping(),b1.getTaskDistributionMapping());
 

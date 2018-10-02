@@ -11,6 +11,7 @@
 #include "allscale/runtime/com/hierarchy.h"
 
 #include "allscale/runtime/log/logger.h"
+#include "allscale/runtime/work/node_mask.h"
 #include "allscale/runtime/work/scheduler.h"
 #include "allscale/runtime/work/task.h"
 #include "allscale/runtime/work/worker.h"
@@ -84,7 +85,7 @@ namespace work {
 	namespace detail {
 
 		/**
-		 * A service running on each virtual node.
+		 * A service running on each virtual node. This is the tactical scheduling part.
 		 */
 		class ScheduleService {
 
@@ -354,7 +355,40 @@ namespace work {
 		}
 
 
-		class InterNodeLoadBalancer {
+
+		namespace {
+
+			SchedulerType getInitialSchedulerType() {
+				// get the scheduling policy to be utilized
+				std::string option = "uniform";
+				if (auto user = std::getenv("ART_SCHEDULER")) {
+					option = user;
+				}
+
+				// check validity
+				if (option != "uniform" && option != "random" && option != "balanced" && option != "tuned") {
+					std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
+					std::cout << "\tSupported options: uniform, random, balanced, or tuned\n";
+					std::cout << "Using default: uniform\n";
+					option = "uniform";
+				}
+
+				if (option == "uniform")  return SchedulerType::Uniform;
+				if (option == "balanced") return SchedulerType::Balanced;
+				if (option == "tuned")    return SchedulerType::Tuned;
+				if (option == "random")   return SchedulerType::Random;
+
+				assert_fail() << "Invalid state: " << option;
+				return SchedulerType::Uniform;
+			}
+
+		}
+
+		/**
+		 * The strategic scheduler is responsible for the management of the tactical
+		 * scheduling policy and the inter-node load management activities.
+		 */
+		class StrategicScheduler {
 
 			using clock = std::chrono::high_resolution_clock;
 			using time_point = clock::time_point;
@@ -364,6 +398,10 @@ namespace work {
 
 			// the node being installed on
 			com::Node& node;
+
+			// -- scheduler type management --
+
+			SchedulerType type;
 
 			// -- efficiency measurement --
 
@@ -379,13 +417,13 @@ namespace work {
 
 			// -- global tuning data --
 
-			// the number of currently active nodes
-			com::rank_t numActiveNodes;
+			// active / stand-by nodes mask
+			NodeMask activeNodeMask;
 
 			// the frequency currently selected for all nodes
 			hw::Frequency activeFrequency;
 
-			using config = std::pair<com::rank_t,hw::Frequency>;
+			using config = std::pair<NodeMask,hw::Frequency>;
 
 
 			// hill climbing data
@@ -398,22 +436,27 @@ namespace work {
 
 			bool active;
 
-			bool withTuning;
+			mutable std::recursive_mutex lock;
+
+			using guard = std::lock_guard<std::recursive_mutex>;
 
 		public:
 
-			InterNodeLoadBalancer(com::Node& local, bool withTuning)
+			StrategicScheduler(com::Node& local)
 				: network(com::Network::getNetwork()),
 				  node(local),
+				  type(getInitialSchedulerType()),
 				  lastEfficiencySampleTime(now()),
 				  lastProcessTime(0),
 				  lastTaskTimesSampleTime(lastEfficiencySampleTime),
-				  numActiveNodes(network.numNodes()),
+				  activeNodeMask(network.numNodes()),
 				  activeFrequency(hw::getFrequency(node.getRank())),
-				  best({numActiveNodes,activeFrequency}),
+				  best({activeNodeMask,activeFrequency}),
 				  best_score(0),
-				  active(true),
-				  withTuning(withTuning) {
+				  active(true) {
+
+				// enforce initial scheduler type
+				updateSchedulerType(type);
 
 				// only on rank 0 the balancer shall be started
 				if (node.getRank() != 0) return;
@@ -429,6 +472,55 @@ namespace work {
 			// or in stand-by mode regarding task scheduling operations
 			bool isActive() const {
 				return active;
+			}
+
+			// obtains the currently enforced scheduling type
+			SchedulerType getActiveSchedulerType() const {
+				guard g(lock);
+				return type;
+			}
+
+			void setActiveSchedulerType(SchedulerType type) {
+				guard g(lock);
+				// skip if there is no change
+				if (this->type == type) return;
+				updateSchedulerType(type);
+			}
+
+			void changeActiveSchedulerType(SchedulerType type) {
+				// broadcast change request to all nodes
+				network.broadcast(&detail::StrategicScheduler::setActiveSchedulerType)(type);
+			}
+
+			void toggleActiveState(com::rank_t rank) {
+				// forward this to the locality 0
+				if (node.getRank() != 0) {
+					network.getRemoteProcedure(0,&StrategicScheduler::toggleActiveState)(rank);
+					return;
+				}
+
+				// on the root node ...
+				assert_eq(0,node.getRank());
+
+				// .. swap state of given rank
+				auto newMask = activeNodeMask;
+				newMask.toggle(rank);
+
+				// do not disable last node
+				if (newMask.count() == 0) return;
+
+				// update state
+				activeNodeMask = newMask;
+
+				// re-schedule uniform schedule
+				if (type == SchedulerType::Uniform) {
+					// create new policy
+					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeNodeMask);
+					// distribute new policy
+					for(com::rank_t i=0; i<activeNodeMask.totalNodes(); i++) {
+						network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(uniform,activeNodeMask,activeFrequency);
+					}
+				}
 			}
 
 			// to be called by remote to collect this nodes efficiency
@@ -470,20 +562,50 @@ namespace work {
 				return std::make_pair(getEfficiency(),getTaskTimes());
 			}
 
-			void updatePolicy(const ExchangeableSchedulingPolicy& policy, com::rank_t numActiveNodes, hw::Frequency frequency) {
+			void updatePolicy(const ExchangeableSchedulingPolicy& policy, const NodeMask& activeNodes, hw::Frequency frequency) {
+				guard g(lock);
+
 				// get local scheduler service
 				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
 				// update policies
 				service.forAll([&](auto& cur) { cur.setPolicy(policy); });
 
 				// update own active state
-				active = node.getRank() < numActiveNodes;
+				active = activeNodes.isActive(node.getRank());
 
 				// update CPU clock frequency
 				hw::setFrequency(node.getRank(), frequency);
 			}
 
 		private:
+
+			void updateSchedulerType(const SchedulerType& newType) {
+
+				// get the total number of nodes
+				auto numNodes = network.numNodes();
+				auto defaultFrequency = hw::getFrequency(node.getRank());
+
+				// enforce policy
+				switch(newType) {
+				case SchedulerType::Random : {
+					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel(numNodes));
+					updatePolicy(random,activeNodeMask,defaultFrequency);
+					break;
+				}
+				case SchedulerType::Uniform :
+				case SchedulerType::Balanced :
+				case SchedulerType::Tuned : {
+					// reset configuration to initial setup
+					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeNodeMask);
+					updatePolicy(uniform,activeNodeMask,defaultFrequency);
+					break;
+				}
+				}
+
+				// update scheduler type
+				type = newType;
+
+			}
 
 			void tune(const std::vector<float>& load) {
 				using namespace std::literals::chrono_literals;
@@ -502,6 +624,9 @@ namespace work {
 				std::uint64_t max_cycles = 0;
 				hw::Power used_power = 0;
 				hw::Power max_power = 0;
+
+				// compute number of active nodes
+				com::rank_t numActiveNodes = activeNodeMask.count();
 
 				for(com::rank_t i=0; i<network.numNodes(); i++) {
 					if (i<numActiveNodes) {
@@ -531,7 +656,7 @@ namespace work {
 
 				// record current solution
 				if (score > best_score) {
-					best = { numActiveNodes, activeFrequency };
+					best = { activeNodeMask, activeFrequency };
 					best_score = score;
 				}
 
@@ -554,10 +679,10 @@ namespace work {
 					if (pos+1<int(options.size())) frequencies.push_back(options[pos+1]);
 
 					// get nearby node numbers
-					std::vector<com::rank_t> numNodes;
-					if (best.first > 1) numNodes.push_back(best.first-1);
+					std::vector<NodeMask> numNodes;
+					if (best.first.count() > 1) numNodes.push_back(NodeMask(best.first).removeLast());
 					numNodes.push_back(best.first);
-					if (best.first < network.numNodes()) numNodes.push_back(best.first+1);
+					if (best.first.count() < network.numNodes()) numNodes.push_back(NodeMask(best.first).addNode());
 
 
 					// create new options
@@ -579,13 +704,17 @@ namespace work {
 				auto next = explore.back();
 				explore.pop_back();
 
-				numActiveNodes = next.first;
+				activeNodeMask = next.first;
 				activeFrequency = next.second;
 
-				std::cout << "\t\tSwitching to " << numActiveNodes << " @ " << activeFrequency << "\n";
+				std::cout << "\t\tSwitching to " << activeNodeMask.count() << " nodes " << activeNodeMask << " @ " << activeFrequency << "\n";
 			}
 
 			void balance() {
+				guard g(lock);
+
+				// test whether balancing should be performed at all
+				if (type == SchedulerType::Random || type == SchedulerType::Uniform) return;
 
 				// The load balancing / optimization is split into two parts:
 				//  Part A: the balance function, attempting to even out resource utilization between nodes
@@ -593,21 +722,20 @@ namespace work {
 				//  Part B: in evenly balanced cases, the tune function is evaluating the current
 				//          performance score and searching for better alternatives
 
-
-
 				// -- Step 1: collect node distribution --
 
 				// collect the load of all nodes
 				com::rank_t numNodes = network.numNodes();
 				std::vector<float> load(numNodes,0.0f);
 				mon::TaskTimes taskTimes;
-				for(com::rank_t i=0; i<numActiveNodes; i++) {
-					auto cur = network.getRemoteProcedure(i,&InterNodeLoadBalancer::getStatus)();
+				for(com::rank_t i : activeNodeMask.getNodes()) {
+					auto cur = network.getRemoteProcedure(i,&StrategicScheduler::getStatus)();
 					load[i] = cur.first;
 					taskTimes += cur.second;
 				}
 
 				// compute the load variance
+				auto numActiveNodes = activeNodeMask.count();
 				float avg = std::accumulate(load.begin(),load.end(),0.0f) / numActiveNodes;
 
 				float sum_dist = 0;
@@ -629,7 +757,7 @@ namespace work {
 				// -- Step 2: if stable, adjust number of nodes and clock speed
 
 				// if stable enough, allow meta-optimizer to manage load
-				if (withTuning && var < 0.01) {
+				if (type == SchedulerType::Tuned && var < 0.01) {
 
 					// adjust number of nodes and CPU frequency
 					tune(load);
@@ -637,13 +765,6 @@ namespace work {
 				}
 
 				// -- Step 3: enforce selected number of nodes and clock speed, keep system balanced
-
-				// compute number of nodes to be used
-				std::vector<bool> mask(numNodes);
-				for(com::rank_t i=0; i<numNodes; i++) {
-					mask[i] = i < numActiveNodes;
-				}
-
 
 				// get the local scheduler
 				auto& scheduleService = node.getService<com::HierarchyService<ScheduleService>>().get(0);
@@ -655,11 +776,11 @@ namespace work {
 				// re-balance load
 				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
 //				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
-				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,taskTimes,mask);
+				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,taskTimes,activeNodeMask);
 
 				// distribute new policy
 				for(com::rank_t i=0; i<numNodes; i++) {
-					network.getRemoteProcedure(i,&InterNodeLoadBalancer::updatePolicy)(newPolicy,numActiveNodes,activeFrequency);
+					network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(newPolicy,activeNodeMask,activeFrequency);
 				}
 			}
 
@@ -688,47 +809,39 @@ namespace work {
 
 	bool isLocalNodeActive() {
 		auto& node = com::Node::getLocalNode();
-		if (node.hasService<detail::InterNodeLoadBalancer>()) {
-			return node.getLocalService<detail::InterNodeLoadBalancer>().isActive();
-		}
-		return true;
+		return node.getLocalService<detail::StrategicScheduler>().isActive();
 	}
 
 	void installSchedulerService(com::Network& network) {
 		com::HierarchicalOverlayNetwork hierarchy(network);
 
-		// get the scheduling policy to be utilized
-		std::string option = "uniform";
-		if (auto user = std::getenv("ART_SCHEDULER")) {
-			option = user;
-		}
-
-		// check validity
-		if (option != "uniform" && option != "random" && option != "balanced" && option != "tuned") {
-			std::cout << "Unsupported user-defined scheduling policy: " << option << "\n";
-			std::cout << "\tSupported options: uniform, random, balanced, or tuned\n";
-			std::cout << "Using default: uniform\n";
-			option = "uniform";
-		}
-
-		// instantiate the scheduling policy
-		std::unique_ptr<SchedulingPolicy> policy;
-		if (option == "random") {
-			policy = std::make_unique<RandomSchedulingPolicy>(hierarchy.getRootAddress(), getCutOffLevel(network.numNodes()));
-		} else {
-			// the rest is based on a decision tree scheduler
-			policy = std::make_unique<DecisionTreeSchedulingPolicy>(DecisionTreeSchedulingPolicy::createUniform(network.numNodes()));
-		}
-		assert_true(policy);
-
-
 		// start up scheduling service
-		hierarchy.installServiceOnNodes<detail::ScheduleService>(*policy);
+		hierarchy.installServiceOnNodes<detail::ScheduleService>();
 		hierarchy.installServiceOnNodes<data::DataItemIndexService>();
+		network.installServiceOnNodes<detail::StrategicScheduler>();
+	}
 
-		if (option == "balanced" || option == "tuned") {
-			network.installServiceOnNodes<detail::InterNodeLoadBalancer>(option == "tuned");
+
+	std::ostream& operator<<(std::ostream& out,const SchedulerType& type) {
+		switch(type) {
+		case SchedulerType::Uniform:  return out << "uniform";
+		case SchedulerType::Balanced: return out << "balanced";
+		case SchedulerType::Tuned:    return out << "tuned";
+		case SchedulerType::Random:   return out << "random";
 		}
+		return out << "unknown";
+	}
+
+	SchedulerType getCurrentSchedulerType() {
+		return com::Node::getLocalService<detail::StrategicScheduler>().getActiveSchedulerType();
+	}
+
+	void setCurrentSchedulerType(SchedulerType type) {
+		com::Node::getLocalService<detail::StrategicScheduler>().changeActiveSchedulerType(type);
+	}
+
+	void toggleActiveState(com::rank_t rank) {
+		com::Node::getLocalService<detail::StrategicScheduler>().toggleActiveState(rank);
 	}
 
 } // end of namespace com

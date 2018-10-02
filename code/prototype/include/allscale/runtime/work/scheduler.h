@@ -19,6 +19,38 @@ namespace work {
 	//					   Scheduler Interface
 	// ---------------------------------------------------------------
 
+	// -- management interface --
+
+	/**
+	 * The different types of schedulers supported.
+	 */
+	enum class SchedulerType {
+		Uniform,		// < a scheduler assigning equal number of tasks to all nodes
+		Balanced,		// < a scheduler actively balancing load between nodes
+		Tuned,			// < the balanced scheduler + adaptation of #nodes and frequency
+		Random			// < a scheduler assigning tasks randomly to nodes
+	};
+
+	// allow types to be printed
+	std::ostream& operator<<(std::ostream&,const SchedulerType&);
+
+	/**
+	 * Obtains the currently active type of scheduler.
+	 */
+	SchedulerType getCurrentSchedulerType();
+
+	/**
+	 * Updates the currently active scheduler type.
+	 */
+	void setCurrentSchedulerType(SchedulerType);
+
+	/**
+	 * Toggles the active state of the given node.
+	 */
+	void toggleActiveState(com::rank_t);
+
+
+	// -- internal interface --
 
 	/**
 	 * Requests a task to be scheduled somewhere in the system -- simple as that.

@@ -101,19 +101,22 @@ namespace work {
 			return i;
 		}
 
-		std::vector<com::rank_t> getEqualDistribution(int numNodes, int numTasks) {
+		std::vector<com::rank_t> getEqualDistribution(const NodeMask& mask, int numTasks) {
 			std::vector<com::rank_t> res(numTasks);
 
 			// fill it with an even load task distribution
+			auto numNodes = mask.count();
 			int share = numTasks / numNodes;
 			int remainder = numTasks % numNodes;
 			int c = 0;
-			for(int i=0; i<numNodes; i++) {
+			int l = 0;
+			for(com::rank_t i : mask.getNodes()) {
 				for(int j=0; j<share; j++) {
 					res[c++] = i;
 				}
-				if (i<remainder) {
+				if (l<remainder) {
 					res[c++] = i;
+					l++;
 				}
 			}
 			assert_eq(c,numTasks);
@@ -299,22 +302,29 @@ namespace work {
 		return res;
 	}
 
-
-	// create a uniform distributing policy for N nodes
-	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(int N, int granularity) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(const NodeMask& mask, int granularity) {
 		// some sanity checks
-		assert_lt(0,N);
+		assert_lt(0,mask.count());
 
 		// compute number of levels to be scheduled
-		auto log2 = ceilLog2(N);
+		auto log2 = ceilLog2(mask.totalNodes());
 		auto levels = std::max(log2,granularity);
 
 		// create initial task to node mapping
 		int numTasks = (1<<levels);
-		std::vector<std::uint32_t> mapping = getEqualDistribution(N,numTasks);
+		std::vector<std::uint32_t> mapping = getEqualDistribution(mask,numTasks);
 
 		// convert mapping in decision tree
-		return { com::HierarchyAddress::getRootOfNetworkSize(N), levels, toDecisionTree((1<<log2),mapping) };
+		return { com::HierarchyAddress::getRootOfNetworkSize(mask.totalNodes()), levels, toDecisionTree((1<<log2),mapping) };
+	}
+
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(const NodeMask& mask) {
+		return createUniform(mask,std::max(ceilLog2(mask.totalNodes())+3,5));
+	}
+
+	// create a uniform distributing policy for N nodes
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createUniform(int N, int granularity) {
+		return createUniform(NodeMask(N),granularity);
 	}
 
 	// create an uniform distributing policy for N nodes, with an auto-adjusted granularity
@@ -325,19 +335,19 @@ namespace work {
 	namespace {
 
 		// create a balanced work distribution based on the given load distribution
-		DecisionTreeSchedulingPolicy rebalanceTasks(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& taskCosts, const std::vector<bool>& mask) {
+		DecisionTreeSchedulingPolicy rebalanceTasks(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& taskCosts, const NodeMask& mask) {
 
 			// check input
 			std::size_t mappingSize = 1<<p.getGranularity();
 			assert_eq(mappingSize,taskCosts.size());
 
-			com::rank_t numNodes = mask.size();
+			com::rank_t numNodes = mask.totalNodes();
 
 			// --- redistributing costs ---
 
 			// get number of now available nodes
 			int availableNodes = 0;
-			for(bool x : mask) if (x) availableNodes++;
+			for(bool x : mask.asBitMask()) if (x) availableNodes++;
 
 			// if there is really none, make it at least one
 			if (availableNodes < 1) availableNodes = 1;
@@ -348,7 +358,7 @@ namespace work {
 			float curCosts = 0;
 			float nextGoal = share;
 			com::rank_t curNode = 0;
-			while(!mask[curNode]) curNode++;
+			while(!mask.isActive(curNode)) curNode++;
 			std::vector<com::rank_t> newMapping(mappingSize);
 			for(std::size_t i=0; i<mappingSize; i++) {
 
@@ -362,7 +372,7 @@ namespace work {
 					if (std::abs(curCosts-nextGoal) < std::abs(nextGoal-nextCosts)) {
 						// stopping here is closer to the target
 						curNode++;
-						while(!mask[curNode]) curNode++;
+						while(!mask.isActive(curNode)) curNode++;
 						nextGoal += share;
 					}
 				}
@@ -423,15 +433,15 @@ namespace work {
 
 	// create a balanced work distribution based on the given load distribution
 	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load) {
-		std::vector<bool> mask(load.size(),true);
+		NodeMask mask(load.size());
 		return createReBalanced(p,load,mask);
 	}
 
 	// create a balanced work distribution based on the given load distribution
-	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load, const std::vector<bool>& mask) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const std::vector<float>& load, const NodeMask& mask) {
 
 		// check input consistency
-		assert_eq(load.size(),mask.size());
+		assert_eq(load.size(),mask.totalNodes());
 
 		// get given task distribution mapping
 
@@ -502,7 +512,7 @@ namespace work {
 	}
 
 	// create a balanced work distribution based on the given load distribution
-	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const mon::TaskTimes& times, const std::vector<bool>& mask) {
+	DecisionTreeSchedulingPolicy DecisionTreeSchedulingPolicy::createReBalanced(const DecisionTreeSchedulingPolicy& p, const mon::TaskTimes& times, const NodeMask& mask) {
 
 		// extract task cost vector from task times
 		std::size_t mappingSize = 1 << p.getGranularity();

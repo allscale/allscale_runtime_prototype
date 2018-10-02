@@ -72,7 +72,7 @@ namespace mon {
 		out << "{";
 		out << "\"id\":" << rank << ",";
 		out << "\"time\":" << time << ",";
-		out << "\"state\":\"" << (online ? (active ? "active\"," : "stand-by\",") : "offline\"");
+		out << "\"state\":\"" << (online ? (active ? "active\"," : "standby\",") : "offline\"");
 		if (!online) {
 			out << "}";
 			return;
@@ -169,6 +169,7 @@ namespace mon {
 		out << "\"efficiency\":" << efficiency << ",";
 		out << "\"power\":" << power << ",";
 		out << "\"score\":" << score << ",";
+		out << "\"scheduler\": \"" << scheduler << "\",";
 		out << "\"nodes\" : " << nodes;
 		out << "}";
 	}
@@ -486,7 +487,7 @@ namespace mon {
 			// try to get a connection to the dashboard server
 
 			// create a client socket
-			sock = socket(AF_INET, SOCK_STREAM, 0);
+			sock = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 			if (sock < 0) {
 				alive = false;
 				return;
@@ -551,6 +552,9 @@ namespace mon {
 		void update() {
 			node.run([&](com::Node&){
 
+				// retrieve commands
+				processCommands();
+
 				// collect data
 				auto data = getSystemState(network);
 
@@ -558,6 +562,97 @@ namespace mon {
 				sendUpdate(data);
 
 			});
+
+		}
+
+		void processCommands() {
+
+			// consume all commands received
+			while(alive) {
+
+				// set up time to wait for input
+				timeval time;
+				time.tv_sec = 0;
+				time.tv_usec = 0;
+
+				// set up input socket
+				fd_set set;
+				FD_ZERO(&set);
+				FD_SET(sock,&set);
+
+				// test if commands are available
+				auto numReady = select(sock+1,&set,nullptr,nullptr,&time);
+
+				// test for errors
+				if (numReady == -1) {
+					std::cerr << "Lost dashboard back-channel connection, ending dashboard communication.";
+					alive = false;
+					continue;
+				}
+
+				// stop processing if no input is ready
+				if (numReady == 0) break;
+
+				// -- process input command --
+
+				// read message size
+				std::uint64_t msgSize;
+				if (read(sock,&msgSize,sizeof(msgSize)) != sizeof(msgSize)) {
+					std::cerr << "Error reading incoming command size, ending dashboard communication.";
+					alive = false;
+					continue;
+				}
+
+				// correct endian
+				msgSize = be64toh(msgSize);
+
+				// load message
+				std::string msg(msgSize,' ');
+				if (read(sock,&msg[0],msgSize) != int(msgSize)) {
+					std::cerr << "Error reading incoming command, ending dashboard communication.";
+					alive = false;
+					continue;
+				}
+
+				// parse input command
+				auto endOfCmd = std::find(msg.begin(),msg.end(),' ');
+				auto cmd = std::string(msg.begin(),endOfCmd);
+
+				// interpret command
+				if (cmd == "set_scheduler") {
+
+					// get target schedule type
+					auto type = std::string(endOfCmd+1,msg.end());
+
+					work::SchedulerType newType;
+					if (type == "uniform") {
+						newType = work::SchedulerType::Uniform;
+					} else if (type == "balanced") {
+						newType = work::SchedulerType::Balanced;
+					} else if (type == "tuned") {
+						newType = work::SchedulerType::Tuned;
+					} else if (type == "random") {
+						newType = work::SchedulerType::Random;
+					} else {
+						std::cerr << "Invalid scheduler type received: " << type << "\n";
+						continue;
+					}
+
+					// update the scheduler type
+					work::setCurrentSchedulerType(newType);
+
+				} else if (cmd == "toggle_node") {
+
+					// get target node
+					auto node = std::string(endOfCmd+1,msg.end());
+					work::toggleActiveState(std::atoi(node.c_str()));
+
+				} else {
+					std::cout << "Received unsupported command: " << cmd << "\n";
+					std::cout << "Command is ignored.\n";
+				}
+
+			}
 
 		}
 
@@ -665,6 +760,9 @@ namespace mon {
 
 		// compute score based on objective function
 		res.score = work::getActiveTuningObjectiv().getScore(res.speed,res.efficiency,res.power);
+
+		// add scheduler information
+		res.scheduler = work::getCurrentSchedulerType();
 
 		// done
 		return res;

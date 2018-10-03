@@ -42,14 +42,14 @@ foreach(test ${prototype_integration_tests})
     add_test(NAME ${tgt}_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
 
     # add additional node/policy combination tests
-    foreach( num_nodes 2 3 4 5 )
+    foreach( num_nodes 2 3 4 )
         foreach( policy uniform dynamic random )
             add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=${num_nodes} ART_SCHEDULER=${policy} $<TARGET_FILE:${tgt}>)
         endforeach(policy)
     endforeach(num_nodes)
 
     # add additional node/policy combination tests for higher number of nodes
-    foreach( num_nodes 15 16 )
+    foreach( num_nodes 5 15 16 )
         foreach( policy uniform dynamic )
             add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=${num_nodes} ART_SCHEDULER=${policy} $<TARGET_FILE:${tgt}>)
         endforeach(policy)

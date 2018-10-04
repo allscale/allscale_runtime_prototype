@@ -31,7 +31,7 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
-#define DEBUG_MPI_NETWORK if(false) std::cout
+#define DEBUG_MPI_NETWORK if(true) std::cout
 
 
 
@@ -147,6 +147,9 @@ namespace mpi {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		class RemoteProcedure {
 
+			// the network being part of
+			Network& network;
+
 			// the local node
 			Node& local;
 
@@ -167,8 +170,8 @@ namespace mpi {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...))
-				: local(local), target(target), selector(selector), fun(fun) {}
+			RemoteProcedure(Network& net, Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...))
+				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
 			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
@@ -223,7 +226,7 @@ namespace mpi {
 					auto& buffer = msg.getBuffer();
 					// send to target node
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " to " << trg << " ...\n";
 
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
@@ -231,7 +234,7 @@ namespace mpi {
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
 					}
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent to " << trg << "\n";
 
 				}
 
@@ -240,10 +243,17 @@ namespace mpi {
 //				work::yield();
 				int flag = false;
 				MPI_Status status;
+				DEBUG_MPI_NETWORK << "Node " << src << ": waiting for respond " << response_tag << " from " << trg << " ..\n";
 				while(!flag) {
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+					{
+						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+					}
+					// if there is nothing, process other requests ..
+					if (!flag) network.processRequest();
 				}
+				DEBUG_MPI_NETWORK << "Node " << src << ": response " << response_tag << " received from " << trg << "\n";
+
 
 				// check validity
 				assert_eq(int(trg),status.MPI_SOURCE);
@@ -259,7 +269,7 @@ namespace mpi {
 				// allocate memory
 				std::vector<char> buffer(count);
 
-				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " from " << trg << " ...\n";
 
 				// receive message
 				{
@@ -303,7 +313,7 @@ namespace mpi {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
+			RemoteProcedure(Network&, Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
 				: local(local), target(target), selector(selector), fun(fun) {}
 
 			static void handleProcedure(rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
@@ -341,12 +351,12 @@ namespace mpi {
 				// perform remote call
 				{
 					// create an argument tuple and serialize it
-					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
+					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,std::forward<Args>(args)...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleProcedure,aa));
 					auto& buffer = msg.getBuffer();
 
 					// send to target node
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << (void*)&handleProcedure << " ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << (void*)&handleProcedure << " to " << trg << " ...\n";
 
 					int msg_tag = getFreshRequestTag();
 					{
@@ -355,7 +365,7 @@ namespace mpi {
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,msg_tag,point2point);
 					}
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent (fire-and-forget)\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent to " << trg << " (fire-and-forget)\n";
 
 				}
 			}
@@ -368,6 +378,9 @@ namespace mpi {
 		 */
 		template<typename Selector, typename S, typename R, typename ... Args>
 		class RemoteConstProcedure {
+
+			// the network working on
+			Network& network;
 
 			// the local node
 			Node& local;
@@ -389,8 +402,8 @@ namespace mpi {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteConstProcedure(Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...) const)
-				: local(local), target(target), selector(selector), fun(fun) {}
+			RemoteConstProcedure(Network& net, Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...) const)
+				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
 			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
@@ -445,14 +458,14 @@ namespace mpi {
 					auto& buffer = msg.getBuffer();
 					// send to target node
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " ...\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " to " << trg << " ...\n";
 					{
 						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 						getLocalStats().sent_bytes += buffer.size();
 						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
 					}
 
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent\n";
+					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent to " << trg << "\n";
 
 				}
 
@@ -460,11 +473,17 @@ namespace mpi {
 				// TODO: avoid blocking, yield to worker thread
 //				work::yield();
 				int flag = false;
+				DEBUG_MPI_NETWORK << "Node " << src << ": waiting for respond " << response_tag << " from " << trg << " ..\n";
 				MPI_Status status;
 				while(!flag) {
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+					{
+						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+						MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+					}
+					// if there is nothing, process other requests ..
+					if (!flag) network.processRequest();
 				}
+				DEBUG_MPI_NETWORK << "Node " << src << ": response " << response_tag << " received from " << trg << "\n";
 
 				// check validity
 				assert_eq(int(trg),status.MPI_SOURCE);
@@ -480,7 +499,7 @@ namespace mpi {
 				// allocate memory
 				std::vector<char> buffer(count);
 
-				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " from " << trg << " ...\n";
 
 				// receive message
 				{
@@ -581,7 +600,7 @@ namespace mpi {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...)) {
 			assert_lt(rank,numNodes());
-			return { *localNode, rank, selector, fun };
+			return { *this, *localNode, rank, selector, fun };
 		}
 
 
@@ -600,7 +619,7 @@ namespace mpi {
 		template<typename Selector, typename S, typename R, typename ... Args>
 		RemoteConstProcedure<Selector,S,R,Args...> getRemoteProcedure(rank_t rank, const Selector& selector, R(S::*fun)(Args...) const) {
 			assert_lt(rank,numNodes());
-			return { *localNode, rank, selector, fun };
+			return { *this, *localNode, rank, selector, fun };
 		}
 
 		/**
@@ -661,7 +680,9 @@ namespace mpi {
 		template<typename S, typename ... Args>
 		void installServiceOnNodes(const Args& ... args) {
 			// just install service locally
-			localNode->startService<S>(args...);
+			localNode->run([&](Node& node){
+				node.startService<S>(args...);
+			});
 		}
 
 		/**
@@ -670,7 +691,9 @@ namespace mpi {
 		template<typename S>
 		void removeServiceOnNodes() {
 			// just remove service locally
-			localNode->stopService<S>();
+			localNode->run([&](Node& node){
+				node.stopService<S>();
+			});
 		}
 
 		/**
@@ -687,7 +710,9 @@ namespace mpi {
 		 * Resets the statistics collected so far.
 		 */
 		void resetStatistics() {
-			localNode->getService<NetworkStatisticService>().resetNodeStats();
+			localNode->run([](Node& node){
+				node.getService<NetworkStatisticService>().resetNodeStats();
+			});
 		}
 
 	private:
@@ -696,6 +721,8 @@ namespace mpi {
 		std::atomic<bool> alive;
 
 		void runRequestServer();
+
+		void processRequest();
 
 	public:
 

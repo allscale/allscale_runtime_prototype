@@ -123,65 +123,73 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		return instance;
 	}
 
-	void Network::runRequestServer() {
+	void Network::processRequest() {
 		using namespace std::literals::chrono_literals;
+
+		auto& node = *localNode;
+		int flag;
+		MPI_Status status;
+
+		// probe for some incoming message
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
+		}
+
+		// if there is nothing ...
+		if (!flag) {
+			// ... be nice here
+			std::this_thread::sleep_for(1us);
+			return;
+		}
+
+		// do not consume responses
+		if (!isRequestTag(status.MPI_TAG)) {
+//			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Skipping respond " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+			return;
+		}
+
+		assert_pred1(isRequestTag,status.MPI_TAG);
+
+		// retrieve message
+		int count = 0;
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			MPI_Get_count(&status,MPI_CHAR,&count);
+		}
+
+		// allocate memory
+		std::vector<char> buffer(count);
+
+		// receive message
+		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+		Network::getLocalStats().received_bytes += count;
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+		}
+
+		// parse message
+		allscale::utils::Archive a(std::move(buffer));
+		auto msg = allscale::utils::deserialize<request_msg_t>(a);
+
+		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
+
+		// process message
+		node.run([&](Node&){
+			std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
+		});
+		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " complete.\n";
+	}
+
+	void Network::runRequestServer() {
 
 		auto& node = *localNode;
 		DEBUG_MPI_NETWORK << "Starting up request server on node " << node.getRank() << "\n";
 
-		int flag;
-		MPI_Status status;
 		while(alive) {
-
-			// probe for some incoming message
-			{
-				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-				MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
-			}
-
-			// if there is nothing ...
-			if (!flag) {
-				// ... be nice here
-				std::this_thread::sleep_for(1us);
-				continue;
-			}
-
-			// do not consume responses
-			if (!isRequestTag(status.MPI_TAG)) {
-				continue;
-			}
-
-			assert_pred1(isRequestTag,status.MPI_TAG);
-
-			// retrieve message
-			int count = 0;
-			{
-				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-				MPI_Get_count(&status,MPI_CHAR,&count);
-			}
-
-			// allocate memory
-			std::vector<char> buffer(count);
-
-			// receive message
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " ...\n";
-			Network::getLocalStats().received_bytes += count;
-			{
-				std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-				MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-			}
-
-			// parse message
-			allscale::utils::Archive a(std::move(buffer));
-			auto msg = allscale::utils::deserialize<request_msg_t>(a);
-
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
-
-			// process message
-			node.run([&](Node&){
-				std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
-			});
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " complete.\n";
+			// try processing some request
+			processRequest();
 		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";

@@ -29,6 +29,7 @@ foreach(test ${prototype_tests})
 	add_module_unittest(prototype ${test})
 endforeach(test)
 
+
 # add integration tests
 glob_executables(prototype_integration_tests test)
 foreach(test ${prototype_integration_tests})
@@ -37,21 +38,26 @@ foreach(test ${prototype_integration_tests})
     set(tgt "it_${test_subdir_}${test_name}")
     add_executable(${tgt} ${test})
     target_link_libraries(${tgt} prototype)
-    add_test(NAME ${tgt}_uniform COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=uniform $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_random  COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=random  $<TARGET_FILE:${tgt}>)
-    add_test(NAME ${tgt}_dynamic COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=dynamic $<TARGET_FILE:${tgt}>)
 
     # add additional node/policy combination tests
     foreach( num_nodes 2 3 4 )
         foreach( policy uniform dynamic random )
-            add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=${num_nodes} ART_SCHEDULER=${policy} $<TARGET_FILE:${tgt}>)
+            if (USE_MPI)
+                add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} mpirun -n ${num_nodes} $<TARGET_FILE:${tgt}>)
+            else()
+                add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ART_NUM_NODES=${num_nodes} $<TARGET_FILE:${tgt}>)
+            endif()
         endforeach(policy)
     endforeach(num_nodes)
 
     # add additional node/policy combination tests for higher number of nodes
     foreach( num_nodes 5 15 16 )
         foreach( policy uniform dynamic )
-            add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_NUM_NODES=${num_nodes} ART_SCHEDULER=${policy} $<TARGET_FILE:${tgt}>)
+            if (USE_MPI)
+                add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} mpirun -n ${num_nodes} $<TARGET_FILE:${tgt}>)
+            else()
+                add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ART_NUM_NODES=${num_nodes} $<TARGET_FILE:${tgt}>)
+            endif()
         endforeach(policy)
     endforeach(num_nodes)
 

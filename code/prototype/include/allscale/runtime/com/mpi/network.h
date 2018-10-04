@@ -129,6 +129,14 @@ namespace mpi {
 		// the last epoch reached locally
 		int last_epoch;
 
+		// a buffer for locally maintaining response messages
+		std::map<std::pair<int,int>,std::vector<char>> response_buffer;
+
+		// a lock for the response buffer
+		mutable std::mutex response_buffer_lock;
+
+		using guard = std::lock_guard<std::mutex>;
+
 	public:
 
 		/**
@@ -238,45 +246,8 @@ namespace mpi {
 
 				}
 
-				// wait for result
-				// TODO: avoid blocking, yield to worker thread
-//				work::yield();
-				int flag = false;
-				MPI_Status status;
-				DEBUG_MPI_NETWORK << "Node " << src << ": waiting for respond " << response_tag << " from " << trg << " ..\n";
-				while(!flag) {
-					{
-						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
-					}
-					// if there is nothing, process other requests ..
-					if (!flag) network.processRequest();
-				}
-				DEBUG_MPI_NETWORK << "Node " << src << ": response " << response_tag << " received from " << trg << "\n";
-
-
-				// check validity
-				assert_eq(int(trg),status.MPI_SOURCE);
-				assert_eq(response_tag,status.MPI_TAG);
-
-				// retrieve message
-				int count = 0;
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Get_count(&status,MPI_CHAR,&count);
-				}
-
-				// allocate memory
-				std::vector<char> buffer(count);
-
-				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " from " << trg << " ...\n";
-
-				// receive message
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					getLocalStats().received_bytes += count;
-					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-				}
+				// wait for response
+				std::vector<char> buffer = network.waitForResponse(trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
 
@@ -469,44 +440,8 @@ namespace mpi {
 
 				}
 
-				// wait for result
-				// TODO: avoid blocking, yield to worker thread
-//				work::yield();
-				int flag = false;
-				DEBUG_MPI_NETWORK << "Node " << src << ": waiting for respond " << response_tag << " from " << trg << " ..\n";
-				MPI_Status status;
-				while(!flag) {
-					{
-						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
-					}
-					// if there is nothing, process other requests ..
-					if (!flag) network.processRequest();
-				}
-				DEBUG_MPI_NETWORK << "Node " << src << ": response " << response_tag << " received from " << trg << "\n";
-
-				// check validity
-				assert_eq(int(trg),status.MPI_SOURCE);
-				assert_eq(response_tag,status.MPI_TAG);
-
-				// retrieve message
-				int count = 0;
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					MPI_Get_count(&status,MPI_CHAR,&count);
-				}
-
-				// allocate memory
-				std::vector<char> buffer(count);
-
-				DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " for request " << request_tag << " from " << trg << " ...\n";
-
-				// receive message
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					getLocalStats().received_bytes += count;
-					MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-				}
+				// wait for response
+				std::vector<char> buffer = network.waitForResponse(trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
 
@@ -722,7 +657,11 @@ namespace mpi {
 
 		void runRequestServer();
 
-		void processRequest();
+		void processMessage();
+
+		void processResponse(MPI_Status&);
+
+		std::vector<char> waitForResponse(com::rank_t src, int response_tag);
 
 	public:
 

@@ -123,7 +123,70 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		return instance;
 	}
 
-	void Network::processRequest() {
+	void Network::processResponse(MPI_Status& status) {
+
+		// make sure the current message is a response
+		assert_true(isResponseTag(status.MPI_TAG));
+
+		// retrieve message size
+		int count = 0;
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			MPI_Get_count(&status,MPI_CHAR,&count);
+		}
+
+		// allocate memory
+		std::vector<char> buffer(count);
+
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Receiving response " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+
+		// receive message
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			getLocalStats().received_bytes += count;
+			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+		}
+
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << status.MPI_TAG << " for " << status.MPI_SOURCE << " received\n";
+
+		// insert into response buffer
+		guard g(response_buffer_lock);
+		response_buffer[{status.MPI_SOURCE,status.MPI_TAG}] = std::move(buffer);
+
+	}
+
+	std::vector<char> Network::waitForResponse(com::rank_t src, int response_tag) {
+
+		// check validity of parameters
+		assert_ne(src,localNode->getRank());
+		assert_true(isResponseTag(response_tag));
+
+		// get lookup key
+		std::pair<int,int> key(src,response_tag);
+
+		while(true) {
+
+			{
+				// check whether response has been received ..
+				guard g(response_buffer_lock);
+				auto pos = response_buffer.find(key);
+				if (pos != response_buffer.end()) {
+					// take response message from buffer ..
+					std::vector<char> res = std::move(pos->second);
+					response_buffer.erase(pos);
+
+					DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << response_tag << " for " << src << " consumed\n";
+
+					return res;
+				}
+			}
+
+			// keep processing messages in the meanwhile ..
+			processMessage();
+		}
+	}
+
+	void Network::processMessage() {
 		using namespace std::literals::chrono_literals;
 
 		auto& node = *localNode;
@@ -145,7 +208,7 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		// do not consume responses
 		if (!isRequestTag(status.MPI_TAG)) {
-//			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Skipping respond " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+			processResponse(status);
 			return;
 		}
 
@@ -189,7 +252,7 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		while(alive) {
 			// try processing some request
-			processRequest();
+			processMessage();
 		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";

@@ -130,10 +130,7 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		// retrieve message size
 		int count = 0;
-		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-			MPI_Get_count(&status,MPI_CHAR,&count);
-		}
+		MPI_Get_count(&status,MPI_CHAR,&count);
 
 		// allocate memory
 		std::vector<char> buffer(count);
@@ -144,11 +141,8 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Receiving response " << tag << " from " << src << " of size " << count << " bytes ...\n";
 
 		// receive message
-		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-			getLocalStats().received_bytes += count;
-			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-		}
+		getLocalStats().received_bytes += count;
+		MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 
 		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << tag << " for " << src << " received\n";
 
@@ -197,41 +191,36 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		MPI_Status status;
 
 		// probe for some incoming message
+		std::vector<char> buffer;
 		{
 			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 			MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
-		}
 
-		// if there is nothing ...
-		if (!flag) {
-			// ... be nice here
-			std::this_thread::sleep_for(1us);
-			return;
-		}
+			// if there is nothing ...
+			if (!flag) {
+				// ... be nice here
+				std::this_thread::sleep_for(1us);
+				return;
+			}
 
-		// do not consume responses
-		if (!isRequestTag(status.MPI_TAG)) {
-			processResponse(status);
-			return;
-		}
+			// do not consume responses
+			if (!isRequestTag(status.MPI_TAG)) {
+				processResponse(status);
+				return;
+			}
 
-		assert_pred1(isRequestTag,status.MPI_TAG);
+			assert_pred1(isRequestTag,status.MPI_TAG);
 
-		// retrieve message
-		int count = 0;
-		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			// retrieve message
+			int count = 0;
 			MPI_Get_count(&status,MPI_CHAR,&count);
-		}
 
-		// allocate memory
-		std::vector<char> buffer(count);
+			// allocate memory
+			buffer.resize(count);
 
-		// receive message
-		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
-		Network::getLocalStats().received_bytes += count;
-		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			// receive message
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
+			Network::getLocalStats().received_bytes += count;
 			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 		}
 

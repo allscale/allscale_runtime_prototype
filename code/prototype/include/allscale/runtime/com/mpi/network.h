@@ -31,7 +31,7 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
-#define DEBUG_MPI_NETWORK if(true) std::cout
+#define DEBUG_MPI_NETWORK if(false) std::cout
 
 
 

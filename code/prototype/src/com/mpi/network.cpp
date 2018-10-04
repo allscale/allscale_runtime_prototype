@@ -138,7 +138,10 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		// allocate memory
 		std::vector<char> buffer(count);
 
-		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Receiving response " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+		int src = status.MPI_SOURCE;
+		int tag = status.MPI_TAG;
+
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Receiving response " << tag << " from " << src << " of size " << count << " bytes ...\n";
 
 		// receive message
 		{
@@ -147,11 +150,11 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 		}
 
-		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << status.MPI_TAG << " for " << status.MPI_SOURCE << " received\n";
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << tag << " for " << src << " received\n";
 
 		// insert into response buffer
 		guard g(response_buffer_lock);
-		response_buffer[{status.MPI_SOURCE,status.MPI_TAG}] = std::move(buffer);
+		response_buffer[{src,tag}] = std::move(buffer);
 
 	}
 
@@ -225,7 +228,7 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		std::vector<char> buffer(count);
 
 		// receive message
-		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " ...\n";
+		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
 		Network::getLocalStats().received_bytes += count;
 		{
 			std::lock_guard<std::mutex> g(G_MPI_MUTEX);

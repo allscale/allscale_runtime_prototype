@@ -249,7 +249,7 @@ namespace mpi {
 				// wait for response
 				std::vector<char> buffer = network.waitForResponse(trg,response_tag);
 
-				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
+				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for request " << request_tag << " received from " << trg << "\n";
 
 				// unpack result
 				allscale::utils::Archive a(std::move(buffer));

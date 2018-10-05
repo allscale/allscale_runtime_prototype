@@ -162,7 +162,7 @@ namespace work {
 					bool involved = false;
 					{
 						guard g(policy_lock);
-						involved = policy.isInvolved(myAddr,(path.isRoot() ? path : path.getParentPath()));
+						involved = (path.isRoot()) ? isRoot : policy.isInvolved(myAddr,path.getParentPath());
 					}
 
 					// and that this virtual node has control over all required data

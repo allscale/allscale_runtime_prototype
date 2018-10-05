@@ -503,7 +503,8 @@ namespace work {
 		loadDist[1] = 0;
 		mask[5] = false;
 		auto b5 = DecisionTreeSchedulingPolicy::createReBalanced(b4,loadDist,mask);
-		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]",toString(b5.getTaskDistributionMapping()));
+		EXPECT_EQ("[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]",toString(b5.getTaskDistributionMapping()))
+			<< b5;
 
 		// remove node 0
 		loadDist[5] = 0;
@@ -535,6 +536,80 @@ namespace work {
 		auto b = DecisionTreeSchedulingPolicy::createReBalanced(u,load);
 
 		EXPECT_EQ(u.getTaskDistributionMapping(),b.getTaskDistributionMapping());
+
+	}
+
+	TEST(DecisionTreeSchedulingPolicy, RootHandling) {
+
+		// create a setup of 4 nodes, only using first two nodes
+		NodeMask mask(4);
+		mask[3] = false;
+		mask[2] = false;
+
+		// create a uniform work distribution among those
+		auto u = DecisionTreeSchedulingPolicy::createUniform(mask);
+
+		auto n  = com::HierarchyAddress::getRootOfNetworkSize(4);
+		auto nl = n.getLeftChild();
+		auto nr = n.getRightChild();
+		auto n0 = nl.getLeftChild();
+		auto n1 = nl.getRightChild();
+		auto n2 = nr.getLeftChild();
+		auto n3 = nr.getRightChild();
+
+
+		// check the root task
+		auto p  = work::TaskPath::root();
+
+		// check involved nodes
+		EXPECT_TRUE(u.isInvolved(n,p));
+		EXPECT_TRUE(u.isInvolved(nl,p));
+		EXPECT_FALSE(u.isInvolved(nr,p));
+		EXPECT_FALSE(u.isInvolved(n0,p));
+		EXPECT_FALSE(u.isInvolved(n1,p));
+		EXPECT_FALSE(u.isInvolved(n2,p));
+		EXPECT_FALSE(u.isInvolved(n3,p));
+
+		// check decision on involved nodes
+		EXPECT_EQ(Decision::Left, u.decide(n ,p));
+		EXPECT_EQ(Decision::Stay, u.decide(nl,p));
+		EXPECT_EQ(Decision::Stay, u.decide(nr,p));
+
+
+		// check task .0
+		auto pl = p.getLeftChildPath();
+
+		// check involved nodes
+		EXPECT_TRUE(u.isInvolved(n,pl));
+		EXPECT_TRUE(u.isInvolved(nl,pl));
+		EXPECT_FALSE(u.isInvolved(nr,pl));
+		EXPECT_TRUE(u.isInvolved(n0,pl));
+		EXPECT_FALSE(u.isInvolved(n1,pl));
+		EXPECT_FALSE(u.isInvolved(n2,pl));
+		EXPECT_FALSE(u.isInvolved(n3,pl));
+
+		// check decision on involved nodes
+		EXPECT_EQ(Decision::Left, u.decide(n ,pl));
+		EXPECT_EQ(Decision::Left, u.decide(nl,pl));
+		EXPECT_EQ(Decision::Stay, u.decide(n0,pl));
+
+
+		// check task .1
+		auto pr = p.getRightChildPath();
+
+		// check involved nodes
+		EXPECT_TRUE(u.isInvolved(n,pr));
+		EXPECT_TRUE(u.isInvolved(nl,pr));
+		EXPECT_FALSE(u.isInvolved(nr,pr));
+		EXPECT_FALSE(u.isInvolved(n0,pr));
+		EXPECT_TRUE(u.isInvolved(n1,pr));
+		EXPECT_FALSE(u.isInvolved(n2,pr));
+		EXPECT_FALSE(u.isInvolved(n3,pr));
+
+		// check decision on involved nodes
+		EXPECT_EQ(Decision::Left, u.decide(n ,pr));
+		EXPECT_EQ(Decision::Right, u.decide(nl,pr));
+		EXPECT_EQ(Decision::Stay, u.decide(n1,pr));
 
 	}
 

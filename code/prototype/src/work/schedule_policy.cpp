@@ -535,21 +535,11 @@ namespace work {
 		// base case - the root path
 		if (path.isRoot()) {
 
-			// trace out the path of the root node
-			auto cur = root;
-			auto d= Decision::Left;
-			while(d != Decision::Stay && d != Decision::Done && !cur.isLeaf()) {
-
-				// move on one step
-				switch(d = decide(cur,path)) {
-				case Decision::Left:  cur = cur.getLeftChild(); break;
-				case Decision::Right: cur = cur.getRightChild(); break;
-				case Decision::Stay:  /* nothing */ break;
-				case Decision::Done:  /* nothing */ break;
-				}
-
-				// if we are at the node we want to test => fine
-				if (cur == addr) return true;
+			switch(decide(root,path)) {
+			case (Decision::Stay)  : return false;
+			case (Decision::Left)  : return addr == root.getLeftChild();
+			case (Decision::Right) : return addr == root.getRightChild();
+			default: return false;
 			}
 
 			// not passed by
@@ -573,7 +563,7 @@ namespace work {
 		auto cur = path;
 		while(true) {
 			// for the root path, the decision is clear
-			if (cur.isRoot()) return tree.get(cur);
+			if (cur.isRoot()) return (root == addr) ? tree.get(cur) : Decision::Stay;
 
 			// see whether the addressed node is the node targeted by the parent path
 			auto parent = cur.getParentPath();
@@ -588,8 +578,20 @@ namespace work {
 
 	com::HierarchyAddress DecisionTreeSchedulingPolicy::getTarget(const TaskPath& path) const {
 
+		// special case: root path
+		if (path.isRoot()) {
+
+			// determine target node of root task
+			switch(decide(root,path)) {
+			case Decision::Left : return root.getLeftChild();
+			case Decision::Right : return root.getRightChild();
+			default: return root;
+			}
+
+		}
+
 		// get location of parent task
-		auto res = (path.isRoot()) ? root : getTarget(path.getParentPath());
+		auto res = getTarget(path.getParentPath());
 
 		// simulate scheduling
 		switch(decide(res,path)) {

@@ -316,8 +316,8 @@ namespace mon {
 		std::uint64_t lastTaskCount = 0;
 		double lastProcessedWork = 0;
 
-		// a roughly 10-second work buffer (10 observation samples)
-		MeasureBuffer<std::chrono::nanoseconds,10> processTimeBuffer;
+		// a roughly X-second work buffer (X observation samples)
+		MeasureBuffer<std::chrono::nanoseconds,1> processTimeBuffer;
 
 		CPULoadSensor cpu_sensor;
 

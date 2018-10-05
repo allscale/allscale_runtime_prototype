@@ -25,6 +25,7 @@
 
 #include "allscale/runtime/work/optimizer.h"
 #include "allscale/runtime/work/schedule_policy.h"
+#include "allscale/runtime/work/tuner.h"
 
 #include "allscale/runtime/mon/task_stats.h"
 
@@ -414,22 +415,13 @@ namespace work {
 
 			mon::TaskTimes lastTaskTimes;
 
-			// -- global tuning data --
+			// -- global tuning details --
 
-			// active / stand-by nodes mask
-			NodeMask activeNodeMask;
+			// the currently active global configuration
+			Configuration activeConfig;
 
-			// the frequency currently selected for all nodes
-			hw::Frequency activeFrequency;
-
-			using config = std::pair<NodeMask,hw::Frequency>;
-
-
-			// hill climbing data
-			config best;						// < best known option so far
-			float best_score = 0;				// < score of best option
-			std::vector<config> explore;		// < list of options to explore
-
+			// the tuning algorithm currently utilized -- null if none
+			std::unique_ptr<Tuner> tuner;
 
 			// -- local state information --
 
@@ -448,10 +440,8 @@ namespace work {
 				  lastEfficiencySampleTime(now()),
 				  lastProcessTime(0),
 				  lastTaskTimesSampleTime(lastEfficiencySampleTime),
-				  activeNodeMask(network.numNodes()),
-				  activeFrequency(hw::getFrequency(node.getRank())),
-				  best({activeNodeMask,activeFrequency}),
-				  best_score(0),
+				  activeConfig({network.numNodes(),hw::getFrequency(node.getRank())}),
+				  tuner(std::make_unique<SimpleHillClimbing>(activeConfig)),
 				  active(true) {
 
 				// enforce initial scheduler type
@@ -502,22 +492,22 @@ namespace work {
 				assert_eq(0,node.getRank());
 
 				// .. swap state of given rank
-				auto newMask = activeNodeMask;
+				auto newMask = activeConfig.nodes;
 				newMask.toggle(rank);
 
 				// do not disable last node
 				if (newMask.count() == 0) return;
 
 				// update state
-				activeNodeMask = newMask;
+				activeConfig.nodes = newMask;
 
 				// re-schedule uniform schedule
 				if (type == SchedulerType::Uniform) {
 					// create new policy
-					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeNodeMask);
+					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeConfig.nodes);
 					// distribute new policy
-					for(com::rank_t i=0; i<activeNodeMask.totalNodes(); i++) {
-						network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(uniform,activeNodeMask,activeFrequency);
+					for(com::rank_t i=0; i<activeConfig.nodes.totalNodes(); i++) {
+						network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(uniform,activeConfig);
 					}
 				}
 			}
@@ -561,7 +551,7 @@ namespace work {
 				return std::make_pair(getEfficiency(),getTaskTimes());
 			}
 
-			void updatePolicy(const ExchangeableSchedulingPolicy& policy, const NodeMask& activeNodes, hw::Frequency frequency) {
+			void updatePolicy(const ExchangeableSchedulingPolicy& policy, const Configuration& newConfig) {
 				guard g(lock);
 
 				// get local scheduler service
@@ -569,14 +559,14 @@ namespace work {
 				// update policies
 				service.forAll([&](auto& cur) { cur.setPolicy(policy); });
 
-				// update local knowledge of active nodes
-				this->activeNodeMask = activeNodes;
+				// update local knowledge of active configuration
+				this->activeConfig = newConfig;
 
 				// update own active state
-				active = activeNodes.isActive(node.getRank());
+				active = activeConfig.nodes.isActive(node.getRank());
 
 				// update CPU clock frequency
-				hw::setFrequency(node.getRank(), frequency);
+				hw::setFrequency(node.getRank(), activeConfig.frequency);
 			}
 
 		private:
@@ -591,16 +581,17 @@ namespace work {
 				switch(newType) {
 				case SchedulerType::Random : {
 					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel(numNodes));
-					activeNodeMask = NodeMask(numNodes);
-					updatePolicy(random,activeNodeMask,defaultFrequency);
+					activeConfig.nodes = NodeMask(numNodes);
+					updatePolicy(random,activeConfig);
 					break;
 				}
 				case SchedulerType::Uniform :
 				case SchedulerType::Balanced :
 				case SchedulerType::Tuned : {
 					// reset configuration to initial setup
-					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeNodeMask);
-					updatePolicy(uniform,activeNodeMask,defaultFrequency);
+					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeConfig.nodes);
+					activeConfig.frequency = defaultFrequency;
+					updatePolicy(uniform,activeConfig);
 					break;
 				}
 				}
@@ -629,88 +620,35 @@ namespace work {
 				hw::Power max_power = 0;
 
 				// compute number of active nodes
-				com::rank_t numActiveNodes = activeNodeMask.count();
+				com::rank_t numActiveNodes = activeConfig.nodes.count();
 
 				for(com::rank_t i=0; i<network.numNodes(); i++) {
 					if (i<numActiveNodes) {
-						used_cycles += load[i] * activeFrequency.toHz() * cores_per_node;
-						avail_cycles += activeFrequency.toHz() * cores_per_node;
-						used_power += hw::estimateEnergyUsage(activeFrequency,activeFrequency * 1s) / 1s;
+						used_cycles += load[i] * activeConfig.frequency.toHz() * cores_per_node;
+						avail_cycles += activeConfig.frequency.toHz() * cores_per_node;
+						used_power += hw::estimateEnergyUsage(activeConfig.frequency,activeConfig.frequency * 1s) / 1s;
 					}
 					max_cycles += maxFrequnzy.toHz() * cores_per_node;
 					max_power += hw::estimateEnergyUsage(maxFrequnzy,maxFrequnzy * 1s) / 1s;
 				}
 
-				float speed = used_cycles / float(max_cycles);
-				float efficiency = used_cycles / float(avail_cycles);
-				float power = used_power / max_power;
+				State s;
+				s.speed = used_cycles / float(max_cycles);
+				s.efficiency = used_cycles / float(avail_cycles);
+				s.power = used_power / max_power;
 
 				// compute current score
 				auto obj = getActiveTuningObjectiv();
-				float score = obj.getScore(speed,efficiency,power);
+				s.score = obj.getScore(s.speed,s.efficiency,s.power);
 
-				std::cout << "\tSystem state:"
-						<<  " spd=" << std::setprecision(2) << speed
-						<< ", eff=" << std::setprecision(2) << efficiency
-						<< ", pow=" << std::setprecision(2) << power
-						<< " => score: " << std::setprecision(2) << score
-						<< " for objective " << obj << "\n";
+				// print system state summary
+				std::cout << s << " for objective " << obj << "\n";
 
+				// get next configuration -- this is the actual strategic policy decision
+				activeConfig = tuner->next(activeConfig,s);
 
-				// record current solution
-				if (score > best_score) {
-					best = { activeNodeMask, activeFrequency };
-					best_score = score;
-				}
-
-				// pick next state
-
-				if (explore.empty()) {
-
-					// nothing left to explore => generate new points
-					std::cout << "\t\tPrevious best option " << best.first << " @ " << best.second << " with score " << best_score << "\n";
-
-					// get nearby frequencies
-					auto options = hw::getFrequencyOptions(0);
-					auto cur = std::find(options.begin(), options.end(), best.second);
-					assert_true(cur != options.end());
-					auto pos = cur - options.begin();
-
-					std::vector<hw::Frequency> frequencies;
-					if (pos != 0) frequencies.push_back(options[pos-1]);
-					frequencies.push_back(options[pos]);
-					if (pos+1<int(options.size())) frequencies.push_back(options[pos+1]);
-
-					// get nearby node numbers
-					std::vector<NodeMask> numNodes;
-					if (best.first.count() > 1) numNodes.push_back(NodeMask(best.first).removeLast());
-					numNodes.push_back(best.first);
-					if (best.first.count() < network.numNodes()) numNodes.push_back(NodeMask(best.first).addNode());
-
-
-					// create new options
-					for(const auto& a : numNodes) {
-						for(const auto& b : frequencies) {
-							std::cout << "\t\tAdding option " << a << " @ " << b << "\n";
-							explore.push_back({a,b});
-						}
-					}
-
-					// reset best options
-					best_score = 0;
-				}
-
-				// if there are still no options, there is nothing to do
-				if (explore.empty()) return;
-
-				// take next option and evaluate
-				auto next = explore.back();
-				explore.pop_back();
-
-				activeNodeMask = next.first;
-				activeFrequency = next.second;
-
-				std::cout << "\t\tSwitching to " << activeNodeMask.count() << " nodes " << activeNodeMask << " @ " << activeFrequency << "\n";
+				// print status update
+				std::cout << "\t\tSwitching to " << activeConfig.nodes.count() << " nodes " << activeConfig.nodes << " @ " << activeConfig.frequency << "\n";
 			}
 
 			void balance() {
@@ -731,14 +669,14 @@ namespace work {
 				com::rank_t numNodes = network.numNodes();
 				std::vector<float> load(numNodes,0.0f);
 				mon::TaskTimes taskTimes;
-				for(com::rank_t i : activeNodeMask.getNodes()) {
+				for(com::rank_t i : activeConfig.nodes.getNodes()) {
 					auto cur = network.getRemoteProcedure(i,&StrategicScheduler::getStatus)();
 					load[i] = cur.first;
 					taskTimes += cur.second;
 				}
 
 				// compute the load variance
-				auto numActiveNodes = activeNodeMask.count();
+				auto numActiveNodes = activeConfig.nodes.count();
 				float avg = std::accumulate(load.begin(),load.end(),0.0f) / numActiveNodes;
 
 				float sum_dist = 0;
@@ -779,11 +717,11 @@ namespace work {
 				// re-balance load
 				auto curPolicy = policy.getPolicy<DecisionTreeSchedulingPolicy>();
 //				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,load,mask);
-				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,taskTimes,activeNodeMask);
+				auto newPolicy = DecisionTreeSchedulingPolicy::createReBalanced(curPolicy,taskTimes,activeConfig.nodes);
 
 				// distribute new policy
 				for(com::rank_t i=0; i<numNodes; i++) {
-					network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(newPolicy,activeNodeMask,activeFrequency);
+					network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(newPolicy,activeConfig);
 				}
 			}
 

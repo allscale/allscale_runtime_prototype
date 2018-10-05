@@ -4,6 +4,8 @@
 #include <ostream>
 
 #include "allscale/utils/serializer.h"
+#include "allscale/utils/printer/vectors.h"
+
 #include "allscale/runtime/com/node.h"
 
 namespace allscale {

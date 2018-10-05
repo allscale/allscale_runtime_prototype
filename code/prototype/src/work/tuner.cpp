@@ -40,6 +40,56 @@ namespace work {
 
 	// --- Implementations ---
 
+
+	Configuration IntervalTuner::next(const Configuration& current, const State& state) {
+
+		// test mode ..
+		if (mode == Exploiting) {
+
+			// in this mode, we just check that performance is still good enough
+			if (state.score >= best_score * degredatin) {
+				std::cout << "Best known configuration is still good: " << state.score << " / " << best_score << " -- sticking to it!\n";
+				// still good enough => keep current solution
+				return best;
+			}
+
+			// switch back to exploration mode
+			std::cout << "Performance degraded, restarting exploration ..\n";
+			mode = Exploring;
+		}
+
+		// test whether current solution is an improvement
+		if (state.score > best_score) {
+
+			// reset no-improvement counter
+			if (best != current) no_improvent_counter = 0;
+
+			// record improvement
+			best = current;
+			best_score = state.score;
+
+		} else {
+
+			// count number of times no improvement has been achieved
+			no_improvent_counter++;
+			std::cout << "No improvement since " << no_improvent_counter << " intervals ..\n";
+
+			// if there has not been any better option since a long time ..
+			if (no_improvent_counter >= no_improvement_limit) {
+				// switch back to exploiting mode
+				mode = Exploiting;
+				best_score = 0;
+				std::cout << "Switching to exploitation of " << best << " configuration ..\n";
+				return best;
+			}
+		}
+
+		// keep searching
+		return tuner->next(current,state);
+
+	}
+
+
 	namespace {
 
 		optional<NodeMask> inc(const NodeMask& mask) {

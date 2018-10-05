@@ -441,7 +441,7 @@ namespace work {
 				  lastProcessTime(0),
 				  lastTaskTimesSampleTime(lastEfficiencySampleTime),
 				  activeConfig({network.numNodes(),hw::getFrequency(node.getRank())}),
-				  tuner(std::make_unique<SimpleCoordinateDescent>(activeConfig)),
+				  tuner(std::make_unique<IntervalTuner>(activeConfig,std::make_unique<SimpleCoordinateDescent>(activeConfig))),
 				  active(true) {
 
 				// enforce initial scheduler type

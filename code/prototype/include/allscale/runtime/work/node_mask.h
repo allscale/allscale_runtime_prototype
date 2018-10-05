@@ -94,6 +94,16 @@ namespace work {
 			return mask;
 		}
 
+		// operators
+
+		bool operator==(const NodeMask& other) const {
+			return mask == other.mask;
+		}
+
+		bool operator!=(const NodeMask& other) const {
+			return !(*this == other);
+		}
+
 		// serialization support
 
 		void store(allscale::utils::ArchiveWriter& out) const {

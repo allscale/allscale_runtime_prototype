@@ -80,9 +80,9 @@ namespace work {
 	// --- Implementations ---
 
 	/**
-	 * Simple proof-of-concept tuning schema utilizing a hill-climbing like approach.
+	 * Simple proof-of-concept tuning schema utilizing a simple gradient descent like approach.
 	 */
-	class SimpleHillClimbing : public Tuner {
+	class SimpleGradientDescent : public Tuner {
 
 		// best known option so far
 		Configuration best;
@@ -95,11 +95,60 @@ namespace work {
 
 	public:
 
-		SimpleHillClimbing(const Configuration& initial) : best(initial) {};
+		SimpleGradientDescent(const Configuration& initial) : best(initial) {};
 
 		Configuration next(const Configuration& current, const State& state) override;
 
 	};
+
+	/**
+	 * Simple implementation of a coordinate descent tuning algorithm.
+	 *
+	 * See: https://en.wikipedia.org/wiki/Coordinate_descent
+	 */
+	class SimpleCoordinateDescent : public Tuner {
+
+		// the dimensions searched
+		enum Dimension {
+			NumNodes = 0,
+			Frequency = 1
+		};
+
+		// the direction
+		enum Direction {
+			Up = 0, Down = 1
+		};
+
+
+		// the dimension currently search along
+		Dimension dim = NumNodes;
+
+		// the direction currently search along the selected dimension
+		Direction direction = Down;	// 0 .. increase, 1 .. decrease
+
+		// the best configuration seen so far
+		Configuration best;
+
+		// the best score seen
+		float best_score = 0;
+
+	public:
+
+		SimpleCoordinateDescent(const Configuration& initial) : best(initial) {};
+
+		Configuration next(const Configuration& current, const State& state) override;
+
+	private:
+
+		void nextDirection();
+
+	};
+
+
+	// Other possible ideas:
+	//  - pattern search - https://en.wikipedia.org/wiki/Pattern_search_(optimization)
+	//  - Nelder-Mead - https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method
+
 
 
 } // end of namespace work

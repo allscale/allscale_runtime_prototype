@@ -441,7 +441,7 @@ namespace work {
 				  lastProcessTime(0),
 				  lastTaskTimesSampleTime(lastEfficiencySampleTime),
 				  activeConfig({network.numNodes(),hw::getFrequency(node.getRank())}),
-				  tuner(std::make_unique<SimpleHillClimbing>(activeConfig)),
+				  tuner(std::make_unique<SimpleCoordinateDescent>(activeConfig)),
 				  active(true) {
 
 				// enforce initial scheduler type
@@ -500,14 +500,15 @@ namespace work {
 
 				// update state
 				activeConfig.nodes = newMask;
+				auto newSetup = activeConfig;
 
 				// re-schedule uniform schedule
 				if (type == SchedulerType::Uniform) {
 					// create new policy
-					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeConfig.nodes);
+					auto uniform = DecisionTreeSchedulingPolicy::createUniform(newMask);
 					// distribute new policy
-					for(com::rank_t i=0; i<activeConfig.nodes.totalNodes(); i++) {
-						network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(uniform,activeConfig);
+					for(com::rank_t i=0; i<newMask.totalNodes(); i++) {
+						network.getRemoteProcedure(i,&StrategicScheduler::updatePolicy)(uniform,newSetup);
 					}
 				}
 			}
@@ -684,7 +685,7 @@ namespace work {
 					float dist = load[i] - avg;
 					sum_dist +=  dist * dist;
 				}
-				float var = sum_dist / (numActiveNodes - 1);
+				float var = (numActiveNodes > 1) ? sum_dist / (numActiveNodes - 1) : 0;
 
 
 				std::cout

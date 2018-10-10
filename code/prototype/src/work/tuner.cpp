@@ -43,6 +43,20 @@ namespace work {
 
 	Configuration IntervalTuner::next(const Configuration& current, const State& state) {
 
+		// test whether objective has changed
+		auto obj = getActiveTuningObjectiv();
+		if (obj != objective) {
+			// re-set tuning process:
+			mode = Exploring;
+
+			// forget solution so far
+			best_score = -1;
+			no_improvent_counter = 0;
+
+			// update recorded tuning objective
+			objective = obj;
+		}
+
 		// test mode ..
 		if (mode == Exploiting) {
 
@@ -56,6 +70,7 @@ namespace work {
 			// switch back to exploration mode
 			std::cout << "Performance degraded, restarting exploration ..\n";
 			mode = Exploring;
+			best_score = 0;
 		}
 
 		// test whether current solution is an improvement
@@ -78,7 +93,6 @@ namespace work {
 			if (no_improvent_counter >= no_improvement_limit) {
 				// switch back to exploiting mode
 				mode = Exploiting;
-				best_score = 0;
 				std::cout << "Switching to exploitation of " << best << " configuration ..\n";
 				return best;
 			}
@@ -125,6 +139,17 @@ namespace work {
 
 
 	Configuration SimpleGradientDescent::next(const Configuration& current, const State& state) {
+
+		// test whether objective has changed
+		auto obj = getActiveTuningObjectiv();
+		if (obj != objective) {
+
+			// forget solution so far
+			best_score = -1;
+
+			// update recorded tuning objective
+			objective = obj;
+		}
 
 		// record current solution
 		if (state.score > best_score) {
@@ -176,6 +201,17 @@ namespace work {
 
 
 	Configuration SimpleCoordinateDescent::next(const Configuration& current, const State& state) {
+
+		// test whether objective has changed
+		auto obj = getActiveTuningObjectiv();
+		if (obj != objective) {
+
+			// forget solution so far
+			best_score = -1;
+
+			// update recorded tuning objective
+			objective = obj;
+		}
 
 		// make sure there is a configuration space
 		assert_true(inc(current.nodes) || dec(current.nodes) || inc(current.frequency) || dec(current.frequency));

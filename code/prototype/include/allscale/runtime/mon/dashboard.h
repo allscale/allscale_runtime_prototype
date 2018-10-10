@@ -10,6 +10,7 @@
 #include "allscale/runtime/hw/energy.h"
 #include "allscale/runtime/hw/frequency.h"
 #include "allscale/runtime/work/scheduler.h"
+#include "allscale/runtime/work/optimizer.h"
 
 namespace allscale {
 namespace runtime {
@@ -136,6 +137,11 @@ namespace mon {
 
 		// the overall system-wide score of the objective function
 		float score = 0;
+
+
+		// -- multi-objective weights --
+
+		work::TuningObjective objective;
 
 		// -- scheduler state --
 

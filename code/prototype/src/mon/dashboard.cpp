@@ -168,6 +168,11 @@ namespace mon {
 		out << "\"speed\":" << speed << ",";
 		out << "\"efficiency\":" << efficiency << ",";
 		out << "\"power\":" << power << ",";
+		out << "\"objective_exponent\": {";
+			out << "\"speed\":" << objective.getSpeedExponent() << ",";
+			out << "\"efficiency\":" << objective.getEfficiencyExponent() << ",";
+			out << "\"power\":" << objective.getPowerExponent();
+		out << "},";
 		out << "\"score\":" << score << ",";
 		out << "\"scheduler\": \"" << scheduler << "\",";
 		out << "\"nodes\" : " << nodes;
@@ -647,6 +652,23 @@ namespace mon {
 					auto node = std::string(endOfCmd+1,msg.end());
 					work::toggleActiveState(std::atoi(node.c_str()));
 
+				} else if (cmd == "set_speed" || cmd == "set_efficiency" || cmd == "set_power" ) {
+
+					// parse new exponent
+					auto weight = std::string(endOfCmd+1,msg.end());
+					auto exponent = std::atof(weight.c_str());
+
+					// update tuning objective
+					auto obj = work::getActiveTuningObjectiv();
+					if (cmd == "set_speed") {
+						obj.setSpeedExponent(exponent);
+					} else if (cmd == "set_efficiency") {
+						obj.setEfficiencyExponent(exponent);
+					} else if (cmd == "set_power") {
+						obj.setPowerExponent(exponent);
+					}
+					work::setActiveTuningObjectiv(obj);
+
 				} else {
 					std::cout << "Received unsupported command: " << cmd << "\n";
 					std::cout << "Command is ignored.\n";
@@ -758,8 +780,11 @@ namespace mon {
 		res.efficiency = (total_available > 0) ? total_productive / float(total_available) : 0;
 		res.power = (max_power > 0) ? cur_power / max_power : 0;
 
+		// get tuning objective
+		res.objective = work::getActiveTuningObjectiv();
+
 		// compute score based on objective function
-		res.score = work::getActiveTuningObjectiv().getScore(res.speed,res.efficiency,res.power);
+		res.score = res.objective.getScore(res.speed,res.efficiency,res.power);
 
 		// add scheduler information
 		res.scheduler = work::getCurrentSchedulerType();

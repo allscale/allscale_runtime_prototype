@@ -6,6 +6,7 @@
 
 #include "allscale/runtime/hw/frequency.h"
 #include "allscale/runtime/work/node_mask.h"
+#include "allscale/runtime/work/optimizer.h"
 
 namespace allscale {
 namespace runtime {
@@ -100,6 +101,9 @@ namespace work {
 			Exploiting	// < exploiting the best solution
 		};
 
+		// the objective handled the last time - to notice changes
+		TuningObjective objective;
+
 		Mode mode = Exploring;
 
 		// the best known configuration
@@ -134,6 +138,9 @@ namespace work {
 	 * Simple proof-of-concept tuning schema utilizing a simple gradient descent like approach.
 	 */
 	class SimpleGradientDescent : public Tuner {
+
+		// the objective handled the last time - to notice changes
+		TuningObjective objective;
 
 		// best known option so far
 		Configuration best;
@@ -170,6 +177,8 @@ namespace work {
 			Up = 0, Down = 1
 		};
 
+		// the objective handled the last time - to notice changes
+		TuningObjective objective;
 
 		// the dimension currently search along
 		Dimension dim = NumNodes;

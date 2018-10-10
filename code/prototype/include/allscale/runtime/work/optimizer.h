@@ -57,11 +57,50 @@ namespace work {
 
 		// --- observers ---
 
+		float getSpeedExponent() const {
+			return speedExponent;
+		}
+
+		float getEfficiencyExponent() const {
+			return efficiencyExponent;
+		}
+
+		float getPowerExponent() const {
+			return powerExponent;
+		}
+
+		// --- mutators ---
+
+		void setSpeedExponent(float x) {
+			assert_le(0,x);
+			speedExponent = x;
+		}
+
+		void setEfficiencyExponent(float x) {
+			assert_le(0,x);
+			efficiencyExponent = x;
+		}
+
+		void setPowerExponent(float x) {
+			assert_le(0,x);
+			powerExponent = x;
+		}
+
 		/**
 		 * Evaluates the given state based on the presented objectives
 		 * and returns a
 		 */
 		float getScore(float speed, float efficiency, float power) const;
+
+		// -- operators --
+
+		bool operator==(const TuningObjective& other) const {
+			return this == &other || (speedExponent == other.speedExponent && efficiencyExponent == other.efficiencyExponent && powerExponent == other.powerExponent);
+		}
+
+		bool operator!=(const TuningObjective& other) const {
+			return !(*this == other);
+		}
 
 		// provides print support
 		friend std::ostream& operator<<(std::ostream& out, const TuningObjective&);

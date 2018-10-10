@@ -681,7 +681,7 @@ namespace work {
 				float avg = std::accumulate(load.begin(),load.end(),0.0f) / numActiveNodes;
 
 				float sum_dist = 0;
-				for(com::rank_t i=0; i<numActiveNodes; i++) {
+				for(com::rank_t i : activeConfig.nodes.getNodes()) {
 					float dist = load[i] - avg;
 					sum_dist +=  dist * dist;
 				}

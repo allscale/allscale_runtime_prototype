@@ -23,6 +23,8 @@
 #include "allscale/utils/serializer/functions.h"
 #include "allscale/utils/serializer/tuple.h"
 
+#include "allscale/utils/fiber.h"
+
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/statistics.h"
 
@@ -110,6 +112,9 @@ namespace mpi {
 	 */
 	class Network {
 
+		// the kind of guard used for locking operations
+		using guard = std::lock_guard<std::mutex>;
+
 		// the type of handler send along with messages to dispatch calls on the receiver side
 		using request_handler_t = void(*)(rank_t,int tag, Node&, allscale::utils::Archive&);
 
@@ -129,13 +134,20 @@ namespace mpi {
 		// the last epoch reached locally
 		int last_epoch;
 
-		// a buffer for locally maintaining response messages
-		std::map<std::pair<int,int>,std::vector<char>> response_buffer;
+		using clock = std::chrono::high_resolution_clock;
+		using time = typename clock::time_point;
 
-		// a lock for the response buffer
-		mutable std::mutex response_buffer_lock;
+		// a pool for handling light-weight out-of-order request / response processing
+		utils::FiberPool pool;
 
-		using guard = std::lock_guard<std::mutex>;
+		using response_id = std::pair<int,int>;
+		using response_handler = utils::FiberPool::Fiber;
+
+		// a registry for fibers waiting for responses from remote calls
+		std::map<response_id,response_handler> responde_handler;
+
+		// a lock to protect accesses to the responde_handler registry
+		mutable std::mutex responde_handler_lock;
 
 	public:
 
@@ -227,27 +239,18 @@ namespace mpi {
 				// perform remote call
 				int request_tag = getFreshRequestTag();
 				int response_tag = getResponseTag(request_tag);
+
+				// compose the request message
+				std::vector<char> request;
 				{
 					// create an argument tuple and serialize it
 					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleRequest,aa));
-					auto& buffer = msg.getBuffer();
-					// send to target node
-
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " to " << trg << " ...\n";
-
-					{
-						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						getLocalStats().sent_bytes += buffer.size();
-						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
-					}
-
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent to " << trg << "\n";
-
+					request = msg.getBuffer();
 				}
 
-				// wait for response
-				std::vector<char> buffer = network.waitForResponse(trg,response_tag);
+				// send message and wait for response
+				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,src,request_tag,trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for request " << request_tag << " received from " << trg << "\n";
 
@@ -263,6 +266,9 @@ namespace mpi {
 		 */
 		template<typename Selector, typename S, typename ... Args>
 		class RemoteProcedure<Selector,S,void,Args...> {
+
+			// the network being part of
+			Network& network;
 
 			// the local node
 			Node& local;
@@ -284,8 +290,8 @@ namespace mpi {
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			RemoteProcedure(Network&, Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
-				: local(local), target(target), selector(selector), fun(fun) {}
+			RemoteProcedure(Network& net, Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
+				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
 			static void handleProcedure(rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
 				// unpack archive to obtain arguments
@@ -326,17 +332,9 @@ namespace mpi {
 					auto msg = allscale::utils::serialize(request_msg_t(&handleProcedure,aa));
 					auto& buffer = msg.getBuffer();
 
+
 					// send to target node
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << (void*)&handleProcedure << " to " << trg << " ...\n";
-
-					int msg_tag = getFreshRequestTag();
-					{
-						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						getLocalStats().sent_bytes += buffer.size();
-						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,msg_tag,point2point);
-					}
-
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request sent to " << trg << " (fire-and-forget)\n";
+					network.sendRequest(buffer,trg,getFreshRequestTag());
 
 				}
 			}
@@ -422,26 +420,18 @@ namespace mpi {
 				// perform remote call
 				int request_tag = getFreshRequestTag();
 				int response_tag = getResponseTag(request_tag);
+
+				// create request message
+				std::vector<char> request;
 				{
 					// create an argument tuple and serialize it
 					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,args...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleRequest,aa));
-					auto& buffer = msg.getBuffer();
-					// send to target node
-
-					DEBUG_MPI_NETWORK << "Node " << src << ": Sending request " << request_tag << " to " << trg << " ...\n";
-					{
-						std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-						getLocalStats().sent_bytes += buffer.size();
-						MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,trg,request_tag,point2point);
-					}
-
-					DEBUG_MPI_NETWORK << "Node " << src << ": Request " << request_tag << " sent to " << trg << "\n";
-
+					request = msg.getBuffer();
 				}
 
 				// wait for response
-				std::vector<char> buffer = network.waitForResponse(trg,response_tag);
+				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,src,request_tag,trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
 
@@ -657,11 +647,11 @@ namespace mpi {
 
 		void runRequestServer();
 
-		void processMessage();
+		bool processMessage();
 
-		void processResponse(MPI_Status&);
+		void sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag);
 
-		std::vector<char> waitForResponse(com::rank_t src, int response_tag);
+		std::vector<char> sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag);
 
 	public:
 

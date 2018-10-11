@@ -123,68 +123,99 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		return instance;
 	}
 
-	void Network::processResponse(MPI_Status& status) {
-
-		// make sure the current message is a response
-		assert_true(isResponseTag(status.MPI_TAG));
-
-		// retrieve message size
-		int count = 0;
-		MPI_Get_count(&status,MPI_CHAR,&count);
-
-		// allocate memory
-		std::vector<char> buffer(count);
-
-		int src = status.MPI_SOURCE;
-		int tag = status.MPI_TAG;
-
-		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Receiving response " << tag << " from " << src << " of size " << count << " bytes ...\n";
-
-		// receive message
-		getLocalStats().received_bytes += count;
-		MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-
-		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << tag << " for " << src << " received\n";
-
-		// insert into response buffer
-		guard g(response_buffer_lock);
-		response_buffer[{src,tag}] = std::move(buffer);
-
-	}
-
-	std::vector<char> Network::waitForResponse(com::rank_t src, int response_tag) {
+	void Network::sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag) {
 
 		// check validity of parameters
-		assert_ne(src,localNode->getRank());
-		assert_true(isResponseTag(response_tag));
+		assert_ne(trg,localNode->getRank());
+		assert_pred1(isRequestTag,request_tag);
 
-		// get lookup key
-		std::pair<int,int> key(src,response_tag);
+		// send to target node
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Sending request " << request_tag << " to " << trg << " ...\n";
 
-		while(true) {
-
-			{
-				// check whether response has been received ..
-				guard g(response_buffer_lock);
-				auto pos = response_buffer.find(key);
-				if (pos != response_buffer.end()) {
-					// take response message from buffer ..
-					std::vector<char> res = std::move(pos->second);
-					response_buffer.erase(pos);
-
-					DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response " << response_tag << " for " << src << " consumed\n";
-
-					return res;
-				}
-			}
-
-			// keep processing messages in the meanwhile ..
-			processMessage();
+		{
+			guard g(G_MPI_MUTEX);
+			getLocalStats().sent_bytes += msg.size();
+			MPI_Send(&msg[0],msg.size(),MPI_CHAR,trg,request_tag,point2point);
 		}
+
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Request " << request_tag << " sent to " << trg << "\n";
 	}
 
-	void Network::processMessage() {
-		using namespace std::literals::chrono_literals;
+	std::vector<char> Network::sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag) {
+
+		// check validity of parameters
+		assert_eq(src,localNode->getRank());
+		assert_ne(src,trg);
+		assert_true(isRequestTag(request_tag));
+		assert_true(isResponseTag(response_tag));
+
+		// -- First install the response handler --
+
+		// get the id of the response waiting for
+		std::pair<int,int> key(trg,response_tag);
+
+		// submit a fiber waiting for the response
+		std::atomic<bool> done(false);
+		std::vector<char> response;
+		auto fiber = pool.start([&]{
+
+			// suspend fiber immediately
+			utils::FiberPool::suspend();
+
+			// NOTE: the lock protection is given by the context continuing this fiber
+
+			// upon awakening, the message should be available
+			int flag;
+			MPI_Status status;
+			MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
+
+			// message should be available
+			assert_true(flag);
+
+			// retrieve message
+			int count = 0;
+			MPI_Get_count(&status,MPI_CHAR,&count);
+
+			// allocate memory
+			response.resize(count);
+
+			// receive message
+			DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " from " << trg << " of size " << count << " bytes ...\n";
+			Network::getLocalStats().received_bytes += count;
+			MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+
+			// signal completion
+			done = true;
+		});
+
+		// the fiber should be suspended
+		assert_true(fiber);
+
+		// finally, register the response handler
+		{
+			guard g(responde_handler_lock);
+			responde_handler[key] = *fiber;
+		}
+
+		// -- send request --
+
+		sendRequest(msg,trg,request_tag);
+
+
+		// -- finally wait for response --
+
+		// while not done ..
+		while(!done) {
+			// .. help processing requests
+			processMessage();
+		}
+
+		// done
+		return response;
+
+	}
+
+	bool Network::processMessage() {
 
 		auto& node = *localNode;
 		int flag;
@@ -196,19 +227,31 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
 			MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
 
-			// if there is nothing ...
-			if (!flag) {
-				// ... be nice here
-				std::this_thread::sleep_for(1us);
-				return;
+			// if there is nothing, do nothing
+			if (!flag) return false;
+
+			// handle responses
+			if (isResponseTag(status.MPI_TAG)) {
+				response_id id(status.MPI_SOURCE,status.MPI_TAG);
+
+				// obtain the handler registered for this message
+				response_handler handler;
+				{
+					guard g(responde_handler_lock);
+					auto pos = responde_handler.find(id);
+					assert_true(pos != responde_handler.end());
+					handler = pos->second;
+					responde_handler.erase(pos);
+				}
+
+				// process handler
+				pool.resume(handler);
+
+				// done
+				return true;
 			}
 
-			// do not consume responses
-			if (!isRequestTag(status.MPI_TAG)) {
-				processResponse(status);
-				return;
-			}
-
+			// otherwise, handle requests
 			assert_pred1(isRequestTag,status.MPI_TAG);
 
 			// retrieve message
@@ -224,27 +267,39 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 		}
 
-		// parse message
-		allscale::utils::Archive a(std::move(buffer));
-		auto msg = allscale::utils::deserialize<request_msg_t>(a);
+		// process request handler in a fiber context (to allow interrupts)
+		pool.start([&]{
 
-		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
+			// parse message
+			allscale::utils::Archive a(std::move(buffer));
+			auto msg = allscale::utils::deserialize<request_msg_t>(a);
 
-		// process message
-		node.run([&](Node&){
-			std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
+
+			// process message
+			node.run([&](Node&){
+				std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
+			});
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " complete.\n";
+
 		});
-		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " complete.\n";
+
+		// done
+		return true;
 	}
 
 	void Network::runRequestServer() {
+		using namespace std::literals::chrono_literals;
 
 		auto& node = *localNode;
 		DEBUG_MPI_NETWORK << "Starting up request server on node " << node.getRank() << "\n";
 
 		while(alive) {
 			// try processing some request
-			processMessage();
+			if (!processMessage()) {
+				// be nice if no message is present
+				std::this_thread::sleep_for(1us);
+			}
 		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";

@@ -300,6 +300,9 @@ namespace work {
 		// determines whether this treeture is the owning instance of the associated state
 		mutable bool owning;
 
+		// a locally cached reference to the local treeture state service
+		mutable TreetureStateService* service = nullptr;
+
 	public:
 
 		treeture() : owner(0), owning(false) {}
@@ -427,7 +430,8 @@ namespace work {
 		}
 
 		TreetureStateService& getStateService() const {
-			return TreetureStateService::getLocal();
+			if (!service) service = &TreetureStateService::getLocal();
+			return *service;
 		}
 
 	};
@@ -446,6 +450,9 @@ namespace work {
 
 		// flag indicating whether the task associated to this treeture is done or not
 		mutable bool done;
+
+		// a locally cached reference to the local treeture state service
+		mutable TreetureStateService* service = nullptr;
 
 	public:
 
@@ -531,7 +538,8 @@ namespace work {
 		}
 
 		TreetureStateService& getStateService() const {
-			return TreetureStateService::getLocal();
+			if (!service) service = &TreetureStateService::getLocal();
+			return *service;
 		}
 
 	};

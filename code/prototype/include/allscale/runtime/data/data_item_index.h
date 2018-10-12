@@ -378,10 +378,10 @@ namespace data {
 		mutable DataItemLocationCache locationCache;
 
 		// a lock to synchronize transfers on this instance
-		mutable std::recursive_mutex lock;
+		mutable std::mutex lock;
 
 		// the guard type to utilize
-		using guard = std::lock_guard<std::recursive_mutex>;
+		using guard = std::lock_guard<std::mutex>;
 
 	public:
 
@@ -538,6 +538,38 @@ namespace data {
 			if (!ptr) ptr = std::make_unique<Index<DataItem>>(network.getNetwork(),myAddress);
 			return static_cast<Index<DataItem>&>(*ptr);
 		}
+
+	private:
+
+		// -- internal, non-lock protected members --
+
+		bool coversInternal(const DataItemRegions&) const;
+
+		DataItemRegions getManagedUnallocatedRegionInternal(const DataItemRegions&) const;
+
+		DataItemRegions getAvailableDataInternal() const;
+
+		DataItemRegions getAvailableDataLeftInternal() const;
+
+		DataItemRegions getAvailableDataRightInternal() const;
+
+		DataItemRegions getMissingRegionsInternal(const DataItemRegions&) const;
+
+		DataItemRegions getMissingRegionsLeftInternal(const DataItemRegions&) const;
+
+		DataItemRegions getMissingRegionsRightInternal(const DataItemRegions&) const;
+
+		void addRegionsInternal(const DataItemRegions&);
+
+		void addRegionsLeftInternal(const DataItemRegions&);
+
+		void addRegionsRightInternal(const DataItemRegions&);
+
+		void removeRegionsInternal(const DataItemRegions&);
+
+		void removeRegionsLeftInternal(const DataItemRegions&);
+
+		void removeRegionsRightInternal(const DataItemRegions&);
 
 	};
 

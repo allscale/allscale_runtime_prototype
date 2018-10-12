@@ -5,6 +5,19 @@ namespace allscale {
 namespace runtime {
 namespace data {
 
+	namespace {
+
+		/**
+		 * A utility to test whether a lock is locked.
+		 */
+		bool isLocked(std::mutex& lock) {
+			auto res = lock.try_lock();
+			if (res) lock.unlock();
+			return !res;
+		}
+
+	}
+
 
 	// tests whether the given requirements are covered by this node
 	bool DataItemIndexService::covers(const DataItemRegions& region) const {
@@ -12,7 +25,22 @@ namespace data {
 		return getMissingRegions(region).empty();
 	}
 
+	bool DataItemIndexService::coversInternal(const DataItemRegions& region) const {
+		// the requirements are covered if the needed regions are empty
+		return getMissingRegionsInternal(region).empty();
+	}
+
 	DataItemRegions DataItemIndexService::getManagedUnallocatedRegion(const DataItemRegions& region) const {
+		// quick response
+		if (myAddress.isLeaf() || region.empty()) return {};
+
+		// protect and forward to internal
+		guard g(lock);
+		return getManagedUnallocatedRegionInternal(region);
+	}
+
+	DataItemRegions DataItemIndexService::getManagedUnallocatedRegionInternal(const DataItemRegions& region) const {
+		assert_true(isLocked(lock));
 
 		// a leaf has no managed regions
 		if (myAddress.isLeaf()) return {};
@@ -21,20 +49,28 @@ namespace data {
 		if (region.empty()) return {};
 
 		// compute difference between left / right and full
-		guard g(lock);
-		auto allocated = merge(getAvailableDataLeft(),getAvailableDataRight());
-		auto unallocated = difference(getAvailableData(),allocated);
+		auto allocated = merge(getAvailableDataLeftInternal(),getAvailableDataRightInternal());
+		auto unallocated = difference(getAvailableDataInternal(),allocated);
 		return intersect(region,unallocated);
 	}
 
 	// computes the set of required regions to cover the given requirements
 	DataItemRegions DataItemIndexService::getMissingRegions(const DataItemRegions& needed) const {
+		// if nothing is needed => we are done
+		if (needed.empty()) return {};
+
+		guard g(lock);
+		return getMissingRegionsInternal(needed);
+	}
+
+	DataItemRegions DataItemIndexService::getMissingRegionsInternal(const DataItemRegions& needed) const {
+		assert_true(isLocked(lock));
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
 		// see what is available
-		auto avail = getAvailableData();
+		auto avail = getAvailableDataInternal();
 
 		// return the difference
 		return difference(needed,avail);
@@ -42,12 +78,21 @@ namespace data {
 
 	// computes the set of required regions to schedule in the left sub-tree
 	DataItemRegions DataItemIndexService::getMissingRegionsLeft(const DataItemRegions& needed) const {
+		// if nothing is needed => we are done
+		if (needed.empty()) return {};
+
+		guard g(lock);
+		return getMissingRegionsLeftInternal(needed);
+	}
+
+	DataItemRegions DataItemIndexService::getMissingRegionsLeftInternal(const DataItemRegions& needed) const {
+		assert_true(isLocked(lock));
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
 		// see what is available
-		auto avail = getAvailableDataLeft();
+		auto avail = getAvailableDataLeftInternal();
 
 		// return the difference
 		return difference(needed,avail);
@@ -55,12 +100,23 @@ namespace data {
 
 	// computes the set of required regions to schedule in the right sub-tree
 	DataItemRegions DataItemIndexService::getMissingRegionsRight(const DataItemRegions& needed) const {
+		assert_true(isLocked(lock));
+
+		// if nothing is needed => we are done
+		if (needed.empty()) return {};
+
+		guard g(lock);
+		return getMissingRegionsRightInternal(needed);
+	}
+
+	DataItemRegions DataItemIndexService::getMissingRegionsRightInternal(const DataItemRegions& needed) const {
+		assert_true(isLocked(lock));
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
 		// see what is available
-		auto avail = getAvailableDataRight();
+		auto avail = getAvailableDataRightInternal();
 
 		// return the difference
 		return difference(needed,avail);
@@ -69,12 +125,21 @@ namespace data {
 
 	// adds the provided regions to this node
 	void DataItemIndexService::addRegions(const DataItemRegions& regions) {
-
 		// if empty => all done
 		if (regions.empty()) return;
 
 		// adding regions
 		guard g(lock);
+		addRegionsInternal(regions);
+	}
+
+	void DataItemIndexService::addRegionsInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
 		for(const auto& cur : indices) {
 			cur.second->add(regions);
 		}
@@ -87,6 +152,16 @@ namespace data {
 
 		// adding regions
 		guard g(lock);
+		addRegionsLeftInternal(regions);
+	}
+
+	void DataItemIndexService::addRegionsLeftInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
 		for(const auto& cur : indices) {
 			cur.second->addLeft(regions);
 		}
@@ -99,6 +174,16 @@ namespace data {
 
 		// adding regions
 		guard g(lock);
+		addRegionsRightInternal(regions);
+	}
+
+	void DataItemIndexService::addRegionsRightInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
 		for(const auto& cur : indices) {
 			cur.second->addRight(regions);
 		}
@@ -107,12 +192,21 @@ namespace data {
 
 	// removes the provided regions to this node
 	void DataItemIndexService::removeRegions(const DataItemRegions& regions) {
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// remove regions
+		guard g(lock);
+		removeRegionsInternal(regions);
+	}
+
+	void DataItemIndexService::removeRegionsInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
 
 		// if empty => all done
 		if (regions.empty()) return;
 
-		// adding regions
-		guard g(lock);
+		// remove regions
 		for(const auto& cur : indices) {
 			cur.second->remove(regions);
 		}
@@ -123,8 +217,18 @@ namespace data {
 		// if empty => all done
 		if (regions.empty()) return;
 
-		// adding regions
+		// remove regions
 		guard g(lock);
+		removeRegionsLeftInternal(regions);
+	}
+
+	void DataItemIndexService::removeRegionsLeftInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// remove regions
 		for(const auto& cur : indices) {
 			cur.second->removeLeft(regions);
 		}
@@ -137,6 +241,16 @@ namespace data {
 
 		// adding regions
 		guard g(lock);
+		removeRegionsRightInternal(regions);
+	}
+
+	void DataItemIndexService::removeRegionsRightInternal(const DataItemRegions& regions) {
+		assert_true(isLocked(lock));
+
+		// if empty => all done
+		if (regions.empty()) return;
+
+		// adding regions
 		for(const auto& cur : indices) {
 			cur.second->removeRight(regions);
 		}
@@ -145,8 +259,14 @@ namespace data {
 
 	// computes the data regions available on this node
 	DataItemRegions DataItemIndexService::getAvailableData() const {
-		DataItemRegions res;
 		guard g(lock);
+		return getAvailableDataInternal();
+	}
+
+	DataItemRegions DataItemIndexService::getAvailableDataInternal() const {
+		assert_true(isLocked(lock));
+
+		DataItemRegions res;
 		for(const auto& cur : indices) {
 			cur.second->addAvailable(res);
 		}
@@ -155,8 +275,14 @@ namespace data {
 
 	// computes the data regions available in the left sub tree
 	DataItemRegions DataItemIndexService::getAvailableDataLeft() const {
-		DataItemRegions res;
 		guard g(lock);
+		return getAvailableDataLeftInternal();
+	}
+
+	DataItemRegions DataItemIndexService::getAvailableDataLeftInternal() const {
+		assert_true(isLocked(lock));
+
+		DataItemRegions res;
 		for(const auto& cur : indices) {
 			cur.second->addAvailableLeft(res);
 		}
@@ -165,8 +291,14 @@ namespace data {
 
 	// computes the data regions available in the right sub tree
 	DataItemRegions DataItemIndexService::getAvailableDataRight() const {
-		DataItemRegions res;
 		guard g(lock);
+		return getAvailableDataRightInternal();
+	}
+
+	DataItemRegions DataItemIndexService::getAvailableDataRightInternal() const {
+		assert_true(isLocked(lock));
+
+		DataItemRegions res;
 		for(const auto& cur : indices) {
 			cur.second->addAvailableRight(res);
 		}
@@ -181,7 +313,7 @@ namespace data {
 
 		// just add to full region info
 		guard g(lock);
-		addRegions(regions);
+		addRegionsInternal(regions);
 	}
 
 	DataItemRegions DataItemIndexService::addAllowanceLeft(const DataItemRegions& full, const DataItemRegions& required) {
@@ -195,19 +327,19 @@ namespace data {
 		guard g(lock);
 
 		// extend the local ownership
-		addRegions(full);
+		addRegionsInternal(full);
 
 		// compute missing left
-		auto missing = getMissingRegionsLeft(required);
+		auto missing = getMissingRegionsLeftInternal(required);
 
 		// if there is nothing missing, we are done
 		if (missing.empty()) return {};
 
 		// cut down to what this process is allowed
-		missing = difference(intersect(missing,getAvailableData()),getAvailableDataRight());
+		missing = difference(intersect(missing,getAvailableDataInternal()),getAvailableDataRightInternal());
 
 		// add missing to left
-		addRegionsLeft(missing);
+		addRegionsLeftInternal(missing);
 
 		// inform the user about what has been added
 		return missing;
@@ -224,19 +356,19 @@ namespace data {
 		guard g(lock);
 
 		// extend the local ownership
-		addRegions(full);
+		addRegionsInternal(full);
 
 		// compute missing left
-		auto missing = getMissingRegionsRight(required);
+		auto missing = getMissingRegionsRightInternal(required);
 
 		// if there is nothing missing, we are done
 		if (missing.empty()) return {};
 
 		// cut down to what this process is allowed
-		missing = difference(intersect(missing,getAvailableData()),getAvailableDataLeft());
+		missing = difference(intersect(missing,getAvailableDataInternal()),getAvailableDataLeftInternal());
 
 		// add missing to right
-		addRegionsRight(missing);
+		addRegionsRightInternal(missing);
 
 		// inform the user about what has been added
 		return missing;
@@ -266,7 +398,7 @@ namespace data {
 		guard g(lock);
 
 		// make sure this one is responsible for the requested region
-		if (!isRoot) assert_pred2(isSubRegion,regions,getAvailableData());
+		if (!isRoot) assert_pred2(isSubRegion,regions,getAvailableDataInternal());
 
 
 		DataItemLocationInfos res;
@@ -299,7 +431,7 @@ namespace data {
 		// for inner nodes, query sub-trees
 		{
 			// start with left
-			auto part = intersect(remaining,getAvailableDataLeft());
+			auto part = intersect(remaining,getAvailableDataLeftInternal());
 			if (!part.empty()) {
 
 				// query sub-tree
@@ -321,7 +453,7 @@ namespace data {
 		// and if necessary also the right sub-tree
 		if (!remaining.empty()) {
 
-			auto part = intersect(remaining,getAvailableDataRight());
+			auto part = intersect(remaining,getAvailableDataRightInternal());
 			if (!part.empty()) {
 
 				// query sub-tree
@@ -377,13 +509,13 @@ namespace data {
 		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(missing,myAddress);
 
 		// this node should be locked now
-//		assert_false(lock.owns_lock());
+		assert_true(isLocked(lock));
 
 		// make sure the requested data is complete
 		assert_eq(regions,res.getCoveredRegions());
 
 		// register ownership
-		addRegions(regions);
+		addRegionsInternal(regions);
 
 		// insert data locally
 		com::Node::getLocalService<DataItemManagerService>().takeOwnership(res);
@@ -408,7 +540,7 @@ namespace data {
 
 		// Phase 1: walk toward node covering all required regions
 		lock.lock();	// lock this node for the next test
-		if (!isRoot && !isSubRegion(regions,getAvailableData())) {
+		if (!isRoot && !isSubRegion(regions,getAvailableDataInternal())) {
 
 			// to avoid dead locks, abandon local lock while descending in tree; decent will aquire it again
 			lock.unlock();
@@ -416,23 +548,23 @@ namespace data {
 			// forward to parent
 			auto data = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(regions,myAddress);
 
+			// the parent should have requested the lock
+			assert_true(isLocked(lock));
+
 			// this should cover all requested data
 			assert_eq(regions,data.getCoveredRegions());
-
-			// the parent should have requested the lock
-//			assert_false(lock.owns_lock()) << "Local: " << myAddress;
 
 			// -- Phase 4: forward data to calling child --
 
 			// update ownership data
-			addRegions(regions);
+			addRegionsInternal(regions);
 
 			if (child == leftChild) {
-				removeRegionsRight(regions);
-				addRegionsLeft(regions);
+				removeRegionsRightInternal(regions);
+				addRegionsLeftInternal(regions);
 			} else {
-				removeRegionsLeft(regions);
-				addRegionsRight(regions);
+				removeRegionsLeftInternal(regions);
+				addRegionsRightInternal(regions);
 			}
 
 			// lock child node
@@ -456,22 +588,22 @@ namespace data {
 
 		// update region information
 		if (child == rightChild) {
-			removeRegionsLeft(regions);
-			addRegionsRight(regions);
+			removeRegionsLeftInternal(regions);
+			addRegionsRightInternal(regions);
 		} else {
-			removeRegionsRight(regions);
-			addRegionsLeft(regions);
+			removeRegionsRightInternal(regions);
+			addRegionsLeftInternal(regions);
 		}
 
 		// make sure new management knowledge is consistent (for the requested part)
 		assert_eq(
-				intersect(getAvailableData(),regions),
-				intersect(merge(getAvailableDataLeft(),getAvailableDataRight()),regions)
+				intersect(getAvailableDataInternal(),regions),
+				intersect(merge(getAvailableDataLeftInternal(),getAvailableDataRightInternal()),regions)
 			) << "Node:    " << myAddress << "\n"
 			  << "Regions: " << regions << "\n"
-			  << "Available: " << getAvailableData() << "\n"
-			  << "Left:      " << getAvailableDataLeft() << "\n"
-			  << "Right:     " << getAvailableDataRight() << "\n";
+			  << "Available: " << getAvailableDataInternal() << "\n"
+			  << "Left:      " << getAvailableDataLeftInternal() << "\n"
+			  << "Right:     " << getAvailableDataRightInternal() << "\n";
 
 		// lock child node for ownership transfer
 		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)();
@@ -502,7 +634,7 @@ namespace data {
 		guard g(lock);
 
 		// make sure a owned part of the tree is requested
-		assert_pred2(isSubRegion,regions,getAvailableData());
+		assert_pred2(isSubRegion,regions,getAvailableDataInternal());
 
 
 		// -- handle leafs  --
@@ -521,9 +653,9 @@ namespace data {
 			assert_eq(regions,res.getCoveredRegions());
 
 			// ownership should be reduced impicitly
-			assert_pred2(isDisjoint,regions,getAvailableData())
+			assert_pred2(isDisjoint,regions,getAvailableDataInternal())
 				<< "Extracted: " << res.getCoveredRegions() << "\n"
-				<< "Remaining: " << getAvailableData() << "\n";
+				<< "Remaining: " << getAvailableDataInternal() << "\n";
 
 
 			// done
@@ -534,7 +666,7 @@ namespace data {
 		auto res = collectOwnershipFromChildren(regions);
 
 		// remove ownership of this node
-		removeRegions(regions);
+		removeRegionsInternal(regions);
 
 		// done
 		return res;
@@ -542,15 +674,18 @@ namespace data {
 
 	DataItemMigrationData DataItemIndexService::collectOwnershipFromChildren(const DataItemRegions& regions) {
 
+		// make sure there accesses is exclusive
+		assert_true(isLocked(lock));
+
 		// make sure the requested region is owned by this node
-		assert_pred2(isSubRegion,regions,getAvailableData());
+		assert_pred2(isSubRegion,regions,getAvailableDataInternal());
 
 		auto missing = regions;
 		DataItemMigrationData res;
 
 		// left child
 		{
-			auto part = intersect(missing,getAvailableDataLeft());
+			auto part = intersect(missing,getAvailableDataLeftInternal());
 			if (!part.empty()) {
 
 				// retract ownership and retrieve data
@@ -560,7 +695,7 @@ namespace data {
 				assert_eq(part,data.getCoveredRegions());
 
 				// update management information
-				removeRegionsLeft(part);
+				removeRegionsLeftInternal(part);
 
 				// update remaining missing area
 				missing = difference(missing,part);
@@ -572,7 +707,7 @@ namespace data {
 
 		// right child
 		if (!missing.empty()) {
-			auto part = intersect(missing,getAvailableDataRight());
+			auto part = intersect(missing,getAvailableDataRightInternal());
 			if (!part.empty()) {
 
 				// retract ownership and retrieve data
@@ -582,7 +717,7 @@ namespace data {
 				assert_eq(part,data.getCoveredRegions());
 
 				// update management information
-				removeRegionsRight(part);
+				removeRegionsRightInternal(part);
 
 				// update remaining missing area
 				missing = difference(missing,part);
@@ -596,17 +731,17 @@ namespace data {
 		if (!missing.empty()) {
 
 			// make sure this is correct, the data is indeed missing
-			assert_pred2(isSubRegion,missing,getAvailableData());
+			assert_pred2(isSubRegion,missing,getAvailableDataInternal());
 
-			assert_true(intersect(getAvailableDataLeft(),missing).empty())
-				<< "Available Left: " << getAvailableDataLeft() << "\n"
+			assert_true(intersect(getAvailableDataLeftInternal(),missing).empty())
+				<< "Available Left: " << getAvailableDataLeftInternal() << "\n"
 				<< "Missing Region: " << missing << "\n"
-				<< "Intersected:    " << intersect(getAvailableDataLeft(),missing) << "\n";
+				<< "Intersected:    " << intersect(getAvailableDataLeftInternal(),missing) << "\n";
 
-			assert_true(intersect(getAvailableDataRight(),missing).empty())
-				<< "Available Left: " << getAvailableDataRight() << "\n"
+			assert_true(intersect(getAvailableDataRightInternal(),missing).empty())
+				<< "Available Left: " << getAvailableDataRightInternal() << "\n"
 				<< "Missing Region: " << missing << "\n"
-				<< "Intersected:    " << intersect(getAvailableDataRight(),missing) << "\n";
+				<< "Intersected:    " << intersect(getAvailableDataRightInternal(),missing) << "\n";
 
 			// add the missing data to the result as something that can be default initialized
 			res.addDefaultInitRegions(missing);

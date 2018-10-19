@@ -41,7 +41,7 @@ foreach(test ${prototype_integration_tests})
 
     # add additional node/policy combination tests
     foreach( num_nodes 2 3 4 )
-        foreach( policy uniform dynamic random )
+        foreach( policy uniform balanced random )
             if (USE_MPI)
                 add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} mpirun -n ${num_nodes} $<TARGET_FILE:${tgt}>)
             else()
@@ -52,7 +52,7 @@ foreach(test ${prototype_integration_tests})
 
     # add additional node/policy combination tests for higher number of nodes
     foreach( num_nodes 5 15 16 )
-        foreach( policy uniform dynamic )
+        foreach( policy uniform balanced )
             if (USE_MPI)
                 add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} mpirun -n ${num_nodes} $<TARGET_FILE:${tgt}>)
             else()

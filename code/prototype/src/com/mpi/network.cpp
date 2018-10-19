@@ -76,7 +76,9 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		// start up communication server
 		com_server = std::thread([&]{
-			runRequestServer();
+			localNode->run([&](com::Node&){
+				runRequestServer();
+			});
 		});
 
 		// start the network statistic service
@@ -123,6 +125,32 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		return instance;
 	}
 
+	Node& Network::getLocalNode() {
+		return *getNetwork().localNode;
+	}
+
+	void Network::send(const std::vector<char>& msg, com::rank_t trg, int tag) {
+		MPI_Request request;
+		{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			getLocalStats().sent_bytes += msg.size();
+			MPI_Isend(&msg[0],msg.size(),MPI_CHAR,trg,tag,point2point,&request);
+		}
+
+		// a utility to test that the message has been send
+		auto done = [&]()->bool{
+			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			int done;
+			MPI_Test(&request,&done,MPI_STATUS_IGNORE);
+			return done == true;
+		};
+
+		// wait for completion of send call
+		while(!done()) {
+			Network::getNetwork().processMessage();
+		}
+	}
+
 	void Network::sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag) {
 
 		// check validity of parameters
@@ -131,15 +159,23 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		// send to target node
 		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Sending request " << request_tag << " to " << trg << " ...\n";
-
-		{
-			guard g(G_MPI_MUTEX);
-			getLocalStats().sent_bytes += msg.size();
-			MPI_Send(&msg[0],msg.size(),MPI_CHAR,trg,request_tag,point2point);
-		}
-
+		send(msg,trg,request_tag);
 		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Request " << request_tag << " sent to " << trg << "\n";
 	}
+
+	void Network::sendResponse(const std::vector<char>& msg, com::rank_t trg, int response_tag) {
+
+		// check validity of parameters
+		assert_ne(trg,localNode->getRank());
+		assert_pred1(isResponseTag,response_tag);
+
+		// send to target node
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Sending response to request " << getRequestTag(response_tag) << " to source " << trg << " ...\n";
+		send(msg,trg,response_tag);
+		DEBUG_MPI_NETWORK << "Node " << localNode->getRank() << ": Response sent to request " << getRequestTag(response_tag) << " to source " << trg << "\n";
+	}
+
+
 
 	std::vector<char> Network::sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag) {
 
@@ -278,7 +314,7 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 			// process message
 			node.run([&](Node&){
-				std::get<0>(msg)(status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
+				std::get<0>(msg)(*this,status.MPI_SOURCE,status.MPI_TAG,node,std::get<1>(msg));
 			});
 			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " complete.\n";
 
@@ -356,4 +392,26 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale
+
+#include "allscale/runtime/com/hierarchy.h"
+#include "allscale/runtime/data/data_item_index.h"
+
+void dumpSystemState() {
+
+	using namespace allscale::runtime;
+
+	auto& net = com::mpi::Network::getNetwork();
+	com::HierarchicalOverlayNetwork hierarchy = net;
+
+	auto& node = com::mpi::Network::getLocalNode();
+	std::cout << "System state of node " << node.getRank() << ":\n";
+
+	node.run([&](com::Node&){
+		hierarchy.forAllLocal<data::DataItemIndexService>([&](const data::DataItemIndexService& service){
+			service.dumpState("\t");
+		});
+	});
+
+}
+
 #endif

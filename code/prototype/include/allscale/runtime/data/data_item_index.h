@@ -12,6 +12,8 @@
 #include <memory>
 #include <mutex>
 
+#include "allscale/utils/fiber.h"
+
 #include "allscale/api/core/data.h"
 
 #include "allscale/runtime/com/node.h"
@@ -378,10 +380,11 @@ namespace data {
 		mutable DataItemLocationCache locationCache;
 
 		// a lock to synchronize transfers on this instance
-		mutable std::mutex lock;
+		mutable allscale::utils::FiberMutex lock;
+//		mutable std::mutex lock;
 
 		// the guard type to utilize
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<allscale::utils::FiberMutex>;
 
 	public:
 
@@ -480,13 +483,13 @@ namespace data {
 		 * Requests information on the location of data in the given regions.
 		 * This is the entry point, as well as the implementation of phase 1 and 3.
 		 */
-		DataItemLocationInfos locate(const DataItemRegions& regions);
+		DataItemLocationInfos locate(const DataItemRegions& regions, int id = -1);
 
 		/**
 		 * This recursively resolves the location of the given data regions. Implements
 		 * phase 2 of the lookup procedure.
 		 */
-		DataItemLocationInfos resolveLocations(const DataItemRegions& regions);
+		DataItemLocationInfos resolveLocations(const DataItemRegions& regions, int id);
 
 
 
@@ -529,8 +532,6 @@ namespace data {
 		// a internal utility function implementing common functionality of acquireOwnershipFor and abandonOwnership
 		DataItemMigrationData collectOwnershipFromChildren(const DataItemRegions&);
 
-	private:
-
 		// retrieves a type specific index maintained in this service
 		template<typename DataItem>
 		Index<DataItem>& getIndex() {
@@ -538,8 +539,6 @@ namespace data {
 			if (!ptr) ptr = std::make_unique<Index<DataItem>>(network.getNetwork(),myAddress);
 			return static_cast<Index<DataItem>&>(*ptr);
 		}
-
-	private:
 
 		// -- internal, non-lock protected members --
 
@@ -570,6 +569,10 @@ namespace data {
 		void removeRegionsLeftInternal(const DataItemRegions&);
 
 		void removeRegionsRightInternal(const DataItemRegions&);
+
+	public:
+
+		void dumpState(const std::string& prefix) const;
 
 	};
 

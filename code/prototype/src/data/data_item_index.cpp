@@ -1,16 +1,21 @@
 
 #include "allscale/runtime/data/data_item_index.h"
 
+#include <atomic>
+
 namespace allscale {
 namespace runtime {
 namespace data {
+
+	constexpr bool DEBUG = false;
 
 	namespace {
 
 		/**
 		 * A utility to test whether a lock is locked.
 		 */
-		bool isLocked(std::mutex& lock) {
+		template<typename Lock>
+		bool isLocked(Lock& lock) {
 			auto res = lock.try_lock();
 			if (res) lock.unlock();
 			return !res;
@@ -376,7 +381,18 @@ namespace data {
 
 
 
-	DataItemLocationInfos DataItemIndexService::locate(const DataItemRegions& regions) {
+	DataItemLocationInfos DataItemIndexService::locate(const DataItemRegions& regions, int id) {
+
+		static std::atomic<int> counter(0 + (1<<20) * myAddress.getRank());
+
+		if (id < 0) {
+			id = counter++;
+			if (DEBUG) std::cout << myAddress << ": start locating procedure " << id << " - lock state: " << isLocked(lock) << " ..\n";
+		} else {
+			if (DEBUG) std::cout << myAddress << ": processing locating procedure " << id << " - lock state: " << isLocked(lock) << " ..\n";
+		}
+
+
 
 		// see whether there is something to do at all
 		if (regions.empty()) return {};
@@ -384,18 +400,31 @@ namespace data {
 		// Phase 1: find node owning all required data
 
 		if (!isRoot && !isSubRegion(regions,getAvailableData())) {
+
+			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - forward to " << myAddress.getParent() << " - " << isLocked(lock) << "\n";
+
 			// forward call to parent
-			return network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions);
+			auto res = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id);
+
+			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - retrieved from " << myAddress.getParent() << "\n";
+			return res;
+
+			// forward call to parent
+			return network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id);
 		}
 
 		// Phase 2 + 3: this is the owner of everything required => resolve details and return result
-		return resolveLocations(regions);
+		return resolveLocations(regions,id);
 	}
 
-	DataItemLocationInfos DataItemIndexService::resolveLocations(const DataItemRegions& regions) {
+	DataItemLocationInfos DataItemIndexService::resolveLocations(const DataItemRegions& regions, int id) {
+
+		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - start - " << isLocked(lock) << "\n";
 
 		// lock this node (to avoid concurrent modifications)
 		guard g(lock);
+
+		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - locked\n";
 
 		// make sure this one is responsible for the requested region
 		if (!isRoot) assert_pred2(isSubRegion,regions,getAvailableDataInternal());
@@ -415,9 +444,11 @@ namespace data {
 
 			// make sure everything has been located
 			assert_eq(regions,res.getCoveredRegions())
-				<< "Available: " << getAvailableData() << "\n"
+				<< "Available: " << getAvailableDataInternal() << "\n"
 				<< "Located: " << res << "\n"
 				<< "Missing: " << difference(regions,res.getCoveredRegions());
+
+			if (DEBUG) std::cout << myAddress << ": Resolved location " << id << " - leaf done\n";
 
 			// done
 			return res;
@@ -434,8 +465,12 @@ namespace data {
 			auto part = intersect(remaining,getAvailableDataLeftInternal());
 			if (!part.empty()) {
 
+				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking left ..\n";
+
 				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(part);
+				auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(part,id);
+
+				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - left done\n";
 
 				// consistency check
 				assert_eq(part,subInfo.getCoveredRegions());
@@ -456,8 +491,12 @@ namespace data {
 			auto part = intersect(remaining,getAvailableDataRightInternal());
 			if (!part.empty()) {
 
+				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking right ..\n";
+
 				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(part);
+				auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(part,id);
+
+				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - right done\n";
 
 				// consistency check
 				assert_eq(part,subInfo.getCoveredRegions());
@@ -477,12 +516,16 @@ namespace data {
 			assert_eq(regions,res.getCoveredRegions());
 		}
 
+		if (DEBUG) std::cout << myAddress << ": Resolve location - inner done\n";
+
 		// done
 		return res;
 	}
 
 
 	void DataItemIndexService::acquire(const DataItemRegions& regions) {
+
+//		std::cout << "Acquire called ..\n";
 
 		// this entry point is only to be called on the leaf level
 		assert_true(myAddress.isLeaf());
@@ -752,6 +795,10 @@ namespace data {
 		return res;
 	}
 
+
+	void DataItemIndexService::dumpState(const std::string& prefix) const {
+		std::cout << prefix << "DataItemIndexService@" << myAddress << " - lock state: " << isLocked(lock) << "\n";
+	}
 
 } // end of namespace data
 } // end of namespace runtime

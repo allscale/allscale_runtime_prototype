@@ -26,8 +26,13 @@ namespace utils {
 
 		FiberPool pool;
 
+		EXPECT_FALSE(isFiberContext());
+
 		int x = 0;
-		auto res = pool.start([&]{ x = 1; });
+		auto res = pool.start([&]{
+			EXPECT_TRUE(isFiberContext());
+			x = 1;
+		});
 		EXPECT_FALSE(res);
 		EXPECT_EQ(1,x);
 
@@ -43,15 +48,17 @@ namespace utils {
 
 		int x = 0;
 		auto res = pool.start([&]{
+			EXPECT_TRUE(isFiberContext());
 			x = 1;
 			FiberPool::suspend();
+			EXPECT_TRUE(isFiberContext());
 			x = 2;
 		});
 
 		EXPECT_TRUE(res);
 		EXPECT_EQ(1,x);
 
-		bool done = pool.resume(*res);
+		bool done = FiberPool::resume(*res);
 
 		EXPECT_FALSE(done);
 		EXPECT_EQ(2,x);
@@ -73,12 +80,12 @@ namespace utils {
 		EXPECT_TRUE(res);
 		EXPECT_EQ(1,x);
 
-		bool alive = pool.resume(*res);
+		bool alive = FiberPool::resume(*res);
 
 		EXPECT_TRUE(alive);
 		EXPECT_EQ(2,x);
 
-		alive = pool.resume(*res);
+		alive = FiberPool::resume(*res);
 
 		EXPECT_FALSE(alive);
 		EXPECT_EQ(3,x);
@@ -112,19 +119,104 @@ namespace utils {
 		EXPECT_TRUE(fB);
 		EXPECT_EQ(11,x);
 
-		EXPECT_TRUE(pool.resume(*fA));
+		EXPECT_TRUE(FiberPool::resume(*fA));
 		EXPECT_EQ(2,x);
 
-		EXPECT_TRUE(pool.resume(*fB));
+		EXPECT_TRUE(FiberPool::resume(*fB));
 		EXPECT_EQ(22,x);
 
-		EXPECT_FALSE(pool.resume(*fB));
+		EXPECT_FALSE(FiberPool::resume(*fB));
 		EXPECT_EQ(33,x);
 
-		EXPECT_FALSE(pool.resume(*fA));
+		EXPECT_FALSE(FiberPool::resume(*fA));
 		EXPECT_EQ(3,x);
 
 	}
+
+	TEST(FiberMutex, SimpleLock) {
+
+		FiberPool pool;
+
+		FiberMutex lock;
+
+		int x = 0;
+		auto fA = pool.start([&]{
+			x = 1;
+			lock.lock();
+			x = 2;
+			lock.unlock();
+			x = 3;
+		});
+
+		EXPECT_FALSE(fA);
+		EXPECT_EQ(3,x);
+
+	}
+
+	TEST(FiberMutex, BlockedLock) {
+
+		FiberPool pool;
+
+		FiberMutex lock;
+		lock.lock();
+
+		int x = 0;
+		auto fA = pool.start([&]{
+			x = 1;
+			lock.lock();
+			x = 2;
+			lock.unlock();
+			x = 3;
+		});
+
+		EXPECT_TRUE(fA);
+		EXPECT_EQ(1,x);
+
+		// unlock the fiber (this leads to the completion of the task)
+		lock.unlock();
+		EXPECT_EQ(3,x);
+
+	}
+
+
+	TEST(FiberMutex, BlockedLockMultipleFibers) {
+
+		FiberPool pool;
+
+		FiberMutex lock;
+		lock.lock();
+
+		int x = 0;
+		auto fA = pool.start([&]{
+			x = 1;
+			lock.lock();
+			x = 2;
+			lock.unlock();
+			x = 3;
+		});
+
+		EXPECT_TRUE(fA);
+		EXPECT_EQ(1,x);
+
+		int y = 0;
+		auto fB = pool.start([&]{
+			y = 1;
+			lock.lock();
+			y = 2;
+			lock.unlock();
+			y = 3;
+		});
+
+		EXPECT_TRUE(fB);
+		EXPECT_EQ(1,y);
+
+		// unlock the fiber (this leads to the completion of both tasks)
+		lock.unlock();
+		EXPECT_EQ(3,x);
+		EXPECT_EQ(3,y);
+
+	}
+
 
 } // end of namespace utils
 } // end of namespace allscale

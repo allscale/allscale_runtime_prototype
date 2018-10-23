@@ -16,8 +16,6 @@
 #include <thread>
 #include <vector>
 
-#include <mpi.h>
-
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/functions.h"
@@ -51,8 +49,10 @@ namespace mpi {
 		return tag + 1;
 	}
 
-	// the communicator used for point-to-point operations
-	extern MPI_Comm point2point;
+	inline tag_t getRequestTag(tag_t tag) {
+		assert_pred1(isResponseTag,tag);
+		return tag - 1;
+	}
 
 
 	namespace detail {
@@ -116,7 +116,7 @@ namespace mpi {
 		using guard = std::lock_guard<std::mutex>;
 
 		// the type of handler send along with messages to dispatch calls on the receiver side
-		using request_handler_t = void(*)(rank_t,int tag, Node&, allscale::utils::Archive&);
+		using request_handler_t = void(*)(Network&,rank_t,int tag, Node&, allscale::utils::Archive&);
 
 		// the type of message send for service requests
 		using request_msg_t = std::tuple<request_handler_t,allscale::utils::Archive>;
@@ -141,7 +141,12 @@ namespace mpi {
 		utils::FiberPool pool;
 
 		using response_id = std::pair<int,int>;
-		using response_handler = utils::FiberPool::Fiber;
+
+		struct response_handler {
+			utils::FiberPool::Fiber receiver;
+			utils::FiberPool::Fiber sender;
+			std::mutex* lock;
+		};
 
 		// a registry for fibers waiting for responses from remote calls
 		std::map<response_id,response_handler> responde_handler;
@@ -193,7 +198,7 @@ namespace mpi {
 			RemoteProcedure(Network& net, Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...))
 				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleRequest(Network& net, rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
 
 				// count calls
@@ -207,18 +212,10 @@ namespace mpi {
 				// run service
 				R res = detail::runOperationOn<R>(node, args);
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " to source " << source << " ...\n";
-
-				// send back result to source
+				// encapsulate result and send back
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					getLocalStats().sent_bytes += buffer.size();
-					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
-				}
-
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " to source " << source << "\n";
+				net.sendResponse(buffer,source,getResponseTag(request_tag));
 			}
 
 			/**
@@ -293,7 +290,7 @@ namespace mpi {
 			RemoteProcedure(Network& net, Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
 				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleProcedure(rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleProcedure(Network&, rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
@@ -374,7 +371,7 @@ namespace mpi {
 			RemoteConstProcedure(Network& net, Node& local, rank_t target, const Selector& selector, R(S::*fun)(Args...) const)
 				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleRequest(rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleRequest(Network& net, rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				assert_pred1(isRequestTag,request_tag);
 
 				// count calls
@@ -388,18 +385,10 @@ namespace mpi {
 				// run service
 				R res = detail::runOperationOn<R>(node, args);
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " to source " << source << " ...\n";
-
-				// send back result to source
+				// encapsulate result and send back
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
-				{
-					std::lock_guard<std::mutex> g(G_MPI_MUTEX);
-					Network::getLocalStats().sent_bytes += buffer.size();
-					MPI_Send(&buffer[0],buffer.size(),MPI_CHAR,source,getResponseTag(request_tag),point2point);
-				}
-
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " to source " << source << "\n";
+				net.sendResponse(buffer,source,getResponseTag(request_tag));
 			}
 
 			/**
@@ -509,6 +498,9 @@ namespace mpi {
 
 		// obtains a reference to the currently active network
 		static Network& getNetwork();
+
+		// obtains a reference to the local node instance
+		static Node& getLocalNode();
 
 		/**
 		 * Obtains the number
@@ -650,6 +642,10 @@ namespace mpi {
 		bool processMessage();
 
 		void sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag);
+
+		void sendResponse(const std::vector<char>& msg, com::rank_t trg, int response_tag);
+
+		void send(const std::vector<char>& msg, com::rank_t trg, int tag);
 
 		std::vector<char> sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag);
 

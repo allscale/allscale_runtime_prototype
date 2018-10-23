@@ -1,13 +1,22 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <stdlib.h>
 #include <ucontext.h>
 #include <mutex>
 #include <vector>
 
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <sys/mman.h>
+
 #include "allscale/utils/assert.h"
 #include "allscale/utils/optional.h"
+
+// TODO: remove when no longer needed
+#include "allscale/utils/printer/vectors.h"
 
 namespace allscale {
 namespace utils {
@@ -23,28 +32,39 @@ namespace utils {
 	 */
 	class FiberPool {
 
-		// we use 1 MB per fiber stack
-		constexpr static std::size_t STACK_SIZE = (1<<20);
+		constexpr static bool DEBUG = false;
 
-		// the definition of a stack for a fiber
-		using stack_t = char[STACK_SIZE/sizeof(char)];
+		// we use 1 MB per fiber stack
+		constexpr static std::size_t DEFAULT_STACK_SIZE = (1<<20);
 
 		// the management information required per fiber
 		struct fiber_info {
 			FiberPool& pool;			// < the pool it belongs to
-			bool running;				// < the running state
-			stack_t* stack;				// < the associated stack memory
+			std::atomic<bool> running;	// < the running state
+			void* stack;				// < the associated stack memory
+			const int stack_size;		// < the size of the stack
 			ucontext_t* continuation;	// < an optional continuation to be processed after finishing or suspending a fiber
 
-			fiber_info(FiberPool& pool)
+			fiber_info(FiberPool& pool, int stackSize = DEFAULT_STACK_SIZE)
 				: pool(pool),
 				  running(false),
-				  stack((stack_t*)aligned_alloc(STACK_SIZE,STACK_SIZE)),
-				  continuation(nullptr) {}
+				  stack(nullptr),
+				  stack_size(stackSize),
+				  continuation(nullptr) {
+
+				// allocate stack memory
+				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_32BIT | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
+
+				assert_ne(MAP_FAILED,stack) << "Error code: " << errno << "\n";
+				assert_true(stack);
+			}
 
 			fiber_info(const fiber_info&) = delete;
 			fiber_info(fiber_info&& other) = delete;
-			~fiber_info() { free(stack); }
+			~fiber_info() {
+				munmap(stack,sizeof(stack_t));
+			}
+
 		};
 
 		// the list of all fiber infos associated to this pool
@@ -69,6 +89,7 @@ namespace utils {
 			freeInfos.reserve(initialSize);
 			for(std::size_t i=0; i<initialSize; i++) {
 				infos.push_back(new fiber_info(*this));
+				assert_false(infos.back()->running);
 				freeInfos.push_back(infos.back());
 			}
 		}
@@ -80,10 +101,33 @@ namespace utils {
 			// clear owned fiber info entries
 			for(const auto& cur : infos) {
 				// make sure processing has completed!
-				assert_false(cur->running);
+				assert_false(cur->running) << "Incomplete fiber encountered during destruction.";
 				delete cur;
 			}
 		}
+
+	private:
+
+		static std::mutex*& getMutexLock() {
+			thread_local static std::mutex* tl_lock = nullptr;
+			return tl_lock;
+		}
+
+		static void setMutexLock(std::mutex* newLock) {
+			auto& lock = getMutexLock();
+			assert_false(lock);
+			lock = newLock;
+		}
+
+		static void clearMutexLock() {
+			auto& lock = getMutexLock();
+			if (!lock) return;
+			lock->unlock();
+			lock = nullptr;
+		}
+
+	public:
+
 
 		/**
 		 * Starts the processing of a new fiber by executing the given lambda.
@@ -106,16 +150,18 @@ namespace utils {
 				if (!freeInfos.empty()) {
 					fiber = freeInfos.back();
 					freeInfos.pop_back();
+					assert_false(fiber->running) << "Faulty fiber: " << fiber;
 				} else {
 					fiber = new fiber_info(*this);
 					infos.push_back(fiber);
+					assert_false(fiber->running) << "Faulty fiber: " << fiber;
 				}
 			}
 
 			assert_true(fiber);
 
 			// make sure the fiber is not running
-			assert_false(fiber->running);
+			assert_false(fiber->running) << "Faulty fiber: " << fiber;
 
 			// capture current context
 			ucontext_t local;
@@ -130,7 +176,7 @@ namespace utils {
 
 			// exchange stack
 			target.uc_stack.ss_sp = fiber->stack;
-			target.uc_stack.ss_size = STACK_SIZE;
+			target.uc_stack.ss_size = fiber->stack_size;
 
 			// encode pool pointer and pointer to lambda into integers
 			static_assert(2*sizeof(int) == sizeof(void*), "Assumption on size of pointer failed!\n");
@@ -143,19 +189,25 @@ namespace utils {
 					int(lambdaPtr >> 32), int(lambdaPtr)
 			);
 
+			// backup current fiber state
+			auto localFiber = getCurrentFiber();
+
+			if (DEBUG) std::cout << "Starting fiber " << fiber << " from " << localFiber << " @ " << &getCurrentFiberInfo() << "\n";
+
 			// switch to fiber context
 			int success = swapcontext(&local,&target);
 			if (success != 0) assert_fail() << "Unable to switch thread context to fiber!";
 
+			// restore local fiber information
+			if (DEBUG) std::cout << "Resuming fiber " << localFiber << " after starting " << fiber << " @ " << &getCurrentFiberInfo() << "\n";
+			setCurrentFiberInfo(localFiber);
+
+			// unlock other sides lock
+			clearMutexLock();
+
 			// determine whether fiber is still running
 			if (fiber->running) {
 				return fiber;
-			}
-
-			// return fiber info to re-use list
-			{
-				guard g(lock);
-				freeInfos.push_back(fiber);
 			}
 
 			// fiber is done, nothing to return
@@ -167,16 +219,18 @@ namespace utils {
 		 * must only be called within the context of a fiber managed
 		 * by this pool.
 		 */
-		static void suspend() {
+		static void suspend(std::mutex* lock = nullptr) {
 
-			// back up current state
-			auto backup = getCurrentFiberInfo();
+			// get current fiber
+			auto fiber = getCurrentFiberInfo();
 
 			// make sure this is within a fiber
-			assert_true(backup);
+			assert_true(fiber);
 
 			// make sure this fiber is indeed running
-			assert_true(backup->running);
+			assert_true(fiber->running);
+
+			if (DEBUG) std::cout << "Suspending fiber " << fiber << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			// remove state information
 			resetCurrentFiberInfo();
@@ -186,10 +240,12 @@ namespace utils {
 			getcontext(&local);
 
 			// get previous continuation
-			ucontext_t& continuation = *backup->continuation;
+			ucontext_t& continuation = *fiber->continuation;
 
 			// make local state the new continuation for this fiber
-			backup->continuation = &local;
+			fiber->continuation = &local;
+
+			setMutexLock(lock);
 
 			// switch to old continuation
 			int success = swapcontext(&local,&continuation);
@@ -197,8 +253,17 @@ namespace utils {
 
 			// after resuming:
 
+			// unlock other sides lock
+			clearMutexLock();
+
+			// restore locked mutex
+			if (lock) lock->lock();
+
 			// restore state
-			setCurrentFiberInfo(backup);
+			setCurrentFiberInfo(fiber);
+
+			if (DEBUG) std::cout << "Resuming fiber " << fiber << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
+
 		}
 
 		/**
@@ -208,9 +273,7 @@ namespace utils {
 		 * @param f the fiber to be continued (must be active)
 		 * @return true if the fiber has been again suspended, false otherwise
 		 */
-		bool resume(Fiber f) {
-			// make sure this is not within a fiber
-			assert_false(getCurrentFiberInfo());
+		static bool resume(Fiber f) {
 
 			// make sure fiber is active
 			assert_true(f->running);
@@ -219,36 +282,55 @@ namespace utils {
 			ucontext_t local;
 			getcontext(&local);
 
-			// get current fiber continuation
+			// get fiber continuation
 			ucontext_t& continuation = *f->continuation;
 
 			// set local as the next continuation
 			f->continuation = &local;
 
+			// backup current fiber
+			auto currentFiber = getCurrentFiberInfo();
+			assert_ne(currentFiber,f);
+
+
+			if (DEBUG) std::cout << "Resuming fiber " << f << " in " << currentFiber << " @ " << &getCurrentFiberInfo() << "\n";
+
 			// switch to context
 			int success = swapcontext(&local,&continuation);
 			if (success != 0) assert_fail() << "Unable to switch thread context back to fiber!";
 
-			// after return: should not be in a context
-			assert_false(getCurrentFiberInfo());
+			// restore current fiber information
+			setCurrentFiberInfo(currentFiber);
 
-			// determine whether task is complete
-			if (f->running) return true;
+			// unlock other sides lock
+			clearMutexLock();
 
-			// return info object to re-use list
-			{
-				guard g(lock);
-				freeInfos.push_back(f);
-			}
+			if (DEBUG) std::cout << "Returning to fiber " << currentFiber << " from " << f << " / " << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
-			// signal that fiber has completed its task
-			return false;
+			// signal whether fiber has completed its task
+			return f->running;
+		}
+
+		/**
+		 * Tests whether the current execution context is a fiber.
+		 *
+		 * @return true if the current context is a fiber context, false otherwise
+		 */
+		static bool isFiberContext() {
+			return getCurrentFiberInfo();
+		}
+
+		/**
+		 * Obtains the currently active fiber, null if not within a fiber context.
+		 */
+		static Fiber getCurrentFiber() {
+			return getCurrentFiberInfo();
 		}
 
 	private:
 
 		static fiber_info*& getCurrentFiberInfo() {
-			static thread_local fiber_info* info;
+			static thread_local fiber_info* info = nullptr;
 			return info;
 		}
 
@@ -277,7 +359,10 @@ namespace utils {
 			setCurrentFiberInfo(&info);
 
 			// mark fiber as running
+			assert_false(info.running);
 			info.running = true;
+
+			if (DEBUG) std::cout << "Starting fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			{
 
@@ -289,8 +374,13 @@ namespace utils {
 
 			} // destruct function context
 
+			if (DEBUG) std::cout << "Completing fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
+
 			// mark fiber as done
 			info.running = false;
+
+			// make sure fiber info has been maintained
+			assert_eq(&info,getCurrentFiberInfo());
 
 			// reset thread-local state
 			resetCurrentFiberInfo();
@@ -299,13 +389,179 @@ namespace utils {
 			ucontext_t local;
 			ucontext_t& continuation = *info.continuation;
 			info.continuation = nullptr;
+
+			// free info block
+			{
+				guard g(info.pool.lock);
+				if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
+				assert_false(info.running);
+				info.pool.freeInfos.push_back(&info);
+			}
+
+			// swap back to continuation
 			int success = swapcontext(&local,&continuation);
 			if (success != 0) assert_fail() << "Unable to switch thread context back to continuation!";
 
 			// Note: this code will never be reached!
+			assert_fail() << "Should never be reached!";
+		}
+
+		// for debugging
+		bool dump_state() {
+			std::cout << "Fiber Pool:\n";
+			int count = 0;
+			for(std::size_t i=0; i<infos.size(); i++) {
+				if (!infos[i]->running) continue;
+				std::cout << "\tfiber " << i << " running\n";
+				count++;
+			}
+			if (count == 0) {
+				std::cout << "\t - no active fibers -\n";
+			}
+			return true;
 		}
 
 	};
+
+
+	// -- fiber utilities --
+
+	using Fiber = FiberPool::Fiber;
+
+	/**
+	 * Tests whether the current context is a fiber context.
+	 *
+	 * @return true if the current context is a fiber context, false otherwise.
+	 */
+	inline bool isFiberContext() {
+		return FiberPool::isFiberContext();
+	}
+
+	/**
+	 * If the current execution is in the context of a fiber, it will be suspended. If
+	 * not, this operation has no effect.
+	 */
+	inline void suspend() {
+		if (isFiberContext()) FiberPool::suspend();
+	}
+
+	inline void suspend(std::mutex& lock) {
+		if (isFiberContext()) FiberPool::suspend(&lock);
+	}
+
+
+	/**
+	 * A mutex lock avoiding blocking of fibers. Instead of blocking fibers,
+	 * fibers get suspended until the lock can be acquired.
+	 */
+	class FiberMutex {
+
+		constexpr static bool DEBUG = false;
+
+		// the internally maintained mutex (using a flag, that can not spontaneously fail)
+		std::atomic_flag mux;
+
+		// a list of blocked fibers
+		std::vector<Fiber> blocked;
+
+		// the lock to protect accessed to the blocked list of fibers
+		std::mutex state_lock;
+
+		using guard = std::lock_guard<std::mutex>;
+
+		int pid;
+
+	public:
+
+		FiberMutex() : pid(::getpid()) {
+			mux.clear();
+		}
+
+		void lock() {
+
+			// get current fiber
+			auto fiber = FiberPool::getCurrentFiber();
+
+			if (DEBUG) {
+				guard g(state_lock);
+				std::cout << std::dec << pid << ": Locking   " << this << " by fiber " << fiber << "..\n";
+			}
+
+			// if it is not a fiber, no special handling needed
+			if (!fiber) {
+				// loop until set
+				if (!mux.test_and_set()) {
+					return;
+				}
+				if (DEBUG) std::cout << std::dec << pid << ": Waiting for " << this << "\n";
+				while(mux.test_and_set()) {
+					// spin ..
+				};
+				if (DEBUG) std::cout << std::dec << pid << ": Releasing " << this << "\n";
+			} else {
+				state_lock.lock();
+				while(mux.test_and_set()) {
+					blocked.push_back(fiber);
+					if (DEBUG) std::cout << std::dec << pid << ": Suspending " << fiber << " for " << this << "\n";
+					suspend(state_lock);
+					if (DEBUG) std::cout << std::dec << pid << ": Resuming " << fiber << " for " << this << "\n";
+				}
+				state_lock.unlock();
+			}
+
+			if (DEBUG) {
+				guard g(state_lock);
+				std::cout << std::dec << pid << ": Locked    " << this << " by fiber " << fiber << "..\n";
+			}
+		}
+
+		void unlock() {
+			if (DEBUG) {
+				guard g(state_lock);
+				std::cout << std::dec << pid << ": Unlocking " << this << " by fiber " << FiberPool::getCurrentFiber() << "..\n";
+			}
+
+			state_lock.lock();
+
+			assert_true(mux.test_and_set());
+
+			// free the lock
+			mux.clear();
+			// resume all suspended fibers
+			std::vector<Fiber> list;
+			list.swap(blocked);
+			state_lock.unlock();
+			for(const auto& cur : list) {
+				if (DEBUG) {
+					guard g(state_lock);
+					std::cout << "\t" << std::dec << pid << ": Resuming " << cur << " for " << this << " - full list: " << list << "\n";
+				}
+				FiberPool::resume(cur);
+			}
+
+			if (DEBUG) {
+				guard g(state_lock);
+				std::cout << std::dec << pid << ": Unlocked  " << this << "..\n";
+			}
+
+		}
+
+		bool try_lock() {
+			// nothing special here
+			if (DEBUG) {
+				bool res = !mux.test_and_set();
+				{
+					guard g(state_lock);
+					std::cout << std::dec << pid << ": Try Locking   " << this << " - " << res << " ..\n";
+				}
+				return res;
+			}
+
+			return !mux.test_and_set();
+		}
+
+	};
+
 
 } // end namespace utils
 } // end namespace allscale

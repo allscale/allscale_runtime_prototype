@@ -109,9 +109,9 @@ namespace work {
 			ExchangeableSchedulingPolicy policy;
 
 			// the lock for scheduling operations (to avoid policies being exchanged while scheduling)
-			mutable std::recursive_mutex policy_lock;
+			mutable std::mutex policy_lock;
 
-			using guard = std::lock_guard<std::recursive_mutex>;
+			using guard = std::lock_guard<std::mutex>;
 
 		public:
 

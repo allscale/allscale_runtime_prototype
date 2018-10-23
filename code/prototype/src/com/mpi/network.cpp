@@ -22,22 +22,96 @@ namespace mpi {
 	namespace detail {
 
 
-		bool EpochService::inc(int next) {
-			DEBUG_MPI_NETWORK << "Node " << rank << ": Increasing epoch from " << counter << " to " << next << "\n";
+		// an epoch counter service for syncing global operations
+		class EpochService {
 
-			// update epoche counter
-			{
-				guard g(mutex);
-				assert_eq(next-1,counter);
-				counter++;
+			// the network this service is being a part of
+			Network& net;
+
+			// the rank of the local node
+			rank_t rank;
+
+			// the mutex guarding the epoch counter and condition var
+			std::mutex mutex;
+
+			// the condition variable for the epoch counter
+			std::condition_variable condition_var;
+
+			// the epoch counter reflecting the globally reached epoch
+			std::atomic<int> counter;
+
+			// a counter maintained by the root node to see how many nodes are ready for the next epoch
+			int ready_counter = 0;
+
+		public:
+
+			EpochService(Node& node, Network& net)
+				: net(net), rank(node.getRank()), counter(0) {}
+
+
+			// -- local interface --
+
+			void nextEpochReached() {
+
+				// get current epoch
+				int current = counter.load();
+				DEBUG_MPI_NETWORK << "Rank " << rank << " leafing epoch " << current << " ...\n";
+
+				if (rank == 0) {
+
+					// wait until all nodes are in the next epoch
+					{
+						int num_other_nodes = net.numNodes() - 1;
+
+						std::unique_lock<std::mutex> g(mutex);
+						if (ready_counter != num_other_nodes) {
+							// wait for all nodes to be present
+							condition_var.wait(g,[&]{
+								return ready_counter == num_other_nodes;
+							});
+						}
+
+						// reset counter for next epoch
+						ready_counter = 0;
+					}
+
+					// signal next epoch to all nodes
+					net.broadcast(&EpochService::globalEpochReached)(current+1);
+
+				} else {
+
+					// signal root node that this node has reached the next epoch
+					net.getRemoteProcedure(0,&EpochService::localEpochReached)(rank);
+
+					// wait for next epoch to be globally reached
+					{
+						std::unique_lock<std::mutex> g(mutex);
+						// wait for reaching next global state
+						condition_var.wait(g,[&]{
+							return counter.load() > current;
+						});
+					}
+
+				}
+
+				DEBUG_MPI_NETWORK << "Rank " << rank << " starting into epoch " << counter.load() << "\n";
+
 			}
 
-			// notify consumers
-			condition_variable.notify_all();
+			// -- local interface --
 
-			// done
-			return true;
-		}
+			void localEpochReached(com::rank_t) {
+				std::lock_guard<std::mutex> g(mutex);
+				ready_counter++;
+				condition_var.notify_one();
+			}
+
+			void globalEpochReached(int epoch) {
+				counter = epoch;
+				condition_var.notify_one();
+			}
+
+		};
 
 	}
 
@@ -52,7 +126,7 @@ namespace mpi {
 	Network Network::instance;
 
 
-	Network::Network() : epoch_counter(0), last_epoch(0), num_nodes(1), alive(true) {
+	Network::Network() : num_nodes(1), alive(true) {
 		// start up MPI environment
 		int available;
 		MPI_Init_thread(nullptr,nullptr,MPI_THREAD_SERIALIZED,&available);
@@ -69,7 +143,7 @@ namespace mpi {
 		localNode = std::make_unique<Node>(rank);
 std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		// install epoch counter service
-		localNode->startService<detail::EpochService>(epoch_mutex,epoch_condition_var,epoch_counter);
+		localNode->startService<detail::EpochService>(*this);
 
 		// create communicator groups
 		MPI_Comm_dup(MPI_COMM_WORLD,&point2point);
@@ -372,37 +446,10 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 	}
 
 	void Network::sync() {
-		auto rank = localNode->getRank();
-		if (rank == 0) {
 
-			DEBUG_MPI_NETWORK << "Node " << rank << ": stepping from epoch " << last_epoch << " to " << last_epoch+1 << "\n";
+		// signal reaching of next epoch
+		localNode->getService<detail::EpochService>().nextEpochReached();
 
-			// check current epoch
-			int cur_epoch = epoch_counter;
-			assert_eq(last_epoch,cur_epoch);
-
-			// broadcast epoch update
-			broadcast(&detail::EpochService::inc)(cur_epoch+1);
-
-			last_epoch++;
-			assert_eq(last_epoch,epoch_counter);
-
-		} else {
-
-			DEBUG_MPI_NETWORK << "Node " << rank << ": waiting for epoch step from " << last_epoch << " to " << last_epoch+1 << "\n";
-
-			// wait for update
-			last_epoch++;	// this is now the one we should be in
-			{
-				std::unique_lock<std::mutex> g(epoch_mutex);
-				// wait for condition
-				epoch_condition_var.wait(g,[&](){
-					return last_epoch == epoch_counter;
-				});
-			}
-
-			DEBUG_MPI_NETWORK << "Node " << rank << ": reached epoch " << last_epoch << "\n";
-		}
 	}
 
 	NetworkStatistics Network::getStatistics() {

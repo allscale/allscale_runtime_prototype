@@ -79,29 +79,6 @@ namespace mpi {
 			runProcedureOnHelper(node,args,std::make_index_sequence<sizeof...(Args)-2>());
 		}
 
-
-		// an epoch counter service for syncing global operations
-		struct EpochService {
-
-			using guard = std::lock_guard<std::mutex>;
-
-			rank_t rank;
-
-			// the synchronization primitives guarding the epoche counter
-			std::mutex& mutex;
-			std::condition_variable& condition_variable;
-
-			// the actual counter
-			std::atomic<int>& counter;
-
-			EpochService(Node& node, std::mutex& mutex, std::condition_variable& condition, std::atomic<int>& counter)
-				: rank(node.getRank()), mutex(mutex), condition_variable(condition), counter(counter) {}
-
-			// Increments the state and acknowledges the update (by returning)
-			bool inc(int next);
-
-		};
-
 	}
 
 	// the mutex for synchronizing MPI accesses
@@ -120,19 +97,6 @@ namespace mpi {
 
 		// the type of message send for service requests
 		using request_msg_t = std::tuple<request_handler_t,allscale::utils::Archive>;
-
-
-		// the mutex guarding the epoch counter and condition var
-		std::mutex epoch_mutex;
-
-		// the condition variable for the epoch counter
-		std::condition_variable epoch_condition_var;
-
-		// the epoch counter, for global synchronization
-		std::atomic<int> epoch_counter;
-
-		// the last epoch reached locally
-		int last_epoch;
 
 		using clock = std::chrono::high_resolution_clock;
 		using time = typename clock::time_point;

@@ -35,7 +35,8 @@ rm -rf CMake* *.cmake
 # -------------------------------------------------- Build
 
 cmake "$WORKSPACE/code" \
-	-DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+	-DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+	-DUSE_MPI=$USE_MPI
 
 /usr/bin/time -v nice -n "$NICE_LEVEL" make -j "$NPROC"
 

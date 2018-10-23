@@ -227,10 +227,17 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		// the fiber should be suspended
 		assert_true(fiber);
 
+		// a mutex to handle call back synchronization for resuming sender fiber
+		std::mutex lock;
+
+		auto senderFiber = allscale::utils::FiberPool::getCurrentFiber();
+		if (senderFiber) lock.lock();
+
+
 		// finally, register the response handler
 		{
 			guard g(responde_handler_lock);
-			responde_handler[key] = *fiber;
+			responde_handler[key] = { *fiber , senderFiber, &lock };
 		}
 
 		// -- send request --
@@ -240,10 +247,17 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 
 		// -- finally wait for response --
 
-		// while not done ..
-		while(!done) {
-			// .. help processing requests
-			processMessage();
+		// if in a fiber ..
+		if (senderFiber) {
+			// suspend the local fiber until message is received
+			allscale::utils::suspend(lock);
+			assert_true(done);
+		} else {
+			// while not done ..
+			while(!done) {
+				// .. help processing requests
+				processMessage();
+			}
 		}
 
 		// done
@@ -260,11 +274,14 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 		// probe for some incoming message
 		std::vector<char> buffer;
 		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			G_MPI_MUTEX.lock();
 			MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
 
 			// if there is nothing, do nothing
-			if (!flag) return false;
+			if (!flag) {
+				G_MPI_MUTEX.unlock();
+				return false;
+			}
 
 			// handle responses
 			if (isResponseTag(status.MPI_TAG)) {
@@ -280,8 +297,18 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 					responde_handler.erase(pos);
 				}
 
-				// process handler
-				pool.resume(handler);
+				// process handler (also unlocks the global MPI mutex)
+				pool.resume(handler.receiver);
+
+				// free MPI access
+				G_MPI_MUTEX.unlock();
+
+				// resume sender
+				if (handler.sender) {
+					handler.lock->lock();
+					handler.lock->unlock();
+					pool.resume(handler.sender);
+				}
 
 				// done
 				return true;
@@ -301,6 +328,9 @@ std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
 			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
 			Network::getLocalStats().received_bytes += count;
 			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+
+			// free global MPI access lock
+			G_MPI_MUTEX.unlock();
 		}
 
 		// process request handler in a fiber context (to allow interrupts)

@@ -10,8 +10,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <sys/mman.h>
+
 #include "allscale/utils/assert.h"
 #include "allscale/utils/optional.h"
+
+// TODO: remove when no longer needed
+#include "allscale/utils/printer/vectors.h"
 
 namespace allscale {
 namespace utils {
@@ -30,27 +35,36 @@ namespace utils {
 		constexpr static bool DEBUG = false;
 
 		// we use 1 MB per fiber stack
-		constexpr static std::size_t STACK_SIZE = (1<<20);
-
-		// the definition of a stack for a fiber
-		using stack_t = char[STACK_SIZE/sizeof(char)];
+		constexpr static std::size_t DEFAULT_STACK_SIZE = (1<<20);
 
 		// the management information required per fiber
 		struct fiber_info {
 			FiberPool& pool;			// < the pool it belongs to
-			bool running;				// < the running state
-			stack_t* stack;				// < the associated stack memory
+			std::atomic<bool> running;	// < the running state
+			void* stack;				// < the associated stack memory
+			const int stack_size;		// < the size of the stack
 			ucontext_t* continuation;	// < an optional continuation to be processed after finishing or suspending a fiber
 
-			fiber_info(FiberPool& pool)
+			fiber_info(FiberPool& pool, int stackSize = DEFAULT_STACK_SIZE)
 				: pool(pool),
 				  running(false),
-				  stack((stack_t*)aligned_alloc(STACK_SIZE,STACK_SIZE)),
-				  continuation(nullptr) {}
+				  stack(nullptr),
+				  stack_size(stackSize),
+				  continuation(nullptr) {
+
+				// allocate stack memory
+				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_32BIT | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
+
+				assert_ne(MAP_FAILED,stack) << "Error code: " << errno << "\n";
+				assert_true(stack);
+			}
 
 			fiber_info(const fiber_info&) = delete;
 			fiber_info(fiber_info&& other) = delete;
-			~fiber_info() { free(stack); }
+			~fiber_info() {
+				munmap(stack,sizeof(stack_t));
+			}
+
 		};
 
 		// the list of all fiber infos associated to this pool
@@ -75,6 +89,7 @@ namespace utils {
 			freeInfos.reserve(initialSize);
 			for(std::size_t i=0; i<initialSize; i++) {
 				infos.push_back(new fiber_info(*this));
+				assert_false(infos.back()->running);
 				freeInfos.push_back(infos.back());
 			}
 		}
@@ -135,16 +150,18 @@ namespace utils {
 				if (!freeInfos.empty()) {
 					fiber = freeInfos.back();
 					freeInfos.pop_back();
+					assert_false(fiber->running) << "Faulty fiber: " << fiber;
 				} else {
 					fiber = new fiber_info(*this);
 					infos.push_back(fiber);
+					assert_false(fiber->running) << "Faulty fiber: " << fiber;
 				}
 			}
 
 			assert_true(fiber);
 
 			// make sure the fiber is not running
-			assert_false(fiber->running);
+			assert_false(fiber->running) << "Faulty fiber: " << fiber;
 
 			// capture current context
 			ucontext_t local;
@@ -159,7 +176,7 @@ namespace utils {
 
 			// exchange stack
 			target.uc_stack.ss_sp = fiber->stack;
-			target.uc_stack.ss_size = STACK_SIZE;
+			target.uc_stack.ss_size = fiber->stack_size;
 
 			// encode pool pointer and pointer to lambda into integers
 			static_assert(2*sizeof(int) == sizeof(void*), "Assumption on size of pointer failed!\n");
@@ -191,12 +208,6 @@ namespace utils {
 			// determine whether fiber is still running
 			if (fiber->running) {
 				return fiber;
-			}
-
-			// return fiber info to re-use list
-			{
-				guard g(lock);
-				freeInfos.push_back(fiber);
 			}
 
 			// fiber is done, nothing to return
@@ -296,17 +307,8 @@ namespace utils {
 
 			if (DEBUG) std::cout << "Returning to fiber " << currentFiber << " from " << f << " / " << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
-			// determine whether task is complete
-			if (f->running) return true;
-
-			// return info object to re-use list
-			{
-				guard g(f->pool.lock);
-				f->pool.freeInfos.push_back(f);
-			}
-
-			// signal that fiber has completed its task
-			return false;
+			// signal whether fiber has completed its task
+			return f->running;
 		}
 
 		/**
@@ -357,6 +359,7 @@ namespace utils {
 			setCurrentFiberInfo(&info);
 
 			// mark fiber as running
+			assert_false(info.running);
 			info.running = true;
 
 			if (DEBUG) std::cout << "Starting fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
@@ -386,6 +389,16 @@ namespace utils {
 			ucontext_t local;
 			ucontext_t& continuation = *info.continuation;
 			info.continuation = nullptr;
+
+			// free info block
+			{
+				guard g(info.pool.lock);
+				if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
+				assert_false(info.running);
+				info.pool.freeInfos.push_back(&info);
+			}
+
+			// swap back to continuation
 			int success = swapcontext(&local,&continuation);
 			if (success != 0) assert_fail() << "Unable to switch thread context back to continuation!";
 
@@ -436,84 +449,6 @@ namespace utils {
 		if (isFiberContext()) FiberPool::suspend(&lock);
 	}
 
-//	/**
-//	 * A mutex lock avoiding blocking of fibers. Instead of blocking fibers,
-//	 * fibers get suspended until the lock can be acquired.
-//	 */
-//	class FiberMutex {
-//
-//		// the internally maintained mutex
-//		std::mutex mux;
-//
-//		// a list of blocked fibers
-//		std::vector<Fiber> blocked;
-//
-//		// the lock to protect accessed to the blocked list of fibers
-//		std::mutex state_lock;
-//
-//		using guard = std::lock_guard<std::mutex>;
-//
-//	public:
-//
-//		void lock() {
-//			{
-//				guard g(state_lock);
-//				std::cout << "Locking   " << this << "..\n";
-//			}
-//
-//
-//			// get current fiber
-//			auto fiber = FiberPool::getCurrentFiber();
-//
-//			// if it is not a fiber, no special handling needed
-//			if (!fiber) {
-//				mux.lock();
-//			} else {
-//				state_lock.lock();
-//				while(!mux.try_lock()) {
-//					blocked.push_back(fiber);
-//					std::cout << "Suspending " << fiber << " for " << this << "\n";
-//					state_lock.unlock();
-//					suspend();
-//					state_lock.lock();
-//					std::cout << "Resuming " << fiber << " for " << this << "\n";
-//				}
-//				state_lock.unlock();
-//			}
-//		}
-//
-//		void unlock() {
-//			{
-//				guard g(state_lock);
-//				std::cout << "Unlocking " << this << "..\n";
-//			}
-//
-//			state_lock.lock();
-//			// free the lock
-//			mux.unlock();
-//			// resume all suspended fibers
-//			std::vector<Fiber> list;
-//			list.swap(blocked);
-//			state_lock.unlock();
-//			for(const auto& cur : list) {
-//				{
-//					guard g(state_lock);
-//					std::cout << "\tResuming " << cur << "\n";
-//				}
-//				FiberPool::resume(cur);
-//			}
-//		}
-//
-//		bool try_lock() {
-//			// nothing special here
-//			{
-//				guard g(state_lock);
-//				return mux.try_lock();
-//			}
-//		}
-//
-//	};
-
 
 	/**
 	 * A mutex lock avoiding blocking of fibers. Instead of blocking fibers,
@@ -521,7 +456,7 @@ namespace utils {
 	 */
 	class FiberMutex {
 
-		constexpr static bool DEBUG = true;
+		constexpr static bool DEBUG = false;
 
 		// the internally maintained mutex (using a flag, that can not spontaneously fail)
 		std::atomic_flag mux;
@@ -538,7 +473,9 @@ namespace utils {
 
 	public:
 
-		FiberMutex() : mux(ATOMIC_FLAG_INIT), pid(::getpid()) {}
+		FiberMutex() : pid(::getpid()) {
+			mux.clear();
+		}
 
 		void lock() {
 
@@ -547,7 +484,7 @@ namespace utils {
 
 			if (DEBUG) {
 				guard g(state_lock);
-				std::cout << pid << ": Locking   " << this << " by fiber " << fiber << "..\n";
+				std::cout << std::dec << pid << ": Locking   " << this << " by fiber " << fiber << "..\n";
 			}
 
 			// if it is not a fiber, no special handling needed
@@ -556,32 +493,32 @@ namespace utils {
 				if (!mux.test_and_set()) {
 					return;
 				}
-				if (DEBUG) std::cout << pid << ": Waiting for " << this << "\n";
+				if (DEBUG) std::cout << std::dec << pid << ": Waiting for " << this << "\n";
 				while(mux.test_and_set()) {
 					// spin ..
 				};
-				if (DEBUG) std::cout << pid << ": Releasing " << this << "\n";
+				if (DEBUG) std::cout << std::dec << pid << ": Releasing " << this << "\n";
 			} else {
 				state_lock.lock();
 				while(mux.test_and_set()) {
 					blocked.push_back(fiber);
-					if (DEBUG) std::cout << pid << ": Suspending " << fiber << " for " << this << "\n";
+					if (DEBUG) std::cout << std::dec << pid << ": Suspending " << fiber << " for " << this << "\n";
 					suspend(state_lock);
-					if (DEBUG) std::cout << pid << ": Resuming " << fiber << " for " << this << "\n";
+					if (DEBUG) std::cout << std::dec << pid << ": Resuming " << fiber << " for " << this << "\n";
 				}
 				state_lock.unlock();
 			}
 
 			if (DEBUG) {
 				guard g(state_lock);
-				std::cout << pid << ": Locked    " << this << " by fiber " << fiber << "..\n";
+				std::cout << std::dec << pid << ": Locked    " << this << " by fiber " << fiber << "..\n";
 			}
 		}
 
 		void unlock() {
 			if (DEBUG) {
 				guard g(state_lock);
-				std::cout << pid << ": Unlocking " << this << " by fiber " << FiberPool::getCurrentFiber() << "..\n";
+				std::cout << std::dec << pid << ": Unlocking " << this << " by fiber " << FiberPool::getCurrentFiber() << "..\n";
 			}
 
 			state_lock.lock();
@@ -597,14 +534,14 @@ namespace utils {
 			for(const auto& cur : list) {
 				if (DEBUG) {
 					guard g(state_lock);
-					std::cout << "\t" << pid << ": Resuming " << cur << " for " << this << "\n";
+					std::cout << "\t" << std::dec << pid << ": Resuming " << cur << " for " << this << " - full list: " << list << "\n";
 				}
 				FiberPool::resume(cur);
 			}
 
 			if (DEBUG) {
 				guard g(state_lock);
-				std::cout << pid << ": Unlocked  " << this << "..\n";
+				std::cout << std::dec << pid << ": Unlocked  " << this << "..\n";
 			}
 
 		}
@@ -615,7 +552,7 @@ namespace utils {
 				bool res = !mux.test_and_set();
 				{
 					guard g(state_lock);
-					std::cout << pid << ": Try Locking   " << this << " - " << res << " ..\n";
+					std::cout << std::dec << pid << ": Try Locking   " << this << " - " << res << " ..\n";
 				}
 				return res;
 			}
@@ -624,8 +561,6 @@ namespace utils {
 		}
 
 	};
-
-//	using FiberMutex = std::mutex;
 
 
 } // end namespace utils

@@ -141,7 +141,12 @@ namespace mpi {
 		utils::FiberPool pool;
 
 		using response_id = std::pair<int,int>;
-		using response_handler = utils::FiberPool::Fiber;
+
+		struct response_handler {
+			utils::FiberPool::Fiber receiver;
+			utils::FiberPool::Fiber sender;
+			std::mutex* lock;
+		};
 
 		// a registry for fibers waiting for responses from remote calls
 		std::map<response_id,response_handler> responde_handler;

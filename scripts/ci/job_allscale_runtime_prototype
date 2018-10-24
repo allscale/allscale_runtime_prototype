@@ -9,6 +9,9 @@ set -ex
 # CMake Build Type (Debug / Release).
 export BUILD_TYPE="${BUILD_TYPE:-Release}"
 
+# CMake Use Assertions (ON / OFF).
+export USE_ASSERT="${USE_ASSERT:-OFF}"
+
 # Number of cores used for compilation and testing.
 export NPROC="${NPROC:-$(nproc)}"
 
@@ -36,7 +39,8 @@ rm -rf CMake* *.cmake
 
 cmake "$WORKSPACE/code" \
 	-DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-	-DUSE_MPI=$USE_MPI
+	-DUSE_MPI=$USE_MPI \
+	-DUSE_ASSERT=$USE_ASSERT
 
 /usr/bin/time -v nice -n "$NICE_LEVEL" make -j "$NPROC"
 

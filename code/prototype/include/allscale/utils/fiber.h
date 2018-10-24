@@ -39,6 +39,7 @@ namespace utils {
 		struct fiber_info {
 			FiberPool& pool;			// < the pool it belongs to
 			std::atomic<bool> running;	// < the running state
+			std::atomic<bool> active;   // < debugging, make sure that infos are only active once
 			void* stack;				// < the associated stack memory
 			const int stack_size;		// < the size of the stack
 			ucontext_t* continuation;	// < an optional continuation to be processed after finishing or suspending a fiber
@@ -46,6 +47,7 @@ namespace utils {
 			fiber_info(FiberPool& pool, int stackSize = DEFAULT_STACK_SIZE)
 				: pool(pool),
 				  running(false),
+				  active(false),
 				  stack(nullptr),
 				  stack_size(stackSize),
 				  continuation(nullptr) {
@@ -72,6 +74,22 @@ namespace utils {
 			fiber_info(fiber_info&& other) = delete;
 			~fiber_info() {
 				munmap(stack,sizeof(stack_t));
+			}
+
+			void activate() {
+				assert_decl({
+					bool cur = false;
+					auto success = active.compare_exchange_strong(cur,true);
+					assert_true(success) << "Possible double-usage of fiber detected!";
+				});
+			}
+
+			void deactivate() {
+				assert_decl({
+					bool cur = true;
+					auto success = active.compare_exchange_strong(cur,false);
+					assert_true(success) << "Possible double-usage of fiber detected!";
+				});
 			}
 
 		};
@@ -115,29 +133,6 @@ namespace utils {
 			}
 		}
 
-	private:
-
-		static std::mutex*& getMutexLock() {
-			thread_local static std::mutex* tl_lock = nullptr;
-			return tl_lock;
-		}
-
-		static void setMutexLock(std::mutex* newLock) {
-			auto& lock = getMutexLock();
-			assert_false(lock);
-			lock = newLock;
-		}
-
-		static void clearMutexLock() {
-			auto& lock = getMutexLock();
-			if (!lock) return;
-			lock->unlock();
-			lock = nullptr;
-		}
-
-	public:
-
-
 		/**
 		 * Starts the processing of a new fiber by executing the given lambda.
 		 * The calling thread will start processing a new fiber until the fiber
@@ -171,6 +166,7 @@ namespace utils {
 
 			// make sure the fiber is not running
 			assert_false(fiber->running) << "Faulty fiber: " << fiber;
+			assert_false(fiber->active);
 
 			// capture current context
 			ucontext_t local;
@@ -204,15 +200,10 @@ namespace utils {
 			if (DEBUG) std::cout << "Starting fiber " << fiber << " from " << localFiber << " @ " << &getCurrentFiberInfo() << "\n";
 
 			// switch to fiber context
-			int success = swapcontext(&local,&target);
-			if (success != 0) assert_fail() << "Unable to switch thread context to fiber!";
+			swap(local,target);
 
 			// restore local fiber information
 			if (DEBUG) std::cout << "Resuming fiber " << localFiber << " after starting " << fiber << " @ " << &getCurrentFiberInfo() << "\n";
-			setCurrentFiberInfo(localFiber);
-
-			// unlock other sides lock
-			clearMutexLock();
 
 			// determine whether fiber is still running
 			if (fiber->running) {
@@ -239,11 +230,6 @@ namespace utils {
 			// make sure this fiber is indeed running
 			assert_true(fiber->running);
 
-			if (DEBUG) std::cout << "Suspending fiber " << fiber << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
-
-			// remove state information
-			resetCurrentFiberInfo();
-
 			// capture local state
 			ucontext_t local;
 			getcontext(&local);
@@ -254,22 +240,12 @@ namespace utils {
 			// make local state the new continuation for this fiber
 			fiber->continuation = &local;
 
-			setMutexLock(lock);
+			if (DEBUG) std::cout << "Suspending fiber " << fiber << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
-			// switch to old continuation
-			int success = swapcontext(&local,&continuation);
-			if (success != 0) assert_fail() << "Unable to switch thread context back to continuation!";
+			// switch to continuation context
+			swap(local,continuation,lock);
 
 			// after resuming:
-
-			// unlock other sides lock
-			clearMutexLock();
-
-			// restore locked mutex
-			if (lock) lock->lock();
-
-			// restore state
-			setCurrentFiberInfo(fiber);
 
 			if (DEBUG) std::cout << "Resuming fiber " << fiber << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
@@ -297,24 +273,12 @@ namespace utils {
 			// set local as the next continuation
 			f->continuation = &local;
 
-			// backup current fiber
-			auto currentFiber = getCurrentFiberInfo();
-			assert_ne(currentFiber,f);
-
-
-			if (DEBUG) std::cout << "Resuming fiber " << f << " in " << currentFiber << " @ " << &getCurrentFiberInfo() << "\n";
+			if (DEBUG) std::cout << "Resuming fiber " << f << " in " << getCurrentFiberInfo() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			// switch to context
-			int success = swapcontext(&local,&continuation);
-			if (success != 0) assert_fail() << "Unable to switch thread context back to fiber!";
+			swap(local,continuation);
 
-			// restore current fiber information
-			setCurrentFiberInfo(currentFiber);
-
-			// unlock other sides lock
-			clearMutexLock();
-
-			if (DEBUG) std::cout << "Returning to fiber " << currentFiber << " from " << f << " / " << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
+			if (DEBUG) std::cout << "Returning to fiber " << getCurrentFiberInfo() << " from " << f << " / " << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			// signal whether fiber has completed its task
 			return f->running;
@@ -337,6 +301,56 @@ namespace utils {
 		}
 
 	private:
+
+		static std::mutex*& getMutexLock() {
+			thread_local static std::mutex* tl_lock = nullptr;
+			return tl_lock;
+		}
+
+		static void setMutexLock(std::mutex* newLock) {
+			auto& lock = getMutexLock();
+			assert_false(lock);
+			lock = newLock;
+		}
+
+		static void clearMutexLock() {
+			auto& lock = getMutexLock();
+			if (!lock) return;
+			lock->unlock();
+			lock = nullptr;
+		}
+
+		static void swap(ucontext_t& src, ucontext_t& trg, std::mutex* lock = nullptr) {
+
+			// get current context
+			auto currentFiber = getCurrentFiberInfo();
+
+			// record mutex lock
+			if (lock) setMutexLock(lock);
+
+			// clear fiber context info
+			resetCurrentFiberInfo();
+
+			// deactivate current fiber
+			if (currentFiber) currentFiber->deactivate();
+
+			// switch context
+			int success = swapcontext(&src,&trg);
+			if (success != 0) assert_fail() << "Unable to switch thread context!";
+
+			// unlock src-lock
+			clearMutexLock();
+
+			// re-activate current fiber
+			if (currentFiber) currentFiber->activate();
+
+			// reset current fiber information
+			setCurrentFiberInfo(currentFiber);
+
+			// restore lock
+			if (lock) lock->lock();
+
+		}
 
 		static fiber_info*& getCurrentFiberInfo() {
 			static thread_local fiber_info* info = nullptr;
@@ -371,6 +385,9 @@ namespace utils {
 			assert_false(info.running);
 			info.running = true;
 
+			// mark info as being actively processed
+			info.activate();
+
 			if (DEBUG) std::cout << "Starting fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			{
@@ -391,25 +408,19 @@ namespace utils {
 			// make sure fiber info has been maintained
 			assert_eq(&info,getCurrentFiberInfo());
 
-			// reset thread-local state
-			resetCurrentFiberInfo();
-
 			// swap back to continuation
 			ucontext_t local;
 			ucontext_t& continuation = *info.continuation;
 			info.continuation = nullptr;
 
 			// free info block
-			{
-				guard g(info.pool.lock);
-				if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
-				assert_false(info.running);
-				info.pool.freeInfos.push_back(&info);
-			}
+			info.pool.lock.lock();
+			if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
+			assert_false(info.running);
+			info.pool.freeInfos.push_back(&info);
 
-			// swap back to continuation
-			int success = swapcontext(&local,&continuation);
-			if (success != 0) assert_fail() << "Unable to switch thread context back to continuation!";
+			// swap back to continuation, and release lock for free list to make this info re-usable
+			swap(local,continuation,&info.pool.lock);
 
 			// Note: this code will never be reached!
 			assert_fail() << "Should never be reached!";

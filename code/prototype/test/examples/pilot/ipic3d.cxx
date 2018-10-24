@@ -107,7 +107,7 @@ template<> struct to_std_array_type<allscale_type_14> { using type = std::array<
 const allscale::utils::Vector<double, 3 > CELL_WIDTH((double)10, (double)10, (double)10);
 
 /* ------- Global Variable Declaration ---------- */
-const allscale::utils::Vector<long, 3 > GRID_SIZE((int64_t)64, (int64_t)64, (int64_t)64);
+const allscale::utils::Vector<long, 3 > GRID_SIZE((int64_t)16, (int64_t)16, (int64_t)16);
 
 /* ------- Global Variable Declaration ---------- */
 const allscale::utils::Vector<double, 3 > UNIVERSE_SIZE((double)GRID_SIZE.x * CELL_WIDTH.x, (double)GRID_SIZE.y * CELL_WIDTH.y, (double)GRID_SIZE.z * CELL_WIDTH.z);

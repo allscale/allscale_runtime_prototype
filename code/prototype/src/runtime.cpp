@@ -43,7 +43,7 @@ namespace runtime {
 		network.sync();
 
 		// start by stopping periodic operations
-		utils::installPeriodicExecutorService(network);
+		utils::removePeriodicExecutorService(network);
 
 		// shutdown dashboard service
 		mon::shutdownDashbordService(network);

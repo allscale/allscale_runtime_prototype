@@ -53,6 +53,17 @@ namespace utils {
 				// allocate stack memory
 				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_32BIT | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
 
+				// provide proper error reporting
+				if (stack == MAP_FAILED) {
+					std::cerr << "Can not allocate stack of size " << stackSize << " byte: ";
+					switch(errno) {
+					case ENOMEM: std::cerr << "not enough memory"; break;
+					default: std::cerr << "errno code " << errno << " (see errno.h on your system)"; break;
+					}
+					// terminate program (unrecoverable)
+					exit(1);
+				}
+
 				assert_ne(MAP_FAILED,stack) << "Error code: " << errno << "\n";
 				assert_true(stack);
 			}

@@ -1775,7 +1775,7 @@ int32_t IMP_ipic3d_colon__colon_processBenchmark(std::__cxx11::basic_string<char
     if (var_0.length() <= (uint64_t)3 || (int32_t)var_0.operator[]((uint64_t)0) != (int32_t)((char)':') || (int32_t)var_0.operator[]((uint64_t)2) != (int32_t)((char)':')) {
         return var_1.operator()();
     };
-    uint64_t pos = (uint64_t)10;
+    uint64_t pos = (uint64_t)5;
     uint64_t var_3 = (uint64_t)atoll(var_0.substr((uint64_t)3, var_0.length()).c_str());
     switch((int32_t)var_0.operator[]((uint64_t)1)) {
         case 66: {

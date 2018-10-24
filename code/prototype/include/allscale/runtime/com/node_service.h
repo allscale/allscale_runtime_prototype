@@ -51,9 +51,9 @@ namespace com {
 		// The service registry.
 		std::map<std::type_index,std::unique_ptr<ServiceBase>> services;
 
-		mutable std::recursive_mutex lock;
+		mutable std::mutex lock;
 
-		using guard = std::lock_guard<std::recursive_mutex>;
+		using guard = std::lock_guard<std::mutex>;
 
 	public:
 
@@ -85,12 +85,24 @@ namespace com {
 		 */
 		template<typename S, typename ... Args>
 		S& startService(Args&& ... args) {
-			guard g(lock);
-			// only start service at most once
-			if (!hasServiceInternal<S>()) {
-				services[typeid(S)] = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
+
+			// NOTE: this code is not thread save for starting up the same service simultaneously
+
+			// only start service once
+			if (hasService<S>()) return getService<S>();
+
+			// create the service
+			auto service = std::make_unique<Service<S>>(node,std::forward<Args>(args)...);
+
+			// register the service
+			{
+				guard g(lock);
+				auto& pos = services[typeid(S)];
+				pos = std::move(service);
 			}
-			return static_cast<Service<S>&>(*services[typeid(S)]).service;
+
+			// retrieve new service
+			return getService<S>();
 		}
 
 		/**
@@ -108,9 +120,14 @@ namespace com {
 		 */
 		template<typename S>
 		void stopService() {
-			guard g(lock);
-			assert_true(hasServiceInternal<S>());
-			services.erase(typeid(S));
+			// retrieve the service
+			std::unique_ptr<ServiceBase> service;
+			{
+				guard g(lock);
+				service = std::move(services[typeid(S)]);
+				services.erase(typeid(S));
+			}
+			// destructor of service ptr will shut down the service
 		}
 	};
 

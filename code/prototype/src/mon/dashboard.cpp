@@ -708,9 +708,9 @@ namespace mon {
 //			std::cout << "Sending:\n" << json << "\n\n";
 
 			// sent to bashboard
-			auto send = [&](const void* msg, int size) {
+			auto mySend = [&](const void* msg, int size) {
 				if (!alive) return;
-				if (write(sock,msg,size) != size) {
+				if (send(sock,msg,size,MSG_NOSIGNAL | MSG_DONTWAIT) != size) {
 					std::cerr << "Lost dashboard connection, ending status broadcasts.";
 					alive = false;
 				}
@@ -724,10 +724,10 @@ namespace mon {
 
 			// send message size
 			std::uint64_t msgSizeBE = htobe64(json.length());
-			send(&msgSizeBE,sizeof(std::uint64_t));
+			mySend(&msgSizeBE,sizeof(std::uint64_t));
 
 			// send message
-			send(json.c_str(),json.length());
+			mySend(json.c_str(),json.length());
 
 		}
 	};

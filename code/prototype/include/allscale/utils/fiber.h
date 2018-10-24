@@ -14,8 +14,6 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/optional.h"
-
-// TODO: remove when no longer needed
 #include "allscale/utils/printer/vectors.h"
 
 namespace allscale {
@@ -34,8 +32,8 @@ namespace utils {
 
 		constexpr static bool DEBUG = false;
 
-		// we use 1 MB per fiber stack
-		constexpr static std::size_t DEFAULT_STACK_SIZE = (1<<20);
+		// we use 8 MB per fiber stack
+		constexpr static std::size_t DEFAULT_STACK_SIZE = (1<<23);
 
 		// the management information required per fiber
 		struct fiber_info {
@@ -83,7 +81,7 @@ namespace utils {
 
 		using Fiber = fiber_info*;
 
-		FiberPool(std::size_t initialSize = 20) {
+		FiberPool(std::size_t initialSize = 10) {
 			// create an initial pool of fiber infos
 			infos.reserve(initialSize);
 			freeInfos.reserve(initialSize);

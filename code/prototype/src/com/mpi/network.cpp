@@ -379,8 +379,10 @@ namespace mpi {
 
 				// resume sender
 				if (handler.sender) {
+					// ensure sender is suspended indicated by available lock ..
 					handler.lock->lock();
 					handler.lock->unlock();
+					// .. resume sender
 					pool.resume(handler.sender);
 				}
 

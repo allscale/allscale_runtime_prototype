@@ -300,16 +300,6 @@ namespace work {
 					diis.addAllowanceLocal(allowance);
 				}
 
-//				// make sure this is as it has been intended by the policy
-//				// -- for debugging only, in dynamic settings policy may have changed --
-//				if (task->isSplitable()) {
-//					guard g(policy_lock);
-//					assert_true(policy.checkTarget(myAddr,task->getId().getPath()))
-//						<< "Local: " << myAddr << "\n"
-//						<< "Task: " << task->getId() << "\n"
-//						<< "Policy:\n" << policy;
-//				}
-
 				// if this is a leaf or the task can be further split, hand task over to worker here
 				if (myAddr.isLeaf() || task->isSplitable()) {
 

@@ -735,6 +735,7 @@ namespace mon {
 
 	void installDashbordService(com::Network& net) {
 		net.installServiceOnNodes<NodeStateService>();
+		net.sync();	// wait until node state services are installed
 		net.installServiceOnNodes<DashboardService>();
 	}
 

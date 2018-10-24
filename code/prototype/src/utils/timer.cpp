@@ -21,13 +21,10 @@ namespace utils {
 	PeriodicExecutor::~PeriodicExecutor() {
 
 		// set alive to false
-		{
-			guard g(mutex);
-			alive = false;
+		alive = false;
 
-			// signal change to worker
-			var.notify_one();
-		}
+		// signal change to worker
+		var.notify_one();
 
 		// wait for thread to finish
 		thread.join();

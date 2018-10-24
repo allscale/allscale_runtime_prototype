@@ -42,14 +42,17 @@ namespace runtime {
 		// wait until all network instances are at this point
 		network.sync();
 
+		// shut down workers
+		work::stopWorker(network);
+
 		// start by stopping periodic operations
 		utils::removePeriodicExecutorService(network);
 
+		// wait until all periodic executor are down
+		network.sync();
+
 		// shutdown dashboard service
 		mon::shutdownDashbordService(network);
-
-		// shut down workers
-		work::stopWorker(network);
 
 	}
 

@@ -38,7 +38,6 @@ namespace runtime {
 	int main_wrapper(int argc, char** argv) {
 
 		// create the processing network
-		std::cout << "Starting up runtime ...\n";
 		auto net = com::Network::create();
 		Runtime rt(*net);
 
@@ -70,7 +69,6 @@ namespace runtime {
 
 		// the rest should only run on node 0, the one with the valid treeture
 		if (!treeture.valid()) {
-			std::cout << "Shutting down runtime ...\n";
 			rt.shutdown();
 			return 0;
 		}

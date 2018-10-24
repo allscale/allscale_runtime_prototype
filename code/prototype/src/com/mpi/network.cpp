@@ -141,7 +141,7 @@ namespace mpi {
 		int rank;
 		MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 		localNode = std::make_unique<Node>(rank);
-std::cout << "Starting up rank " << rank << "/" << num_nodes << "\n";
+
 		// install epoch counter service
 		localNode->startService<detail::EpochService>(*this);
 

@@ -53,7 +53,7 @@ namespace utils {
 				  continuation(nullptr) {
 
 				// allocate stack memory
-				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_32BIT | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
+				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
 
 				// provide proper error reporting
 				if (stack == MAP_FAILED) {

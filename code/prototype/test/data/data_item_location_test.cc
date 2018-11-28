@@ -43,7 +43,7 @@ namespace data {
 		{
 			DataItemLocationInfos infos;
 			infos.add(ref_t(1),{0,10},2);
-			EXPECT_EQ("Locations(DI-1:{[[0] - [10])}@2,)",toString(infos));
+			EXPECT_EQ("Locations(2=>Regions(DI-1:{[[0] - [10])}))",toString(infos));
 			a = allscale::utils::serialize(infos);
 		}
 
@@ -51,7 +51,7 @@ namespace data {
 		// => restore this one
 		{
 			auto infos = allscale::utils::deserialize<DataItemLocationInfos>(a);
-			EXPECT_EQ("Locations(DI-1:{[[0] - [10])}@2,)",toString(infos));
+			EXPECT_EQ("Locations(2=>Regions(DI-1:{[[0] - [10])}))",toString(infos));
 		}
 
 	}

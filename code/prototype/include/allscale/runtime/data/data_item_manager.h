@@ -169,7 +169,8 @@ namespace data {
 		class DataItemRegisterBase {
 		public:
 			virtual ~DataItemRegisterBase() {};
-			virtual void retrieve(const DataItemLocationInfos&) =0;
+			virtual void import(const DataItemMigrationData&) =0;
+			virtual void extract(const DataItemRegions&, DataItemMigrationData&) =0;
 			virtual void takeOwnership(const DataItemMigrationData&) =0;
 			virtual void addExclusiveRegions(DataItemRegions&) const =0;
 		};
@@ -208,6 +209,20 @@ namespace data {
 				items.emplace(ref,std::make_unique<DataFragmentHandler<DataItem>>(shared));
 			}
 
+			void extract(const DataItemRegions& regions, DataItemMigrationData& res) override {
+				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& cur){
+					auto& ref = cur.getDataItemReference();
+					auto& region = cur.getRegion();
+					auto pos = items.find(ref);
+					// one can not extract what one does not have
+					if (pos == items.end()) return;
+					// do not include partial data
+					if (!allscale::api::core::isSubRegion(region,pos->second->getExclusiveRegion())) return;
+					// include data
+					res.add(ref,region,pos->second->extract(region));
+				});
+			}
+
 			allscale::utils::Archive extract(const reference_type& ref, const region_type& region) {
 				return get(ref).extract(region);
 			}
@@ -216,20 +231,12 @@ namespace data {
 				get(ref).insert(archive);
 			}
 
-			void retrieve(const DataItemLocationInfos& infos) override {
-				infos.forEach<DataItem>([&](const reference_type& ref, const region_type& region, com::rank_t loc){
-					// skip if source is local
-					if (loc == rank) return;
-
-					// retrieve data from source
-					auto archive = network.getRemoteProcedure(loc,&DataItemManagerService::extract<DataItem>)(ref,region);
-
-					// ensure space for the new region
-					auto& handler = get(ref);
-					handler.reserve(region);
-
-					// import data
-					handler.insert(archive);
+			void import(const DataItemMigrationData& data) override {
+				data.forEach<DataItem>([&](reference_type ref, const region_type& region, allscale::utils::Archive& archive){
+					if (region.empty()) return;
+					auto& fragment = get(ref);
+					fragment.reserve(region);
+					fragment.insert(archive);
 				});
 			}
 
@@ -351,6 +358,11 @@ namespace data {
 		allscale::utils::Archive extract(DataItemReference<DataItem> ref, const typename DataItem::region_type& region) {
 			return getRegister<DataItem>().extract(ref,region);
 		}
+
+		/**
+		 * Retrieves a serialized version of the data stored at this locality.
+		 */
+		DataItemMigrationData extractRegions(const DataItemRegions& regions) const;
 
 		/**
 		 * Retrieves a serialized version of a data item stored at this locality.

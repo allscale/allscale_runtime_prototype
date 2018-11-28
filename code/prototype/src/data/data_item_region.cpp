@@ -35,6 +35,19 @@ namespace data {
 		return regions.empty();
 	}
 
+	void DataItemRegions::add(const DataItemRegions& other) {
+		// merge the content to this list of regions
+		for(const auto& cur : other.regions) {
+			auto pos = regions.find(cur.first);
+			if (pos == regions.end()) {
+				regions[cur.first] = cur.second->clone();
+			} else {
+				regions[cur.first] = cur.second->merge(*pos->second);
+			}
+		}
+	}
+
+
 
 	void DataItemRegions::store(allscale::utils::ArchiveWriter& out) const {
 		// we need to serialize the contained map-content (type_indices are note serializable)
@@ -98,14 +111,7 @@ namespace data {
 		DataItemRegions res = a;
 
 		// compute set union
-		for(const auto& cur : b.regions) {
-			auto pos = a.regions.find(cur.first);
-			if (pos == a.regions.end()) {
-				res.regions[cur.first] = cur.second->clone();
-			} else {
-				res.regions[cur.first] = cur.second->merge(*pos->second);
-			}
-		}
+		res.add(b);
 
 		return res;
 	}

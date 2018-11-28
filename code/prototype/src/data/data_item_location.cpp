@@ -8,75 +8,41 @@ namespace runtime {
 namespace data {
 
 
-	DataItemLocationInfos::DataItemLocationInfos(const DataItemLocationInfos& other) {
-		for(const auto& cur : other.entries) {
-			entries[cur.first] = cur.second->clone();
-		}
-	}
-
-
 	DataItemRegions DataItemLocationInfos::getCoveredRegions() const {
 		DataItemRegions res;
 		for(const auto& cur : entries) {
-			cur.second->addCoveredRegions(res);
+			res.add(cur.second);
 		}
 		return res;
 	}
 
-	bool DataItemLocationInfos::operator==(const DataItemLocationInfos& other) const {
-		if (this == &other) return true;
-
-		// check the size
-		if (entries.size() != other.entries.size()) return false;
-
-		// check the key
-		for(const auto& cur : entries) {
-			auto pos = other.entries.find(cur.first);
-			if (pos == other.entries.end()) return false;
-			if (*cur.second != *pos->second) return false;
-		}
-
-		// all the same, we are fine
-		return true;
-	}
+	// --- set operations ---
 
 	DataItemLocationInfos& DataItemLocationInfos::addAll(const DataItemLocationInfos& other) {
+		// merge location information
 		for(const auto& cur : other.entries) {
-			auto pos = entries.find(cur.first);
-			if (pos != entries.end()) {
-				// merge elements
-				pos->second->merge(*cur.second);
-			} else {
-				// copy entirely
-				entries[cur.first] = cur.second->clone();
-			}
+			entries[cur.first].add(cur.second);
 		}
 		return *this;
 	}
 
+	// --- serialization ---
+
 	void DataItemLocationInfos::store(allscale::utils::ArchiveWriter& out) const {
-		// we need to write out all elements
-		out.write<std::size_t>(entries.size());
-		for(const auto& cur : entries) {
-			cur.second->store(out);
-		}
+		// we simply need to save the list of location information
+		out.write(entries);
 	}
 
 	DataItemLocationInfos DataItemLocationInfos::load(allscale::utils::ArchiveReader& in) {
-		// restore entries
-		auto num = in.read<std::size_t>();
-		DataItemLocationInfos res;
-		for(std::size_t i=0; i<num; i++) {
-			auto cur = EntryBase::load(in);
-			res.entries[cur.first] = std::move(cur.second);
-		}
-		return res;
+		return in.read<entries_t>();
 	}
 
 
+	// --- utilities ---
+
 	std::ostream& operator<<(std::ostream& out,const DataItemLocationInfos& infos) {
 		return out << "Locations(" << allscale::utils::join(",",infos.entries,[](std::ostream& out, const auto& cur){
-			out << *cur.second;
+			out << cur.first << "=>" << cur.second;
 		}) << ")";
 	}
 

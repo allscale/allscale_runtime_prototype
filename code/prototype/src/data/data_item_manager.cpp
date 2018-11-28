@@ -88,15 +88,32 @@ namespace data {
 	 */
 	void DataItemManagerService::retrieve(const DataItemRegions& regions) {
 
+		// if there is nothing to cover, there is nothing to do
+		if (regions.empty()) return;
+
 		// get access to the local data item index service
 		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+
+		// TODO: cache the obtained locations - to avoid resolution every time
 
 		// locate all read requirements
 		auto locations = diis.locate(regions);
 
-		for(const auto& cur : registers) {
-			cur.second->retrieve(locations);
+		// retrieve data from their source locations
+		for(const auto& cur : locations.getLocationInfo()) {
+
+			// skip local queries
+			if (cur.first == rank) continue;
+
+			// retrieve data	-- TODO: run this RPC asynchroniously
+			auto data = network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second);
+
+			// integrate data locally
+			for(auto& cur : registers) {
+				cur.second->import(data);
+			}
 		}
+
 	}
 
 	void DataItemManagerService::acquire(const DataItemRegions& regions) {
@@ -110,6 +127,20 @@ namespace data {
 		// forward this call to the index server
 		diis.acquire(regions);
 
+	}
+
+	DataItemMigrationData DataItemManagerService::extractRegions(const DataItemRegions& regions) const {
+
+		// start with nothing
+		DataItemMigrationData res;
+
+		// collect the data
+		for(const auto& cur : registers) {
+			cur.second->extract(regions,res);
+		}
+
+		// done
+		return res;
 	}
 
 	void DataItemManagerService::takeOwnership(const DataItemMigrationData& data) {

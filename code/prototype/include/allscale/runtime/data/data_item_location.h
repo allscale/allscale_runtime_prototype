@@ -25,153 +25,16 @@ namespace allscale {
 namespace runtime {
 namespace data {
 
-
 	/**
 	 * A class associating data item regions to locations where they are stored.
 	 */
 	class DataItemLocationInfos {
 
-		class EntryBase {
+		// the type of the internally maintained index
+		using entries_t = std::map<com::rank_t,DataItemRegions>;
 
-		public:
-
-			using load_res_t = std::pair<std::type_index,std::unique_ptr<EntryBase>>;
-			using load_fun_t = load_res_t(*)(allscale::utils::ArchiveReader&);
-
-		private:
-
-			load_fun_t load_fun;
-
-		public:
-
-			EntryBase(load_fun_t load_fun) : load_fun(load_fun) {}
-
-			virtual ~EntryBase() {}
-			virtual void addCoveredRegions(DataItemRegions& res) const =0;
-			virtual std::unique_ptr<EntryBase> clone() const =0;
-			virtual void merge(const EntryBase&) =0;
-			virtual void print(std::ostream&) const =0;
-			friend std::ostream& operator<<(std::ostream& out, const EntryBase& entry) {
-				entry.print(out);
-				return out;
-			}
-
-			virtual bool operator==(const EntryBase&) const =0;
-
-			bool operator!=(const EntryBase& other) const {
-				return !(*this == other);
-			}
-
-			// provide serialization support
-			void store(allscale::utils::ArchiveWriter& out) const {
-				out.write(load_fun);
-				storeInternal(out);
-			}
-
-			static load_res_t load(allscale::utils::ArchiveReader& in) {
-				load_fun_t load = load_fun_t(in.read<load_fun_t>());
-				return load(in);
-			}
-
-			virtual void storeInternal(allscale::utils::ArchiveWriter&) const =0;
-
-		};
-
-
-		template<typename DataItem>
-		class Entry : public EntryBase {
-
-			using ref_type = DataItemReference<DataItem>;
-			using region_type = typename DataItem::region_type;
-
-			using location_map = std::map<ref_type,std::map<com::rank_t,region_type>>;
-
-			location_map elements;
-
-		public:
-
-			Entry() : EntryBase(&load) {}
-			Entry(location_map&& map) : EntryBase(&load), elements(std::move(map)) {}
-
-			void addCoveredRegions(DataItemRegions& res) const override {
-				for(const auto& cur : elements) {
-					for(const auto& inner : cur.second) {
-						res.add(cur.first,inner.second);
-					}
-				}
-			}
-
-			void add(const ref_type& ref, const region_type& region, com::rank_t loc) {
-				// make sure there is no overlap
-				assert_true(std::all_of(elements[ref].begin(),elements[ref].end(),[&](const auto& a){
-					return region_type::intersect(a.second,region).empty();
-				}));
-				elements[ref][loc] = region_type::merge(elements[ref][loc],region);
-			}
-
-			template<typename Op>
-			void forEach(const Op& op) {
-				for(const auto& cur : elements) {
-					for(const auto& part : cur.second) {
-						op(cur.first, part.second, part.first);
-					}
-				}
-			}
-
-			virtual std::unique_ptr<EntryBase> clone() const override {
-				return std::make_unique<Entry>(*this);
-			}
-
-			virtual bool operator==(const EntryBase& entry) const override {
-				if (!dynamic_cast<const Entry*>(&entry)) return false;
-				const Entry& other = static_cast<const Entry&>(entry);
-
-				// size has to fit
-				if (elements.size() != other.elements.size()) return false;
-
-				for(const auto& cur : elements) {
-					auto pos = other.elements.find(cur.first);
-					if (pos == other.elements.end()) return false;
-					if (cur.second != pos->second) return false;
-				}
-
-				// no differences => it is the same
-				return true;
-			}
-
-
-			virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
-				out.write<location_map>(elements);
-			}
-
-			static load_res_t load(allscale::utils::ArchiveReader& in) {
-				return std::make_pair(
-					std::type_index(typeid(DataItem)),
-					std::make_unique<Entry>(in.read<location_map>())
-				);
-			}
-
-			virtual void merge(const EntryBase& base) override {
-				assert_true(dynamic_cast<const Entry*>(&base));
-				const Entry& other = static_cast<const Entry&>(base);
-				for(const auto& cur : other.elements) {
-					for(const auto& part : cur.second) {
-						add(cur.first,part.second,part.first);
-					}
-				}
-			}
-
-			virtual void print(std::ostream& out) const override {
-				for(const auto& cur : elements) {
-					for(const auto& part : cur.second) {
-						out << cur.first << ":" << part.second << "@" << part.first << ",";
-					}
-				}
-			}
-		};
-
-		// the list of located entries
-		std::map<std::type_index,std::unique_ptr<EntryBase>> entries;
+		// the list of located data regions
+		entries_t entries;
 
 	public:
 
@@ -179,10 +42,15 @@ namespace data {
 
 		DataItemLocationInfos() = default;
 
-		DataItemLocationInfos(const DataItemLocationInfos&);
+		DataItemLocationInfos(const DataItemLocationInfos&) = default;
 
 		DataItemLocationInfos(DataItemLocationInfos&&) = default;
 
+	private:
+
+		DataItemLocationInfos(entries_t&& data) : entries(std::move(data)) {}
+
+	public:
 
 		// --- observers ---
 
@@ -198,11 +66,11 @@ namespace data {
 		 */
 		DataItemRegions getCoveredRegions() const;
 
-		template<typename DataItem, typename Op>
-		void forEach(const Op& op) const {
-			auto pos = entries.find(typeid(DataItem));
-			if (pos == entries.end()) return;
-			static_cast<Entry<DataItem>&>(*pos->second).forEach(op);
+		/**
+		 * Obtains access to the per-location data share located.
+		 */
+		const entries_t& getLocationInfo() const {
+			return entries;
 		}
 
 		// --- mutators ---
@@ -212,12 +80,14 @@ namespace data {
 		 */
 		template<typename DataItem>
 		void add(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region, com::rank_t loc) {
-			get<DataItem>().add(ref,region,loc);
+			entries[loc].add(ref,region);
 		}
 
 		// --- operators ---
 
-		bool operator==(const DataItemLocationInfos&) const;
+		bool operator==(const DataItemLocationInfos& other) const {
+			return entries == other.entries;
+		}
 
 		bool operator!=(const DataItemLocationInfos& other) const {
 			return !(*this == other);
@@ -237,16 +107,6 @@ namespace data {
 		// --- utilities ---
 
 		friend std::ostream& operator<<(std::ostream&,const DataItemLocationInfos&);
-
-	private:
-
-		template<typename DataItem>
-		Entry<DataItem>& get() {
-			auto& ptr = entries[typeid(DataItem)];
-			if (!bool(ptr)) ptr = std::make_unique<Entry<DataItem>>();
-			return static_cast<Entry<DataItem>&>(*ptr);
-		}
-
 	};
 
 

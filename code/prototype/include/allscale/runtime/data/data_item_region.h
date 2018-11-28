@@ -376,6 +376,10 @@ namespace data {
 			add(region.getDataItemReference(),region.getRegion());
 		}
 
+		/**
+		 * Add a set of regions.
+		 */
+		void add(const DataItemRegions& regions);
 
 		// -- operators --
 

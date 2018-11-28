@@ -710,10 +710,20 @@ namespace mon {
 			// sent to bashboard
 			auto mySend = [&](const void* msg, int size) {
 				if (!alive) return;
-				if (send(sock,msg,size,MSG_NOSIGNAL | MSG_DONTWAIT) != size) {
-					std::cerr << "Lost dashboard connection, ending status broadcasts.";
-					alive = false;
+
+				const std::uint8_t* buffer = reinterpret_cast<const std::uint8_t*>(msg);
+				while(size > 0) {
+					int rv = send(sock,buffer,size,MSG_NOSIGNAL);
+					if (rv < 0) {
+						std::cerr << "Lost dashboard connection, ending status broadcasts.\n";
+						std::cerr << "Problem: " << strerror(errno) << "\n";
+						alive = false;
+						size = 0;
+					}
+					size -= rv;
+					buffer += rv;
 				}
+
 			};
 
 			// serialized access on socket from here

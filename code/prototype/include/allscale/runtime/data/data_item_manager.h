@@ -280,6 +280,9 @@ namespace data {
 		// the rank this service is running on
 		com::rank_t rank;
 
+		// a cache for resolved data locations
+		mutable DataItemLocationCache locationCache;
+
 	public:
 
 		DataItemManagerService(com::Node&);

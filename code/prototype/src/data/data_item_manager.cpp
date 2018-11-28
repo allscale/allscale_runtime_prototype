@@ -91,13 +91,17 @@ namespace data {
 		// if there is nothing to cover, there is nothing to do
 		if (regions.empty()) return;
 
-		// get access to the local data item index service
-		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
-
-		// TODO: cache the obtained locations - to avoid resolution every time
-
 		// locate all read requirements
-		auto locations = diis.locate(regions);
+		auto locations = locationCache.lookup(regions);
+		if (locations.empty()) {
+
+			// get access to the local data item index service
+			auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+
+			// update locations in cache
+			locations = diis.locate(regions);
+			locationCache.update(locations);
+		}
 
 		// retrieve data from their source locations
 		for(const auto& cur : locations.getLocationInfo()) {
@@ -105,8 +109,17 @@ namespace data {
 			// skip local queries
 			if (cur.first == rank) continue;
 
-			// retrieve data	-- TODO: run this RPC asynchroniously
+			// retrieve data
 			auto data = network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second);
+
+			// test that all data is included
+			if (cur.second != data.getCoveredRegions()) {
+
+				// clear cache entry and restart retrieval (not most efficient)
+				locationCache.clear(regions);
+				retrieve(regions);
+				return;
+			}
 
 			// integrate data locally
 			for(auto& cur : registers) {

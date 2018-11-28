@@ -52,6 +52,9 @@ namespace data {
 
 	public:
 
+		DataItemLocationInfos& operator=(const DataItemLocationInfos&) = default;
+		DataItemLocationInfos& operator=(DataItemLocationInfos&&) = default;
+
 		// --- observers ---
 
 		/**
@@ -130,6 +133,9 @@ namespace data {
 
 		// clears the cache content
 		void clear();
+
+		// clears an entry in the cache
+		void clear(const DataItemRegions& regions);
 
 		// performs a lookup in the cache, fills what is known
 		DataItemLocationInfos lookup(const DataItemRegions& regions) const;

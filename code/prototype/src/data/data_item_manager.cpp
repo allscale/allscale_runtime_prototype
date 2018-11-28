@@ -49,11 +49,8 @@ namespace data {
 			diis.getAvailableData()
 		);
 
-		// locate all read requirements
-		auto locations = diis.locate(reqs.getReadRequirements());
-
 		// import all read requirements
-		retrieve(locations);
+		retrieve(reqs.getReadRequirements());
 
 		// check that all read requirements are now covered
 //		assert_pred2(
@@ -87,11 +84,18 @@ namespace data {
 	}
 
 	/**
-	 * Instructs the data item manager to retrieve all data listed in the given location summary.
+	 * Instructs the data item manager to retrieve all data listed in the given regions.
 	 */
-	void DataItemManagerService::retrieve(const DataItemLocationInfos& infos) {
+	void DataItemManagerService::retrieve(const DataItemRegions& regions) {
+
+		// get access to the local data item index service
+		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+
+		// locate all read requirements
+		auto locations = diis.locate(regions);
+
 		for(const auto& cur : registers) {
-			cur.second->retrieve(infos);
+			cur.second->retrieve(locations);
 		}
 	}
 

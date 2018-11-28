@@ -324,14 +324,14 @@ namespace data {
 		void release(const DataItemRequirements& reqs);
 
 		/**
-		 * Instructs the data item manager to retrieve all data listed in the given location summary.
+		 * Instructs the data item manager to refresh the given data regions locally.
 		 */
-		void retrieve(const DataItemLocationInfos& data);
+		void retrieve(const DataItemRegions& regions);
 
 		/**
 		 * Acquires ownership on the stated requirements (where missing).
 		 */
-		void acquire(const DataItemRegions& reqs);
+		void acquire(const DataItemRegions& regions);
 
 		// --- protocol interface ---
 

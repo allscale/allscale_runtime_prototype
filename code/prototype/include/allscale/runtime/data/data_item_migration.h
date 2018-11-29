@@ -64,12 +64,12 @@ namespace data {
 
 			// provide serialization support
 			void store(allscale::utils::ArchiveWriter& out) const {
-				out.write<std::intptr_t>(intptr_t(load_fun));
+				out.write(load_fun);
 				storeInternal(out);
 			}
 
 			static load_res_t load(allscale::utils::ArchiveReader& in) {
-				load_fun_t load = load_fun_t(in.read<std::intptr_t>());
+				load_fun_t load = in.read<load_fun_t>();
 				return load(in);
 			}
 

@@ -86,45 +86,96 @@ namespace data {
 	/**
 	 * Instructs the data item manager to retrieve all data listed in the given regions.
 	 */
-	void DataItemManagerService::retrieve(const DataItemRegions& regions) {
+	void DataItemManagerService::retrieve(const DataItemRegions& requestedRegions) {
 
 		// if there is nothing to cover, there is nothing to do
+		if (requestedRegions.empty()) return;
+
+		// crop to actual data item size
+		auto regions = intersect(getFullRegions(),requestedRegions);
+
+		// if there is now nothing to do, be done
 		if (regions.empty()) return;
 
-		// locate all read requirements
-		auto locations = locationCache.lookup(regions);
-		if (locations.empty()) {
+		// while the retievel was not successful ...
+		while(true) {
 
-			// get access to the local data item index service
-			auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+			// -- locate data - if possible through the cache --
 
-			// update locations in cache
-			locations = diis.locate(regions);
-			locationCache.update(locations);
-		}
+			// locate all read requirements
+			auto entry = locationCache.lookup(regions);
+			if (!entry || entry->empty()) {
 
-		// retrieve data from their source locations
-		for(const auto& cur : locations.getLocationInfo()) {
+				// get access to the local data item index service
+				auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
 
-			// skip local queries
-			if (cur.first == rank) continue;
+				// update locations in cache
+				auto locations = diis.locate(regions);
 
-			// retrieve data
-			auto data = network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second);
+				// add resolved data to the location cache
+				bool valid = regions == locations.getCoveredRegions();
+				entry = &locationCache.update(regions,locations,valid);
+			}
 
-			// test that all data is included
-			if (cur.second != data.getCoveredRegions()) {
+			assert_true(entry);
+			auto& locations = *entry;
 
+
+			// -- retrieve the data, if not available, restart --
+
+			std::vector<DataItemMigrationData> allData;
+			allData.reserve(locations.getLocationInfo().size());
+
+			// track whether all data has been found where expected
+			bool allFine = true;
+
+			// a utility to invalidate the utilized cache entry
+			auto invalidateCache = [&]{
 				// clear cache entry and restart retrieval (not most efficient)
 				locationCache.clear(regions);
-				retrieve(regions);
-				return;
+
+				// we have to restart
+				allFine = false;
+			};
+
+			// retrieve data from their source locations
+			for(const auto& cur : locations.getLocationInfo()) {
+
+				// handle local queries
+				if (cur.first == rank) {
+
+					// check that expected data is present
+					if (!isSubRegion(cur.second,getExclusiveRegions())) {
+						// invalidate cache and restart
+						invalidateCache();
+						break;
+					}
+
+					// can be skipped
+					continue;
+				}
+
+				// retrieve data
+				allData.push_back(network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second));
+
+				// test that all data is included
+				if (cur.second != allData.back().getCoveredRegions()) {
+					invalidateCache();
+					break;
+				}
 			}
+
+			// if not all data could be collected => restart
+			if (!allFine) continue;
 
 			// integrate data locally
 			for(auto& cur : registers) {
-				cur.second->import(data);
+				for(const auto& data : allData) {
+					cur.second->import(data);
+				}
 			}
+
+			return;
 		}
 
 	}

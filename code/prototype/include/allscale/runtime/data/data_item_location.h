@@ -8,6 +8,7 @@
 #pragma once
 
 #include <algorithm>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -118,8 +119,14 @@ namespace data {
 	 */
 	class DataItemLocationCache {
 
+		struct Entry {
+			DataItemRegions target;
+			DataItemLocationInfos info;
+			bool valid;
+		};
+
 		// most naive version - todo: improve
-		std::vector<std::pair<DataItemRegions,DataItemLocationInfos>> cache;
+		std::deque<Entry> cache;
 
 		// a lock for synchronization
 		std::unique_ptr<std::mutex> lock;
@@ -138,10 +145,10 @@ namespace data {
 		void clear(const DataItemRegions& regions);
 
 		// performs a lookup in the cache, fills what is known
-		DataItemLocationInfos lookup(const DataItemRegions& regions) const;
+		const DataItemLocationInfos* lookup(const DataItemRegions& regions) const;
 
 		// updates the cached information
-		void update(const DataItemLocationInfos& infos);
+		const DataItemLocationInfos& update(const DataItemRegions& regions, const DataItemLocationInfos& infos, bool valid = true);
 	};
 
 

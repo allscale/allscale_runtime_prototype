@@ -137,11 +137,12 @@ namespace data {
 			fragment.resize(reserved);
 		}
 
-		allscale::utils::Archive extract(const region_type& region) const {
+		allscale::utils::optional<allscale::utils::Archive> extract(const region_type& region) const {
 			allscale::utils::ArchiveWriter out;
 			{
 				// lock down this fragment
 				guard g(lock);
+				if (!allscale::api::core::isSubRegion(region,exclusive)) return {};	// do not extract non-eclusive content!
 				fragment.extract(out,region_type::intersect(region,getDataItemSize()));
 			}
 			return std::move(out).toArchive();
@@ -209,6 +210,12 @@ namespace data {
 				items.emplace(ref,std::make_unique<DataFragmentHandler<DataItem>>(shared));
 			}
 
+			region_type getDataItemSize(const reference_type& ref) const {
+				auto pos = items.find(ref);
+				assert_true(pos != items.end());
+				return pos->second->getDataItemSize();
+			}
+
 			void extract(const DataItemRegions& regions, DataItemMigrationData& res) override {
 				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& cur){
 					auto& ref = cur.getDataItemReference();
@@ -216,14 +223,14 @@ namespace data {
 					auto pos = items.find(ref);
 					// one can not extract what one does not have
 					if (pos == items.end()) return;
-					// do not include partial data
-					if (!allscale::api::core::isSubRegion(region,pos->second->getExclusiveRegion())) return;
-					// include data
-					res.add(ref,region,pos->second->extract(region));
+					// obtain data
+					auto data = pos->second->extract(region);
+					// if successful, add data to result
+					if (bool(data)) res.add(ref,region,std::move(*data));
 				});
 			}
 
-			allscale::utils::Archive extract(const reference_type& ref, const region_type& region) {
+			allscale::utils::optional<allscale::utils::Archive> extract(const reference_type& ref, const region_type& region) {
 				return get(ref).extract(region);
 			}
 
@@ -279,6 +286,9 @@ namespace data {
 
 		// the rank this service is running on
 		com::rank_t rank;
+
+		// the list of all regions registered in the system
+		DataItemRegions fullRegions;
 
 		// a cache for resolved data locations
 		mutable DataItemLocationCache locationCache;
@@ -348,7 +358,11 @@ namespace data {
 		template<typename DataItem>
 		void registerDataItem(DataItemReference<DataItem> ref, const typename DataItem::shared_data_type& shared_data) {
 			// register shared data
-			getRegister<DataItem>().registerItem(ref,shared_data);
+			auto& reg = getRegister<DataItem>();
+			reg.registerItem(ref,shared_data);
+
+			// add new data item to full regions
+			fullRegions.add(ref,reg.getDataItemSize(ref));
 
 			// also inform index services
 			notifyIndexOnCreation(ref);
@@ -358,7 +372,7 @@ namespace data {
 		 * Retrieves a serialized version of a data item stored at this locality.
 		 */
 		template<typename DataItem>
-		allscale::utils::Archive extract(DataItemReference<DataItem> ref, const typename DataItem::region_type& region) {
+		allscale::utils::optional<allscale::utils::Archive> extract(DataItemReference<DataItem> ref, const typename DataItem::region_type& region) {
 			return getRegister<DataItem>().extract(ref,region);
 		}
 
@@ -397,6 +411,16 @@ namespace data {
 			return getRegister<DataItem>().get(ref).getExclusiveRegion();
 		}
 
+		/**
+		 * Obtains the full size of all data items registered in the system.
+		 */
+		const DataItemRegions& getFullRegions() const {
+			return fullRegions;
+		}
+
+		/**
+		 * Obtains the exclusive regions maintained locally.
+		 */
 		DataItemRegions getExclusiveRegions() const;
 
 	private:

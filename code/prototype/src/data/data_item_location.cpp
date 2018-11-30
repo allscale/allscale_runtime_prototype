@@ -58,33 +58,38 @@ namespace data {
 	void DataItemLocationCache::clear(const DataItemRegions& regions) {
 		guard g(*lock);
 		for(auto& cur : cache) {
-			if (cur.first == regions) {
-				cur.second = DataItemLocationInfos();
+			if (cur.target == regions) {
+				cur.valid = false;
 				return;
 			}
 		}
 	}
 
-	DataItemLocationInfos DataItemLocationCache::lookup(const DataItemRegions& regions) const {
+	const DataItemLocationInfos* DataItemLocationCache::lookup(const DataItemRegions& regions) const {
 		guard g(*lock);
 		for(const auto& cur : cache) {
-			if (cur.first == regions) {
-				return cur.second;
+			if (cur.target == regions) {
+				if (cur.valid) {
+					return &cur.info;
+				} else {
+					return nullptr;
+				}
 			}
 		}
-		return {};
+		return nullptr;
 	}
 
-	void DataItemLocationCache::update(const DataItemLocationInfos& infos) {
+	const DataItemLocationInfos& DataItemLocationCache::update(const DataItemRegions& regions, const DataItemLocationInfos& infos, bool valid) {
 		guard g(*lock);
-		auto regions = infos.getCoveredRegions();
 		for(auto& cur : cache) {
-			if (cur.first == regions) {
-				cur.second = infos;
-				return;
+			if (cur.target == regions) {
+				cur.info = infos;
+				cur.valid = valid;
+				return cur.info;
 			}
 		}
-		cache.push_back({regions,infos});
+		cache.emplace_back(Entry{regions,infos,true});
+		return cache.back().info;
 	}
 
 

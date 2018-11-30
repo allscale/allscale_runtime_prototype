@@ -208,7 +208,8 @@ namespace data {
 
 			// we found something => extract it
 			auto data = dim.extract(ref,match);
-			res.add(ref,match,std::move(data));
+			assert_true(bool(data));
+			res.add(ref,match,std::move(*data));
 
 			// remove ownership
 			full = region_type::difference(full,match);
@@ -381,7 +382,6 @@ namespace data {
 
 		// a lock to synchronize transfers on this instance
 		mutable allscale::utils::FiberMutex lock;
-//		mutable std::mutex lock;
 
 		// the guard type to utilize
 		using guard = std::lock_guard<allscale::utils::FiberMutex>;

@@ -28,7 +28,7 @@ namespace utils {
 		/**
 		 * A utility to compute the base address of the executable shared object.
 		 */
-		static void* getExecutableBase() {
+		static inline void* getExecutableBase() {
 			Dl_info info;
 			if (!dladdr((void*)&_init,&info)) {
 				assert_fail() << "Error obtaining executable shared object information.";

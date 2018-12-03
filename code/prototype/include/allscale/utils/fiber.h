@@ -6,6 +6,7 @@
 #include <ucontext.h>
 #include <mutex>
 #include <vector>
+#include <thread>
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -580,6 +581,270 @@ namespace utils {
 			}
 
 			return !mux.test_and_set();
+		}
+
+	};
+
+
+	// -------- Fiber Futures ------------
+
+
+	template<typename T>
+	class FiberPromise;
+
+	template<typename T>
+	class FiberFuture;
+
+	template<typename T>
+	class FiberPromiseFutureBase {
+
+		friend class FiberPromise<T>;
+		friend class FiberFuture<T>;
+
+		/**
+		 * A global lock per future type for synchronizing promise/future
+		 * connections.
+		 */
+		static spinlock& getLock() {
+			static spinlock lock;
+			return lock;
+		}
+
+	};
+
+
+	template<typename T>
+	class FiberFuture {
+
+		friend class FiberPromise<T>;
+
+		using promise_t = FiberPromise<T>;
+
+		using guard = std::lock_guard<spinlock>;
+
+		promise_t* promise;
+
+		allscale::utils::optional<T> value;
+
+		mutable spinlock wait_lock;
+
+		mutable Fiber fiber = nullptr;		// a potential fiber being blocked
+
+		FiberFuture(promise_t& promise) : promise(&promise) {
+			promise.set_future(*this);
+		};
+
+	public:
+
+		FiberFuture() : promise(nullptr) {}
+
+		FiberFuture(const FiberFuture& other) = delete;
+
+		FiberFuture(FiberFuture&& other) : promise(nullptr) {
+
+			{
+				guard g(FiberPromiseFutureBase<T>::getLock());
+
+				// if there is still a promise
+				if (other.promise) {
+
+					// move promise
+					std::swap(promise,other.promise);
+
+					// inform promise about new future target
+					promise->set_future(*this);
+				}
+
+			}
+
+			// move value
+			value = std::move(other.value);
+
+		}
+
+		~FiberFuture() {
+			guard g(FiberPromiseFutureBase<T>::getLock());
+			if (promise) promise->reset_future();
+		}
+
+		// support initialization with the result value
+		FiberFuture(const T& value) : promise(nullptr), value(value) {}
+		FiberFuture(T&& value) : promise(nullptr), value(std::move(value)) {}
+
+		FiberFuture& operator=(const FiberFuture&) = delete;
+
+		FiberFuture& operator=(FiberFuture&& other) {
+			//
+			if (this == &other) return *this;
+
+			{
+				guard g(FiberPromiseFutureBase<T>::getLock());
+
+				// clear old state
+				if (promise) promise->reset_future();
+
+				// if there is still a promise
+				if (other.promise) {
+
+					// move promise
+					std::swap(promise,other.promise);
+
+					// inform promise about new future target
+					promise->set_future(*this);
+				}
+			}
+
+			// move value
+			value = std::move(other.value);
+
+			return *this;
+		}
+
+		bool valid() const {
+			return promise || bool(value);
+		}
+
+		void wait() const {
+			assert_true(valid());
+
+			wait_lock.lock();
+
+			// get current fiber
+			assert_true(fiber == nullptr);
+			fiber = FiberPool::getCurrentFiber();
+
+			// check promise state
+			while(promise) {
+
+				if (fiber) {
+					// in a fiber, suspend operation
+					suspend(wait_lock);
+					assert_eq(fiber,FiberPool::getCurrentFiber());
+				} else {
+					wait_lock.unlock();
+					std::this_thread::yield();
+					wait_lock.lock();
+				}
+			}
+
+			// reset fiber
+			fiber = nullptr;
+
+			wait_lock.unlock();
+		}
+
+		T get() {
+			wait();
+			return std::move(*value);
+		}
+
+	private:
+
+		/**
+		 * Delivers the result to this future, returns a potential
+		 * fiber waiting for this result to be resumed.
+		 */
+		Fiber deliver(const T& result) {
+			value = result;
+			Fiber waiting = nullptr;
+			{
+				guard g(wait_lock);
+				promise = nullptr;
+				waiting = fiber;
+			}
+			return waiting;
+		}
+
+		/**
+		 * Delivers the result to this future, returns a potential
+		 * fiber waiting for this result to be resumed.
+		 */
+		Fiber deliver(T&& result) {
+			value = std::move(result);
+			Fiber waiting = nullptr;
+			{
+				guard g(wait_lock);
+				promise = nullptr;
+				waiting = fiber;
+			}
+			return waiting;
+		}
+
+	};
+
+
+	template<typename T>
+	class FiberPromise {
+
+		using future_t = FiberFuture<T>;
+
+		friend class FiberFuture<T>;
+
+		// the future the result should be delivered to (at most one)
+		future_t* future;
+
+		using guard = std::lock_guard<spinlock>;
+
+	public:
+
+		FiberPromise() : future(nullptr) {}
+
+		FiberPromise(const FiberPromise&) = delete;
+
+		FiberPromise(FiberPromise&&) = delete;
+
+		~FiberPromise() {
+			assert_false(future) << "Promise destroyed without delivery!";
+		}
+
+		/**
+		 * Obtains a future associated to this promise. This function
+		 * must only be called once.
+		 */
+		future_t get_future() {
+			assert_true(nullptr == future);
+			future_t res(*this);
+			return res;
+		}
+
+		/**
+		 * Delivers the given value to the future associated to this promise.
+		 * This function must only be called once.
+		 */
+		void set_value(const T& value) {
+			Fiber waiting = nullptr;
+			{
+				guard g(FiberPromiseFutureBase<T>::getLock());
+				if (!future) return;
+				waiting = future->deliver(value);
+				future = nullptr;
+			}
+			if (waiting) FiberPool::resume(waiting);
+		}
+
+		/**
+		 * Delivers the given value to the future associated to this promise.
+		 * This function must only be called once.
+		 */
+		void set_value(T&& value) {
+			Fiber waiting = nullptr;
+			{
+				guard g(FiberPromiseFutureBase<T>::getLock());
+				if (!future) return;
+				waiting = future->deliver(std::move(value));
+				future = nullptr;
+			}
+			if (waiting) FiberPool::resume(waiting);
+		}
+
+	private:
+
+		void set_future(FiberFuture<T>& f) {
+			future = &f;
+		}
+
+		void reset_future() {
+			future = nullptr;
 		}
 
 	};

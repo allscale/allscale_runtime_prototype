@@ -3,6 +3,7 @@
 #include "allscale/utils/fiber.h"
 
 #include <type_traits>
+#include <thread>
 
 
 namespace allscale {
@@ -217,6 +218,164 @@ namespace utils {
 
 	}
 
+
+	// ----- futures -----
+
+	TEST(FiberFuture, Traits) {
+
+		EXPECT_TRUE(std::is_default_constructible<FiberPromise<int>>::value);
+		EXPECT_FALSE(std::is_copy_constructible<FiberPromise<int>>::value);
+		EXPECT_FALSE(std::is_move_constructible<FiberPromise<int>>::value);
+		EXPECT_FALSE(std::is_copy_assignable<FiberPromise<int>>::value);
+		EXPECT_FALSE(std::is_move_assignable<FiberPromise<int>>::value);
+
+		EXPECT_TRUE(std::is_default_constructible<FiberFuture<int>>::value);
+		EXPECT_FALSE(std::is_copy_constructible<FiberFuture<int>>::value);
+		EXPECT_TRUE(std::is_move_constructible<FiberFuture<int>>::value);
+		EXPECT_FALSE(std::is_copy_assignable<FiberFuture<int>>::value);
+		EXPECT_TRUE(std::is_move_assignable<FiberFuture<int>>::value);
+
+	}
+
+	TEST(FiberFuture, ReadyScalar) {
+		FiberFuture<int> f(12);
+		EXPECT_TRUE(f.valid());
+		EXPECT_EQ(12,f.get());
+	}
+
+	TEST(FiberFuture, SequentialScalar) {
+		FiberPromise<int> p;
+		auto f = p.get_future();
+		EXPECT_TRUE(f.valid());
+		p.set_value(12);
+		EXPECT_EQ(12,f.get());
+	}
+
+	TEST(FiberFuture, ParallelScalar) {
+
+		FiberPromise<int> p;
+		auto f = p.get_future();
+		EXPECT_TRUE(f.valid());
+
+		auto consumer = std::thread([&]{
+			EXPECT_EQ(12,f.get());
+		});
+
+		auto producer = std::thread([&]{
+			p.set_value(12);
+		});
+
+		consumer.join();
+		producer.join();
+	}
+
+
+	TEST(FiberFuture, ParallelList_threads) {
+		const static int NUM_FUTURES = 1000;
+
+		std::array<FiberPromise<int>,NUM_FUTURES> ps;
+		std::vector<FiberFuture<int>> fs;
+
+		for(int i=0; i<NUM_FUTURES; i++) {
+			fs.emplace_back(ps[i].get_future());
+		}
+
+		auto consumer = std::thread([&]{
+			for(int i=0; i<NUM_FUTURES; i++) {
+				EXPECT_EQ(i,fs[i].get());
+			}
+		});
+
+		auto producer = std::thread([&]{
+			for(int i=0; i<NUM_FUTURES; i++) {
+				ps[i].set_value(i);
+			}
+		});
+
+		consumer.join();
+		producer.join();
+	}
+
+
+	TEST(FiberFuture, SequentialList_fiber) {
+		const static int NUM_FUTURES = 1000;
+
+		std::array<FiberPromise<int>,NUM_FUTURES> ps;
+		std::vector<FiberFuture<int>> fs;
+
+		for(int i=0; i<NUM_FUTURES; i++) {
+			fs.emplace_back(ps[i].get_future());
+		}
+
+		int msg_counter = 0;
+		FiberPool pool;
+
+		// let the consumer be a fiber
+		auto consumer = pool.start([&]{
+			for(int i=0; i<NUM_FUTURES; i++) {
+				EXPECT_EQ(i,fs[i].get());
+				msg_counter++;
+			}
+		});
+
+		EXPECT_TRUE(consumer);
+
+		// produce all the values (causes consumption as a side-effect)
+		for(int i=0; i<NUM_FUTURES; i++) {
+			ps[i].set_value(i);
+		}
+
+		EXPECT_EQ(NUM_FUTURES,msg_counter);
+	}
+
+
+	TEST(FiberFuture, ParallelList_fiber) {
+		const static int NUM_FUTURES = 1000;
+
+		std::array<FiberPromise<int>,NUM_FUTURES> ps;
+		std::vector<FiberFuture<int>> fs;
+
+		for(int i=0; i<NUM_FUTURES; i++) {
+			fs.emplace_back(ps[i].get_future());
+		}
+
+		int msg_counter = 0;
+		FiberPool pool;
+
+		// let the consumer be a fiber
+		auto consumer = pool.start([&]{
+			for(int i=0; i<NUM_FUTURES; i++) {
+
+				if (i % 2) {
+					EXPECT_TRUE(fs[i].valid());
+					EXPECT_EQ(i,fs[i].get());
+				} else {
+					FiberFuture<int> f;
+					EXPECT_FALSE(f.valid());
+					f = std::move(fs[i]);
+					EXPECT_FALSE(fs[i].valid());
+					EXPECT_TRUE(f.valid());
+					EXPECT_EQ(i,f.get());
+				}
+
+				msg_counter++;
+			}
+		});
+
+		EXPECT_TRUE(consumer);
+
+		// the producer is a thread
+		auto producer = std::thread([&]{
+			for(int i=0; i<NUM_FUTURES; i++) {
+				ps[i].set_value(i);
+			}
+		});
+
+		// let producer finish (will also drive consumer)
+		producer.join();
+
+		EXPECT_EQ(NUM_FUTURES,msg_counter);
+	}
 
 } // end of namespace utils
 } // end of namespace allscale

@@ -52,7 +52,7 @@ namespace sim {
 		NetworkStatistics res(numNodes());
 		for(rank_t cur = 0; cur < numNodes(); cur++) {
 			nodes[cur]->run([&](Node&){
-				res[cur] = getRemoteProcedure(cur,&NetworkStatisticService::getNodeStats)();
+				res[cur] = getRemoteProcedure(cur,&NetworkStatisticService::getNodeStats)().get();
 			});
 		}
 		return res;

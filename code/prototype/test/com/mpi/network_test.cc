@@ -89,7 +89,7 @@ namespace mpi {
 		net.runOn(0,[](Node&){
 			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(1,&PingService::ping);
-			EXPECT_EQ(5,ping(4));
+			EXPECT_EQ(5,ping(4).get());
 		});
 
 		// barrier before removing services

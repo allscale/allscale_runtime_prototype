@@ -200,7 +200,7 @@ namespace com {
 		// perform remote calls to all services from node N/2
 		net.runOn(N/2,[&](Node&){
 			for(const auto& cur : all) {
-				auto reply = hierarchy.getRemoteProcedure(cur,&LayerService::whereAreYou)();
+				auto reply = hierarchy.getRemoteProcedure(cur,&LayerService::whereAreYou)().get();
 				EXPECT_EQ(reply,cur);
 			}
 		});

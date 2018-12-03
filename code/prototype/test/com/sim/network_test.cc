@@ -59,7 +59,7 @@ namespace sim {
 		net.runOn(0,[](Node&){
 			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(1,&PingService::ping);
-			EXPECT_EQ(5,ping(4));
+			EXPECT_EQ(5,ping(4).get());
 		});
 
 	}
@@ -94,7 +94,7 @@ namespace sim {
 		net.runOn(0,[](Node&){
 			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(1,&PingService::ping);
-			EXPECT_EQ(5,ping(4));
+			EXPECT_EQ(5,ping(4).get());
 		});
 
 		// extract references to statistics
@@ -119,8 +119,8 @@ namespace sim {
 		net.runOn(1,[](Node&){
 			auto& net = Network::getNetwork();
 			auto ping = net.getRemoteProcedure(0,&PingService::ping);
-			EXPECT_EQ(5,ping(4));
-			EXPECT_EQ(9,ping(8));
+			EXPECT_EQ(5,ping(4).get());
+			EXPECT_EQ(9,ping(8).get());
 		});
 
 		// extract references to statistics

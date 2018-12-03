@@ -156,7 +156,7 @@ namespace data {
 				}
 
 				// retrieve data
-				allData.push_back(network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second));
+				allData.push_back(network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second).get());
 
 				// test that all data is included
 				if (cur.second != allData.back().getCoveredRegions()) {

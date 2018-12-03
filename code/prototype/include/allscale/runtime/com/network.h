@@ -20,9 +20,19 @@ namespace runtime {
 namespace com {
 
 	#ifdef ENABLE_MPI
+
 		using Network = mpi::Network;
+
+		template<typename T>
+		using RemoteCallResult = mpi::RemoteCallResult<T>;
+
 	#else
+
 		using Network = sim::Network;
+
+		template<typename T>
+		using RemoteCallResult = sim::RemoteCallResult<T>;
+
 	#endif
 
 } // end of namespace com

@@ -194,6 +194,8 @@ namespace data {
 		DataItemMigrationData(DataItemMigrationData&&) = default;
 
 
+		DataItemMigrationData& operator=(DataItemMigrationData&&) = default;
+
 		// --- observers ---
 
 		/**

@@ -23,6 +23,49 @@ namespace runtime {
 namespace com {
 namespace sim {
 
+	namespace detail {
+
+		/**
+		 * A future substitute to be returned by remote procedure calls in the simulation case.
+		 */
+		template<typename T>
+		class Immediate {
+
+			T value;
+
+		public:
+
+			Immediate(const T& value) : value(value) {}
+			Immediate(T&& value) : value(std::move(value)) {}
+
+			Immediate(const Immediate&) = delete;
+			Immediate(Immediate&&) = default;
+
+			Immediate& operator=(const Immediate&) = delete;
+			Immediate& operator=(Immediate&&) = default;
+
+			bool valid() {
+				return true;
+			}
+
+			void wait() {
+				/* nothing */
+			}
+
+			T get() {
+				return std::move(value);
+			}
+
+		};
+
+	}
+
+	/**
+	 * Define the type of result produced by remote calls.
+	 */
+	template<typename T>
+	using RemoteCallResult = detail::Immediate<T>;
+
 	/**
 	 * The simulated network for this prototype implementation.
 	 *
@@ -151,7 +194,7 @@ namespace sim {
 			/**
 			 * Realizes the actual remote procedure call.
 			 */
-			R operator()(Args ... args) const {
+			RemoteCallResult<R> operator()(Args ... args) const {
 				auto src = Node::getLocalRank();
 				auto trg = node.getRank();
 
@@ -257,7 +300,7 @@ namespace sim {
 			/**
 			 * Realizes the actual remote procedure call.
 			 */
-			R operator()(Args ... args) const {
+			RemoteCallResult<R> operator()(Args ... args) const {
 				auto src = Node::getLocalRank();
 				auto trg = node.getRank();
 

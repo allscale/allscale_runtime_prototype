@@ -460,8 +460,13 @@ namespace mpi {
 	NetworkStatistics Network::getStatistics() {
 
 		NetworkStatistics res(num_nodes);
+
+		std::vector<RemoteCallResult<NodeStatistics>> futures(num_nodes);
 		for(rank_t i=0; i<num_nodes; i++) {
-			res[i] = getNetwork().getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+			futures[i] = getNetwork().getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+		}
+		for(rank_t i=0; i<num_nodes; i++) {
+			res[i] = futures[i].get();
 		}
 		return res;
 	}

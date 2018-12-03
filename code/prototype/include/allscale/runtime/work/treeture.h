@@ -154,7 +154,7 @@ namespace work {
 			// test whether this is the right one
 			if (myRank != owner) {
 				// query remote
-				return network.getRemoteProcedure(owner,&TreetureStateService::isDone)(owner,id);
+				return network.getRemoteProcedure(owner,&TreetureStateService::isDone)(owner,id).get();
 			}
 
 			guard g(lock);
@@ -175,7 +175,7 @@ namespace work {
 			// test whether this is the right one
 			if (myRank != owner) {
 				// query remote
-				return network.getRemoteProcedure(owner,&TreetureStateService::getResult<R>)(owner,id);
+				return network.getRemoteProcedure(owner,&TreetureStateService::getResult<R>)(owner,id).get();
 			}
 
 			guard g(lock);

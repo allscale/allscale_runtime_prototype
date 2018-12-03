@@ -404,13 +404,10 @@ namespace data {
 			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - forward to " << myAddress.getParent() << " - " << isLocked(lock) << "\n";
 
 			// forward call to parent
-			auto res = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id);
+			auto res = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id).get();
 
 			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - retrieved from " << myAddress.getParent() << "\n";
 			return res;
-
-			// forward call to parent
-			return network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id);
 		}
 
 		// Phase 2 + 3: this is the owner of everything required => resolve details and return result
@@ -468,7 +465,7 @@ namespace data {
 				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking left ..\n";
 
 				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(part,id);
+				auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(part,id).get();
 
 				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - left done\n";
 
@@ -494,7 +491,7 @@ namespace data {
 				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking right ..\n";
 
 				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(part,id);
+				auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(part,id).get();
 
 				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - right done\n";
 
@@ -549,7 +546,7 @@ namespace data {
 		}
 
 		// send request to parent
-		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(missing,myAddress);
+		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(missing,myAddress).get();
 
 		// this node should be locked now
 		assert_true(isLocked(lock));
@@ -589,7 +586,7 @@ namespace data {
 			lock.unlock();
 
 			// forward to parent
-			auto data = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(regions,myAddress);
+			auto data = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(regions,myAddress).get();
 
 			// the parent should have requested the lock
 			assert_true(isLocked(lock));
@@ -611,7 +608,7 @@ namespace data {
 			}
 
 			// lock child node
-			network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)();
+			network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)().get();
 
 			// free the local lock
 			lock.unlock();
@@ -649,7 +646,7 @@ namespace data {
 			  << "Right:     " << getAvailableDataRightInternal() << "\n";
 
 		// lock child node for ownership transfer
-		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)();
+		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)().get();
 
 		// give up the local lock
 		lock.unlock();
@@ -677,7 +674,8 @@ namespace data {
 		guard g(lock);
 
 		// make sure a owned part of the tree is requested
-		assert_pred2(isSubRegion,regions,getAvailableDataInternal());
+		assert_pred2(isSubRegion,regions,getAvailableDataInternal())
+			<< "Local address: " << myAddress << "\n";
 
 
 		// -- handle leafs  --
@@ -732,7 +730,7 @@ namespace data {
 			if (!part.empty()) {
 
 				// retract ownership and retrieve data
-				auto data = network.getRemoteProcedure(myAddress.getLeftChild(), &DataItemIndexService::abandonOwnership)(part);
+				auto data = network.getRemoteProcedure(myAddress.getLeftChild(), &DataItemIndexService::abandonOwnership)(part).get();
 
 				// make sure it is what was expected
 				assert_eq(part,data.getCoveredRegions());
@@ -754,7 +752,7 @@ namespace data {
 			if (!part.empty()) {
 
 				// retract ownership and retrieve data
-				auto data = network.getRemoteProcedure(myAddress.getRightChild(), &DataItemIndexService::abandonOwnership)(part);
+				auto data = network.getRemoteProcedure(myAddress.getRightChild(), &DataItemIndexService::abandonOwnership)(part).get();
 
 				// make sure it is what was expected
 				assert_eq(part,data.getCoveredRegions());

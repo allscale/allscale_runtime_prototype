@@ -85,6 +85,12 @@ namespace mpi {
 	extern std::mutex G_MPI_MUTEX;
 
 	/**
+	 * Define the type of result produced by remote calls.
+	 */
+	template<typename T>
+	using RemoteCallResult = utils::FiberFuture<T>;
+
+	/**
 	 * The network implementation for an MPI based implementation.
 	 */
 	class Network {
@@ -185,7 +191,7 @@ namespace mpi {
 			/**
 			 * Realizes the actual remote procedure call.
 			 */
-			R operator()(Args ... args) {
+			R call(Args ... args) {
 				auto src = local.getRank();
 				auto trg = target;
 
@@ -218,6 +224,27 @@ namespace mpi {
 				// unpack result
 				allscale::utils::Archive a(std::move(buffer));
 				return allscale::utils::deserialize<R>(a);
+			}
+
+			/**
+			 * Wraps up the remote call in an asynchronous handler.
+			 */
+			RemoteCallResult<R> operator()(Args...args) {
+
+				auto src = local.getRank();
+				auto trg = target;
+
+				if (src == trg) {
+					return call(std::forward<Args>(args)...);
+				}
+
+				RemoteCallResult<R> res;
+				network.pool.start([&]{
+					allscale::utils::FiberPromise<R> promise;
+					res = promise.get_future();
+					promise.set_value(call(std::forward<Args>(args)...));
+				});
+				return std::move(res);
 			}
 
 		};
@@ -358,7 +385,7 @@ namespace mpi {
 			/**
 			 * Realizes the actual remote procedure call.
 			 */
-			R operator()(Args ... args) {
+			R call(Args ... args) {
 				auto src = local.getRank();
 				auto trg = target;
 
@@ -391,6 +418,27 @@ namespace mpi {
 				// unpack result
 				allscale::utils::Archive a(std::move(buffer));
 				return allscale::utils::deserialize<R>(a);
+			}
+
+			/**
+			 * Wraps up the remote call in an asynchronous handler.
+			 */
+			RemoteCallResult<R> operator()(Args...args) {
+
+				auto src = local.getRank();
+				auto trg = target;
+
+				if (src == trg) {
+					return call(std::forward<Args>(args)...);
+				}
+
+				RemoteCallResult<R> res;
+				network.pool.start([&]{
+					allscale::utils::FiberPromise<R> promise;
+					res = promise.get_future();
+					promise.set_value(call(std::forward<Args>(args)...));
+				});
+				return std::move(res);
 			}
 
 		};

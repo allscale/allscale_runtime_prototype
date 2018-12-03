@@ -661,7 +661,8 @@ namespace work {
 				std::vector<float> load(numNodes,0.0f);
 				mon::TaskTimes taskTimes;
 				for(com::rank_t i : activeConfig.nodes.getNodes()) {
-					auto cur = network.getRemoteProcedure(i,&StrategicScheduler::getStatus)();
+					// TODO: collect inputs asynchrony
+					auto cur = network.getRemoteProcedure(i,&StrategicScheduler::getStatus)().get();
 					load[i] = cur.first;
 					taskTimes += cur.second;
 				}

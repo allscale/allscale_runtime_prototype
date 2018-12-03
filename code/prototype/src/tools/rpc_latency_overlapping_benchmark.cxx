@@ -44,7 +44,7 @@ int main() {
 	net.sync();
 
 	net.runOn(0,[&](Node&){
-		std::cout << "Starting round-trip time measurements using " << NUM_REPETITONS << " repetitions\n";
+		std::cout << "Starting overlapping round-trip time measurements using " << NUM_REPETITONS << " repetitions\n";
 	});
 
 	// measure round-trip time between all nodes
@@ -58,10 +58,18 @@ int main() {
 				// get the remote procedure
 				auto ping = net.getRemoteProcedure(j,&MeasureService::ping);
 
+				std::vector<RemoteCallResult<int>> res;
+				res.reserve(NUM_REPETITONS);
+
 				// measure round trip time 10 times
 				auto begin = clock::now();
 				for(int i=0; i<NUM_REPETITONS; i++) {
-					if (ping(i).get() != i+1) {
+					res.push_back(ping(i));
+				}
+
+				// wait for all to finish
+				for(int i=0; i<NUM_REPETITONS; i++) {
+					if (res[i].get() != i+1) {
 						std::cout << "Corrupted communication by sending ping from " << i << " to " << j << " ...\n";
 					}
 				}

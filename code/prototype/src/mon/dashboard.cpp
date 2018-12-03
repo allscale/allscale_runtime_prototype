@@ -762,7 +762,7 @@ namespace mon {
 		// simply collect state from all nodes
 		SystemState res;
 		for(com::rank_t cur = 0; cur < net.numNodes(); cur++) {
-			res.nodes.push_back(net.getRemoteProcedure(cur,&NodeStateService::getState)());
+			res.nodes.push_back(net.getRemoteProcedure(cur,&NodeStateService::getState)().get());
 		}
 
 		// update global state

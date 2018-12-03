@@ -399,18 +399,18 @@ namespace mpi {
 		/**
 		 * A handle for broadcasts.
 		 */
-		template<typename R, typename S, typename ... Args>
+		template<typename S, typename ... Args>
 		class Broadcast {
 
 			// the targeted service function
-			R(S::* fun)(Args...);
+			void(S::* fun)(Args...);
 
 		public:
 
 			/**
 			 * Creates a new remote procedure reference.
 			 */
-			Broadcast(R(S::*fun)(Args...))
+			Broadcast(void(S::*fun)(Args...))
 				: fun(fun) {}
 
 			/**
@@ -515,8 +515,8 @@ namespace mpi {
 		/**
 		 * Obtains a handle for performing broad-casts on a selected remote service.
 		 */
-		template<typename R,typename S, typename ... Args>
-		Broadcast<R,S,Args...> broadcast(R(S::*fun)(Args...)) {
+		template<typename S, typename ... Args>
+		Broadcast<S,Args...> broadcast(void(S::*fun)(Args...)) {
 			return { fun };
 		}
 

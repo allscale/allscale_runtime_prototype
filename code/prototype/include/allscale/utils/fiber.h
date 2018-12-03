@@ -54,7 +54,7 @@ namespace utils {
 				  continuation(nullptr) {
 
 				// allocate stack memory
-				stack = (stack_t*)mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
+				stack = mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
 
 				// provide proper error reporting
 				if (stack == MAP_FAILED) {
@@ -63,6 +63,7 @@ namespace utils {
 					case ENOMEM: std::cerr << "not enough memory"; break;
 					default: std::cerr << "errno code " << errno << " (see errno.h on your system)"; break;
 					}
+					assert_fail();
 					// terminate program (unrecoverable)
 					exit(1);
 				}
@@ -74,7 +75,7 @@ namespace utils {
 			fiber_info(const fiber_info&) = delete;
 			fiber_info(fiber_info&& other) = delete;
 			~fiber_info() {
-				munmap(stack,sizeof(stack_t));
+				munmap(stack,stack_size);
 			}
 
 			void activate() {

@@ -109,7 +109,7 @@ namespace mpi {
 		struct response_handler {
 			utils::FiberPool::Fiber receiver;
 			utils::FiberPool::Fiber sender;
-			std::mutex* lock;
+			allscale::utils::spinlock* lock;
 		};
 
 		// a registry for fibers waiting for responses from remote calls

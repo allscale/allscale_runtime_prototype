@@ -305,7 +305,7 @@ namespace mpi {
 		assert_true(fiber);
 
 		// a mutex to handle call back synchronization for resuming sender fiber
-		std::mutex lock;
+		allscale::utils::spinlock lock;
 
 		auto senderFiber = allscale::utils::FiberPool::getCurrentFiber();
 		if (senderFiber) lock.lock();

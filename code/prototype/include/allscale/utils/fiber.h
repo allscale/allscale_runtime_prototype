@@ -15,6 +15,7 @@
 #include "allscale/utils/assert.h"
 #include "allscale/utils/optional.h"
 #include "allscale/utils/printer/vectors.h"
+#include "allscale/utils/spinlock.h"
 
 namespace allscale {
 namespace utils {
@@ -101,10 +102,10 @@ namespace utils {
 		std::vector<fiber_info*> freeInfos;
 
 		// a lock to synchronize accesses to the free lists
-		mutable std::mutex lock;
+		mutable spinlock lock;
 
 		// the guard type used for protection operations
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<spinlock>;
 
 	public:
 
@@ -219,7 +220,7 @@ namespace utils {
 		 * must only be called within the context of a fiber managed
 		 * by this pool.
 		 */
-		static void suspend(std::mutex* lock = nullptr) {
+		static void suspend(spinlock* lock = nullptr) {
 
 			// get current fiber
 			auto fiber = getCurrentFiberInfo();
@@ -302,12 +303,12 @@ namespace utils {
 
 	private:
 
-		static std::mutex*& getMutexLock() {
-			thread_local static std::mutex* tl_lock = nullptr;
+		static spinlock*& getMutexLock() {
+			thread_local static spinlock* tl_lock = nullptr;
 			return tl_lock;
 		}
 
-		static void setMutexLock(std::mutex* newLock) {
+		static void setMutexLock(spinlock* newLock) {
 			auto& lock = getMutexLock();
 			assert_false(lock);
 			lock = newLock;
@@ -320,7 +321,7 @@ namespace utils {
 			lock = nullptr;
 		}
 
-		static void swap(ucontext_t& src, ucontext_t& trg, std::mutex* lock = nullptr) {
+		static void swap(ucontext_t& src, ucontext_t& trg, spinlock* lock = nullptr) {
 
 			// get current context
 			auto currentFiber = getCurrentFiberInfo();
@@ -465,7 +466,7 @@ namespace utils {
 		if (isFiberContext()) FiberPool::suspend();
 	}
 
-	inline void suspend(std::mutex& lock) {
+	inline void suspend(spinlock& lock) {
 		if (isFiberContext()) FiberPool::suspend(&lock);
 	}
 
@@ -485,9 +486,9 @@ namespace utils {
 		std::vector<Fiber> blocked;
 
 		// the lock to protect accessed to the blocked list of fibers
-		std::mutex state_lock;
+		spinlock state_lock;
 
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<spinlock>;
 
 		int pid;
 

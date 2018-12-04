@@ -31,7 +31,7 @@ namespace runtime {
 		mon::installDashbordService(network);
 
 		// install and start workers in nodes
-		work::startWorker(network);
+		work::startWorkerPool(network);
 
 		// wait for all network instances to be at this state
 		network.sync();
@@ -43,7 +43,7 @@ namespace runtime {
 		network.sync();
 
 		// shut down workers
-		work::stopWorker(network);
+		work::stopWorkerPool(network);
 
 		// start by stopping periodic operations
 		utils::removePeriodicExecutorService(network);

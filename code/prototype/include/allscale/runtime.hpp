@@ -58,7 +58,7 @@ namespace runtime {
 			auto treeture = task->getTreeture();
 
 			// schedule task
-			node.getService<work::Worker>().schedule(std::move(task));
+			node.getService<work::WorkerPool>().schedule(std::move(task));
 
 			// wait for completion
 			treeture.wait();

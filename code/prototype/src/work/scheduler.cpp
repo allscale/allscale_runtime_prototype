@@ -306,7 +306,7 @@ namespace work {
 					DLOG << "Scheduling " << task->getId() << " on Node " << com::Node::getLocalRank() << " ... \n";
 
 					// assign to local worker
-					com::Node::getLocalService<Worker>().schedule(std::move(task));
+					com::Node::getLocalService<WorkerPool>().schedule(std::move(task));
 
 					// done
 					return;

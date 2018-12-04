@@ -26,14 +26,19 @@ namespace work {
 	void yield();
 
 	/**
-	 * Installs and starts worker on the given network.
+	 * Installs and starts worker pool on the given network.
 	 */
-	void startWorker(com::Network&);
+	void startWorkerPool(com::Network&);
 
 	/**
-	 * Stops all worker on the given network (shutdown).
+	 * Stops all worker pool on the given network (shutdown).
 	 */
-	void stopWorker(com::Network&);
+	void stopWorkerPool(com::Network&);
+
+
+	// forward declaration
+	class WorkerPool;
+
 
 	/**
 	 * A simple class wrapping a worker thread running within a node.
@@ -49,8 +54,8 @@ namespace work {
 			Terminated		// < terminated (will never run again)
 		};
 
-		// the work queue to be processed by this worker
-		WorkQueue queue;
+		// the pool being a part of
+		WorkerPool& pool;
 
 		// a flag indicating whether this worker is still active
 		std::atomic<State> state;
@@ -58,11 +63,7 @@ namespace work {
 		// the thread conducting the actual work
 		std::thread thread;
 
-		// the rank this worker is running on
-		com::rank_t rank;
-
-		// the node this worker is working on (if there is one)
-		com::Node* node;
+		// -- monitoring metrics --
 
 		// the number of tasks split by this worker
 		std::atomic<std::uint32_t> splitCounter;
@@ -86,33 +87,18 @@ namespace work {
 
 	public:
 
-		Worker(com::rank_t rank = 0)
-			: state(Ready), rank(rank), node(nullptr),
+		Worker(WorkerPool& pool)
+			: pool(pool), state(Ready),
 			  splitCounter(0), processedCounter(0), processedWork(0), processTime(std::chrono::nanoseconds(0)) {}
-
-		Worker(com::Node& node) : Worker(node.getRank()) {
-			this->node = &node;
-		}
 
 		Worker(const Worker&) = delete;
 		Worker(Worker&&) = delete;
-
-		/**
-		 * Obtains a reference to the local worker.
-		 */
-		static Worker& getLocalWorker();
 
 		/**
 		 * Starts this worker. The worker will
 		 * start processing work from the queue in an extra thread.
 		 */
 		void start();
-
-		/**
-		 * Adds the given task to the work-queue of this worker.
-		 * The worker will take ownership of the task.
-		 */
-		void schedule(TaskPtr&&);
 
 		/**
 		 * Stops this worker. The worker will finish all tasks
@@ -161,11 +147,6 @@ namespace work {
 		 */
 		friend void yield();
 
-		/**
-		 * A function to schedule.
-		 */
-		friend void schedule(TaskPtr&&);
-
 	private:
 
 		/**
@@ -178,6 +159,104 @@ namespace work {
 		 * Returns true if a step was processed, false otherwise.
 		 */
 		bool step();
+
+	};
+
+
+	/**
+	 * A pool to be integratable in a node to processes tasks concurrently.
+	 */
+	class WorkerPool {
+
+		friend class Worker;
+
+		// the work queue to be processed by this worker
+		WorkQueue queue;
+
+		// the list of workers being part of this pool
+		std::vector<std::unique_ptr<Worker>> workers;
+
+		// the node this worker is working on (if there is one)
+		com::Node* node;
+
+		WorkerPool(com::Node* node, int num_threads);
+
+	public:
+
+		WorkerPool(int num_threads = 1)
+			: WorkerPool(nullptr,num_threads) {}
+
+		WorkerPool(com::Node& node, int num_threads = 1)
+			: WorkerPool(&node,num_threads) {};
+
+		WorkerPool(const WorkerPool&) = delete;
+		WorkerPool(WorkerPool&&) = delete;
+
+
+		/**
+		 * Starts this worker. The worker will
+		 * start processing work from the queue in an extra thread.
+		 */
+		void start();
+
+		/**
+		 * Stops this worker. The worker will finish all tasks
+		 * in the queue and terminate the thread.
+		 */
+		void stop();
+
+		/**
+		 * Obtains a reference to the local worker pool.
+		 */
+		static WorkerPool& getLocalWorkerPool();
+
+		/**
+		 * Adds the given task to the work-queue of this worker pool.
+		 * The pool will take ownership of the task.
+		 */
+		void schedule(TaskPtr&&);
+
+		/**
+		 * Obtains the number of workers maintained within this pool.
+		 */
+		std::size_t getNumWorkers() const {
+			return workers.size();
+		}
+
+		/**
+		 * Obtains the number of split tasks.
+		 */
+		std::uint32_t getNumSplitTasks() const;
+
+		/**
+		 * Obtains the number of processed tasks.
+		 */
+		std::uint32_t getNumProcessedTasks() const;
+
+		/**
+		 * Obtains an estimate of the processed work.
+		 */
+		double getProcessedWork() const;
+
+		/**
+		 * Obtains the amount of time spend on task processing.
+		 */
+		std::chrono::nanoseconds getProcessTime() const;
+
+		/**
+		 * Obtains a summary of the task execution time processed by this worker.
+		 */
+		mon::TaskTimes getTaskTimeSummary() const;
+
+		/**
+		 * A function to be called by tasks blocking within a worker.
+		 */
+		friend void yield();
+
+		/**
+		 * A function to schedule.
+		 */
+		friend void schedule(TaskPtr&&);
 
 	};
 

@@ -16,32 +16,27 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
-	thread_local Worker* tl_current_worker = nullptr;
+	thread_local WorkerPool* tl_current_worker_pool = nullptr;
 
-	void startWorker(com::Network& net) {
+	void startWorkerPool(com::Network& net) {
 
 		net.runOnAll([](com::Node& node){
 
-			// install worker
-			auto& worker = node.startService<Worker>();
+			// install worker pool
+			auto& pool = node.startService<WorkerPool>(2);	// set number of workers
 
-			// start worker
-			worker.start();
+			// start workers in pool
+			pool.start();
 
 		});
 
 	}
 
-	void stopWorker(com::Network& net) {
+	void stopWorkerPool(com::Network& net) {
 		net.runOnAll([](com::Node& node){
-			node.getService<Worker>().stop();
-			node.stopService<Worker>();
+			node.getService<WorkerPool>().stop();
+			node.stopService<WorkerPool>();
 		});
-	}
-
-	Worker& Worker::getLocalWorker() {
-		assert_true(tl_current_worker) << "Can not localize worker outside of any worker thread!";
-		return *tl_current_worker;
 	}
 
 	void Worker::start() {
@@ -52,11 +47,11 @@ namespace work {
 		assert_true(success) << "Invalid state " << st << ": cannot start non-ready worker.";
 
 		// start processing thread
-		if (node) {
+		if (pool.node) {
 			// run in proper network and node context node context
 			auto& network = com::Network::getNetwork();
 			thread = std::thread([&]{
-				network.runOn(node->getRank(),[&](com::Node&){
+				network.runOn(pool.node->getRank(),[&](com::Node&){
 					run();
 				});
 			});
@@ -70,12 +65,6 @@ namespace work {
 		success = state.compare_exchange_strong(st,Running);
 		assert_true(success) << "Invalid state " << st << ": cannot switch to running state.";
 
-	}
-
-	void Worker::schedule(TaskPtr&& task) {
-		// simply add the task to the queue
-		assert_eq(Running,state) << "Invalid state: unable to assign work to non-running worker.";
-		queue.enqueueFront(std::move(task));
 	}
 
 	void Worker::stop() {
@@ -98,7 +87,14 @@ namespace work {
 	void Worker::run() {
 
 		// set thread-local worker
-		tl_current_worker = this;
+		tl_current_worker_pool = &pool;
+
+//		{
+//			cpu_set_t mask;
+//			CPU_ZERO(&mask);
+//			CPU_SET(5, &mask);
+//			pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &mask);
+//		}
 
 		// while running ..
 		while(true) {
@@ -114,16 +110,16 @@ namespace work {
 		}
 
 		// reset thread local worker
-		tl_current_worker = nullptr;
+		tl_current_worker_pool = nullptr;
 	}
 
 	bool Worker::step() {
 
 		// process a task if available
-		if (auto t = queue.dequeueBack()) {
+		if (auto t = pool.queue.dequeueBack()) {
 
 			// get a reference to the local data item manager
-			auto dim = (node) ? &data::DataItemManagerService::getLocalService() : nullptr;
+			auto dim = (pool.node) ? &data::DataItemManagerService::getLocalService() : nullptr;
 
 			// ask the scheduler what to do
 			if (t->isSplitable() && shouldSplit(t)) {
@@ -132,7 +128,7 @@ namespace work {
 				auto reqs = t->getSplitRequirements();
 
 				// log this action
-				DLOG << "Splitting " << t->getId() << " on node " << rank << " with requirements " << reqs << "\n";
+				DLOG << "Splitting " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
 
 				// allocate requirements (blocks till ready)
 				if (dim) dim->allocate(reqs);
@@ -143,7 +139,7 @@ namespace work {
 				// free requirements
 				if (dim) dim->release(reqs);
 
-				DLOG << "Splitting " << t->getId() << " on node " << rank << " completed\n";
+				DLOG << "Splitting " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
 
 				// increment split counter
 				splitCounter++;
@@ -156,7 +152,7 @@ namespace work {
 				auto reqs = t->getProcessRequirements();
 
 				// log this action
-				DLOG << "Processing " << t->getId() << " on node " << rank << " with requirements " << reqs << "\n";
+				DLOG << "Processing " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
 
 				// allocate requirements (blocks till ready)
 				if (dim) dim->allocate(reqs);
@@ -169,7 +165,7 @@ namespace work {
 				// free requirements
 				if (dim) dim->release(reqs);
 
-				DLOG << "Processing " << t->getId() << " on node " << rank << " completed\n";
+				DLOG << "Processing " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
 
 				// increment processed counter
 				processedCounter++;
@@ -199,13 +195,85 @@ namespace work {
 
 	void yield() {
 		// attempt to process another task while waiting
-		if (Worker* worker = tl_current_worker) {
-			worker->step();
+		if (WorkerPool* pool = tl_current_worker_pool) {
+			pool->workers[0]->step();
 		} else {
 			// yield this thread (the main thread, not a worker)
 			using namespace std::chrono_literals;
 			std::this_thread::sleep_for(10ms);
 		}
+	}
+
+	WorkerPool::WorkerPool(com::Node* node, int num_threads)
+		: node(node) {
+
+		// start up worker threads
+		workers.reserve(num_threads);
+		for(int i=0; i<num_threads; i++) {
+			workers.push_back(std::make_unique<Worker>(*this));
+		}
+	}
+
+	WorkerPool& WorkerPool::getLocalWorkerPool() {
+		assert_true(tl_current_worker_pool) << "Can not localize worker pool outside of any worker thread!";
+		return *tl_current_worker_pool;
+	}
+
+	void WorkerPool::start() {
+		for(auto& cur : workers) {
+			cur->start();
+		}
+	}
+
+	void WorkerPool::stop() {
+		for(auto& cur : workers) {
+			cur->stop();
+		}
+	}
+
+	void WorkerPool::schedule(TaskPtr&& task) {
+		// simply add the task to the queue
+		queue.enqueueFront(std::move(task));
+	}
+
+	std::uint32_t WorkerPool::getNumSplitTasks() const {
+		std::uint32_t res = 0;
+		for(auto& cur : workers) {
+			res += cur->getNumSplitTasks();
+		}
+		return res;
+	}
+
+	std::uint32_t WorkerPool::getNumProcessedTasks() const {
+		std::uint32_t res = 0;
+		for(auto& cur : workers) {
+			res += cur->getNumProcessedTasks();
+		}
+		return res;
+	}
+
+	double WorkerPool::getProcessedWork() const {
+		double res = 0;
+		for(auto& cur : workers) {
+			res += cur->getProcessedWork();
+		}
+		return res;
+	}
+
+	std::chrono::nanoseconds WorkerPool::getProcessTime() const {
+		std::chrono::nanoseconds res(0);
+		for(auto& cur : workers) {
+			res += cur->getProcessTime();
+		}
+		return res;
+	}
+
+	mon::TaskTimes WorkerPool::getTaskTimeSummary() const {
+		mon::TaskTimes res;
+		for(auto& cur : workers) {
+			res += cur->getTaskTimeSummary();
+		}
+		return res;
 	}
 
 } // end of namespace work

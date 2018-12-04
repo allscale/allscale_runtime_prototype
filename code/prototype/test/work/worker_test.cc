@@ -9,21 +9,21 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
-	TEST(Worker, StartStop) {
+	TEST(WorkerPool, StartStop) {
 
-		// create a worker
-		Worker worker;
+		// create a pool
+		WorkerPool pool;
 
-		// start the worker
-		worker.start();
+		// start the worker pool
+		pool.start();
 
-		// stop the worker
-		worker.stop();
+		// stop the pool
+		pool.stop();
 
 	}
 
 
-	TEST(Worker, Processing) {
+	TEST(WorkerPool, Processing) {
 
 		int x = 0;
 
@@ -34,23 +34,23 @@ namespace work {
 		auto& net = *network;
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
-		startWorker(net);
+		startWorkerPool(net);
 
 		net.runOn(0,[&](com::Node& node){
-			node.getService<Worker>().schedule(make_lambda_task(getFreshId(),[&]{
+			node.getService<WorkerPool>().schedule(make_lambda_task(getFreshId(),[&]{
 				x = 1;
 			}));
 		});
 
 		// stop worker
-		stopWorker(net);
+		stopWorkerPool(net);
 
 		// now x should be one
 		EXPECT_EQ(1,x);
 
 	}
 
-	TEST(Worker, ProcessingLoop) {
+	TEST(WorkerPool, ProcessingLoop) {
 
 		int N = 100;
 		int x = 0;
@@ -64,11 +64,11 @@ namespace work {
 		data::installDataItemManagerService(net);
 
 		// start the worker
-		startWorker(net);
+		startWorkerPool(net);
 
 		// schedule N tasks
 		net.runOn(0,[&](com::Node& node){
-			auto& worker = node.getService<Worker>();
+			auto& worker = node.getService<WorkerPool>();
 			for(int i=0; i<N; i++) {
 				worker.schedule(make_lambda_task(getFreshId(),[&]{
 					x++;
@@ -77,7 +77,7 @@ namespace work {
 		});
 
 		// stop the worker
-		stopWorker(net);
+		stopWorkerPool(net);
 
 		// now x should be one
 		EXPECT_EQ(N,x);

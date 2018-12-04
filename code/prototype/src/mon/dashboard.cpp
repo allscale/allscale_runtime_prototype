@@ -391,11 +391,12 @@ namespace mon {
 			}
 
 			// fill in worker information
-			if (localNode.hasService<work::Worker>()) {
-				auto& worker = localNode.getService<work::Worker>();
-				auto curTaskCount = worker.getNumProcessedTasks();
-				auto curProcess = worker.getProcessedWork();
-				auto processTime = worker.getProcessTime();
+			if (localNode.hasService<work::WorkerPool>()) {
+				auto& pool = localNode.getService<work::WorkerPool>();
+				auto numWorker = pool.getNumWorkers();
+				auto curTaskCount = pool.getNumProcessedTasks();
+				auto curProcess = pool.getProcessedWork();
+				auto processTime = pool.getProcessTime();
 
 				res.task_throughput = calcThroughput(lastTaskCount,curTaskCount);
 				lastTaskCount = curTaskCount;
@@ -404,7 +405,7 @@ namespace mon {
 				lastProcessedWork = curProcess;
 
 				// compute idle rate over entire observed interval
-				res.idle_rate = 1 - (processTime - processTimeBuffer.getOldest())/std::chrono::duration_cast<std::chrono::duration<float>>(now - processTimeBuffer.getOldestTime());
+				res.idle_rate = 1 - ((processTime - processTimeBuffer.getOldest())/std::chrono::duration_cast<std::chrono::duration<float>>(now - processTimeBuffer.getOldestTime()) / numWorker);
 
 				// aggregate process time
 				processTimeBuffer.push(processTime, now);

@@ -86,9 +86,9 @@ namespace runtime {
 		std::cout << "rank, split_tasks, processed_tasks, est_workload\n";
 		rt.getNetwork().runOnAll([](com::Node& node){
 			std::cout << std::setw( 4) << node.getRank() << ",";
-			std::cout << std::setw(12) << node.getService<work::Worker>().getNumSplitTasks() << ",";
-			std::cout << std::setw(16) << node.getService<work::Worker>().getNumProcessedTasks() << ",";
-			std::cout << std::setw(13) << std::setprecision(4) << node.getService<work::Worker>().getProcessedWork() << "\n";
+			std::cout << std::setw(12) << node.getService<work::WorkerPool>().getNumSplitTasks() << ",";
+			std::cout << std::setw(16) << node.getService<work::WorkerPool>().getNumProcessedTasks() << ",";
+			std::cout << std::setw(13) << std::setprecision(4) << node.getService<work::WorkerPool>().getProcessedWork() << "\n";
 
 		});
 		std::cout << "------------------------------------------------------------------------------------------\n";

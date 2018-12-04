@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "allscale/runtime/com/node.h"
+#include "allscale/runtime/hw/model.h"
 
 #include "allscale/runtime/work/work_queue.h"
 #include "allscale/runtime/mon/task_stats.h"
@@ -57,6 +58,9 @@ namespace work {
 		// the pool being a part of
 		WorkerPool& pool;
 
+		// the configuration for this worker retrieved from the HW model
+		hw::WorkerConfig config;
+
 		// a flag indicating whether this worker is still active
 		std::atomic<State> state;
 
@@ -87,8 +91,8 @@ namespace work {
 
 	public:
 
-		Worker(WorkerPool& pool)
-			: pool(pool), state(Ready),
+		Worker(WorkerPool& pool, const hw::WorkerConfig& config)
+			: pool(pool), config(config), state(Ready),
 			  splitCounter(0), processedCounter(0), processedWork(0), processTime(std::chrono::nanoseconds(0)) {}
 
 		Worker(const Worker&) = delete;
@@ -179,15 +183,15 @@ namespace work {
 		// the node this worker is working on (if there is one)
 		com::Node* node;
 
-		WorkerPool(com::Node* node, int num_threads);
+		WorkerPool(com::Node* node);
 
 	public:
 
-		WorkerPool(int num_threads = 1)
-			: WorkerPool(nullptr,num_threads) {}
+		WorkerPool()
+			: WorkerPool(nullptr) {}
 
-		WorkerPool(com::Node& node, int num_threads = 1)
-			: WorkerPool(&node,num_threads) {};
+		WorkerPool(com::Node& node)
+			: WorkerPool(&node) {};
 
 		WorkerPool(const WorkerPool&) = delete;
 		WorkerPool(WorkerPool&&) = delete;

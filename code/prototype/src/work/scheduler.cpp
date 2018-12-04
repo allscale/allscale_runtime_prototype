@@ -507,11 +507,12 @@ namespace work {
 			float getEfficiency() {
 				// take a sample
 				auto curTime = now();
-				auto curProcess = node.getService<work::Worker>().getProcessTime();
+				auto& pool = node.getService<work::WorkerPool>();
+				auto curProcess = pool.getProcessTime();
 
 				// compute efficiency
 				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastEfficiencySampleTime);
-				auto res = (curProcess - lastProcessTime)/ interval;
+				auto res = ((curProcess - lastProcessTime)/ interval) / pool.getNumWorkers();
 
 				// keep track of data
 				lastEfficiencySampleTime = curTime;
@@ -524,7 +525,7 @@ namespace work {
 			mon::TaskTimes getTaskTimes() {
 				// take a sample
 				auto curTime = now();
-				auto curTimes = node.getService<work::Worker>().getTaskTimeSummary();
+				auto curTimes = node.getService<work::WorkerPool>().getTaskTimeSummary();
 
 				// normalize to one second
 				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastTaskTimesSampleTime);

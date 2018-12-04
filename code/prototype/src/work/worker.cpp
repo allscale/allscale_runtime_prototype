@@ -7,6 +7,7 @@
 
 #include "allscale/runtime/log/logger.h"
 #include "allscale/runtime/com/network.h"
+#include "allscale/runtime/hw/model.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
 #include "allscale/runtime/mon/task_stats.h"
@@ -23,7 +24,7 @@ namespace work {
 		net.runOnAll([](com::Node& node){
 
 			// install worker pool
-			auto& pool = node.startService<WorkerPool>(2);	// set number of workers
+			auto& pool = node.startService<WorkerPool>();
 
 			// start workers in pool
 			pool.start();
@@ -89,12 +90,8 @@ namespace work {
 		// set thread-local worker
 		tl_current_worker_pool = &pool;
 
-//		{
-//			cpu_set_t mask;
-//			CPU_ZERO(&mask);
-//			CPU_SET(5, &mask);
-//			pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &mask);
-//		}
+		// fix thread affinity
+		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &config.affinityMask);
 
 		// while running ..
 		while(true) {
@@ -204,13 +201,17 @@ namespace work {
 		}
 	}
 
-	WorkerPool::WorkerPool(com::Node* node, int num_threads)
+	WorkerPool::WorkerPool(com::Node* node)
 		: node(node) {
 
+		// get rank
+		com::rank_t rank = (node ? node->getRank() : 0);
+		auto config = hw::getWorkerPoolConfig(rank);
+
 		// start up worker threads
-		workers.reserve(num_threads);
-		for(int i=0; i<num_threads; i++) {
-			workers.push_back(std::make_unique<Worker>(*this));
+		workers.reserve(config.size());
+		for(const auto& workerConfig : config) {
+			workers.push_back(std::make_unique<Worker>(*this,workerConfig));
 		}
 	}
 

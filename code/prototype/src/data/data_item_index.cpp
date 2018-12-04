@@ -383,6 +383,7 @@ namespace data {
 
 	DataItemLocationInfos DataItemIndexService::locate(const DataItemRegions& regions, int id) {
 
+		// TODO: remove this
 		static std::atomic<int> counter(0 + (1<<20) * myAddress.getRank());
 
 		if (id < 0) {
@@ -391,7 +392,6 @@ namespace data {
 		} else {
 			if (DEBUG) std::cout << myAddress << ": processing locating procedure " << id << " - lock state: " << isLocked(lock) << " ..\n";
 		}
-
 
 
 		// see whether there is something to do at all
@@ -439,11 +439,13 @@ namespace data {
 				cur.second->addLocationInfo(regions,res);
 			}
 
-			// make sure everything has been located
-			assert_eq(regions,res.getCoveredRegions())
-				<< "Available: " << getAvailableDataInternal() << "\n"
-				<< "Located: " << res << "\n"
-				<< "Missing: " << difference(regions,res.getCoveredRegions());
+			// make sure everything has been located - unless this is also the root node (single node)
+			if (!isRoot) {
+				assert_eq(regions,res.getCoveredRegions())
+					<< "Available: " << getAvailableDataInternal() << "\n"
+					<< "Located: " << res << "\n"
+					<< "Missing: " << difference(regions,res.getCoveredRegions());
+			}
 
 			if (DEBUG) std::cout << myAddress << ": Resolved location " << id << " - leaf done\n";
 

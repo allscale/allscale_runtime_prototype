@@ -40,7 +40,7 @@ foreach(test ${prototype_integration_tests})
     target_link_libraries(${tgt} prototype)
 
     # add additional node/policy combination tests
-    foreach( num_nodes 2 3 4 )
+    foreach( num_nodes 1 2 3 4 )
         foreach( policy uniform balanced random )
             if (USE_MPI)
                 add_test(NAME ${tgt}_N${num_nodes}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${num_nodes} $<TARGET_FILE:${tgt}>)

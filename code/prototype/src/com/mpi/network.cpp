@@ -222,7 +222,9 @@ namespace mpi {
 
 		// wait for completion of send call
 		while(!done()) {
-			Network::getNetwork().processMessage();
+			pool.start([&]{
+				Network::getNetwork().processMessage();
+			});
 		}
 	}
 
@@ -331,7 +333,9 @@ namespace mpi {
 			// while not done ..
 			while(!done) {
 				// .. help processing requests
-				processMessage();
+				pool.start([&]{
+					processMessage();
+				});
 			}
 		}
 

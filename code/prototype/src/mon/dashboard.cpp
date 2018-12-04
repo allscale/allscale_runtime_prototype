@@ -264,7 +264,7 @@ namespace mon {
 		template<typename T, std::size_t size>
 		class MeasureBuffer {
 
-			std::array<T,size> data;
+			std::array<T,size> data {};
 
 			std::array<time_point,size> times;
 
@@ -408,6 +408,11 @@ namespace mon {
 
 				// aggregate process time
 				processTimeBuffer.push(processTime, now);
+
+			} else {
+
+				// no worker -> all idle
+				res.idle_rate = 1;
 
 			}
 

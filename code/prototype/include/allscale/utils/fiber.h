@@ -712,6 +712,7 @@ namespace utils {
 		}
 
 		bool valid() const {
+			guard g(FiberPromiseFutureBase<T>::getLock());
 			return promise || bool(value);
 		}
 

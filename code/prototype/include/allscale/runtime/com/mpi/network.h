@@ -81,9 +81,6 @@ namespace mpi {
 
 	}
 
-	// the mutex for synchronizing MPI accesses
-	extern std::mutex G_MPI_MUTEX;
-
 	/**
 	 * Define the type of result produced by remote calls.
 	 */

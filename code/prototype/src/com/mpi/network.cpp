@@ -5,6 +5,7 @@
 #include <mutex>
 #include <condition_variable>
 
+#include "allscale/utils/spinlock.h"
 #include "allscale/runtime/com/mpi/network.h"
 
 namespace allscale {
@@ -120,7 +121,7 @@ namespace mpi {
 	MPI_Comm point2point;
 
 	// the mutex for synchronizing MPI accesses
-	std::mutex G_MPI_MUTEX;
+	utils::spinlock G_MPI_MUTEX;
 
 	// the singleton network instance
 	Network Network::instance;
@@ -206,14 +207,14 @@ namespace mpi {
 	void Network::send(const std::vector<char>& msg, com::rank_t trg, int tag) {
 		MPI_Request request;
 		{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			std::lock_guard<utils::spinlock> g(G_MPI_MUTEX);
 			getLocalStats().sent_bytes += msg.size();
 			MPI_Isend(&msg[0],msg.size(),MPI_CHAR,trg,tag,point2point,&request);
 		}
 
 		// a utility to test that the message has been send
 		auto done = [&]()->bool{
-			std::lock_guard<std::mutex> g(G_MPI_MUTEX);
+			std::lock_guard<utils::spinlock> g(G_MPI_MUTEX);
 			int done;
 			MPI_Test(&request,&done,MPI_STATUS_IGNORE);
 			return done == true;

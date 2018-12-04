@@ -29,6 +29,18 @@ namespace utils {
 	 * not maintain independent OS level threads. The degree of
 	 * concurrent execution / parallelism is determined by the number
 	 * of threads interacting with this pool.
+	 *
+	 *
+	 * Known issues:
+	 * 	This implementation uses thread-local variables in combination with user-level context switching.
+	 * 	This can lead to problems, since the address of thread-local variable is considered to be constant
+	 * 	throughout functions. However, when switching contexts, parts of the same function may be processed
+	 * 	by different threads, leading to problems since now thread-local variable addresses are no longer
+	 * 	constant.
+	 *
+	 * Related topics:
+	 *  - https://stackoverflow.com/questions/25673787/making-thread-local-variables-fully-volatile
+	 *  - https://akkadia.org/drepper/tls.pdf
 	 */
 	class FiberPool {
 
@@ -37,14 +49,22 @@ namespace utils {
 		// we use 8 MB per fiber stack
 		constexpr static std::size_t DEFAULT_STACK_SIZE = (1<<23);
 
+		// an extended context to allow parameter passing along context switches
+		struct ext_ucontext_t {
+			// the context required for context switching
+			ucontext_t context;
+			// extra parameter to be passed along context switches
+			spinlock* volatile lock = nullptr;		// < a potential lock to be freed after a context switch (the pointer is volatile, not the object)
+		};
+
 		// the management information required per fiber
 		struct fiber_info {
-			FiberPool& pool;			// < the pool it belongs to
-			std::atomic<bool> running;	// < the running state
-			std::atomic<bool> active;   // < debugging, make sure that infos are only active once
-			void* stack;				// < the associated stack memory
-			const int stack_size;		// < the size of the stack
-			ucontext_t* continuation;	// < an optional continuation to be processed after finishing or suspending a fiber
+			FiberPool& pool;			   // < the pool it belongs to
+			std::atomic<bool> running;	   // < the running state
+			std::atomic<bool> active;      // < debugging, make sure that infos are only active once
+			void* stack;				   // < the associated stack memory
+			const int stack_size;		   // < the size of the stack
+			ext_ucontext_t* continuation;  // < an optional continuation to be processed after finishing or suspending a fiber
 
 			fiber_info(FiberPool& pool, int stackSize = DEFAULT_STACK_SIZE)
 				: pool(pool),
@@ -55,7 +75,7 @@ namespace utils {
 				  continuation(nullptr) {
 
 				// allocate stack memory
-				stack = mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_GROWSDOWN | MAP_ANONYMOUS,0,0);
+				stack = mmap(nullptr,stackSize,PROT_READ | PROT_WRITE,MAP_PRIVATE | MAP_STACK | MAP_ANONYMOUS,0,0);
 
 				// provide proper error reporting
 				if (stack == MAP_FAILED) {
@@ -120,6 +140,7 @@ namespace utils {
 			for(std::size_t i=0; i<initialSize; i++) {
 				infos.push_back(new fiber_info(*this));
 				assert_false(infos.back()->running);
+				assert_false(infos.back()->active);
 				freeInfos.push_back(infos.back());
 			}
 		}
@@ -158,10 +179,12 @@ namespace utils {
 					fiber = freeInfos.back();
 					freeInfos.pop_back();
 					assert_false(fiber->running) << "Faulty fiber: " << fiber;
+					assert_false(fiber->active) << "Faulty fiber: " << fiber;
 				} else {
 					fiber = new fiber_info(*this);
 					infos.push_back(fiber);
 					assert_false(fiber->running) << "Faulty fiber: " << fiber;
+					assert_false(fiber->active) << "Faulty fiber: " << fiber;
 				}
 			}
 
@@ -169,22 +192,22 @@ namespace utils {
 
 			// make sure the fiber is not running
 			assert_false(fiber->running) << "Faulty fiber: " << fiber;
-			assert_false(fiber->active);
+			assert_false(fiber->active) << "Fiber: " << fiber;
 
 			// capture current context
-			ucontext_t local;
-			getcontext(&local);
+			ext_ucontext_t local;
+			getcontext(&local.context);
 
 			// register local context as continuation
 			fiber->continuation = &local;
 
 			// create a context for the new fiber
-			ucontext_t target = local;
-			target.uc_link = &local;
+			ext_ucontext_t target = local;
+			target.context.uc_link = &local.context;
 
 			// exchange stack
-			target.uc_stack.ss_sp = fiber->stack;
-			target.uc_stack.ss_size = fiber->stack_size;
+			target.context.uc_stack.ss_sp = fiber->stack;
+			target.context.uc_stack.ss_size = fiber->stack_size;
 
 			// encode pool pointer and pointer to lambda into integers
 			static_assert(2*sizeof(int) == sizeof(void*), "Assumption on size of pointer failed!\n");
@@ -192,7 +215,7 @@ namespace utils {
 			auto lambdaPtr = reinterpret_cast<std::intptr_t>(&lambda);
 
 			// set starting point function
-			makecontext(&target,(void(*)())&exec<Fun>,4,
+			makecontext(&target.context,(void(*)())&exec<Fun>,4,
 					int(fiberInfoPtr >> 32), int(fiberInfoPtr),
 					int(lambdaPtr >> 32), int(lambdaPtr)
 			);
@@ -234,11 +257,11 @@ namespace utils {
 			assert_true(fiber->running);
 
 			// capture local state
-			ucontext_t local;
-			getcontext(&local);
+			ext_ucontext_t local;
+			getcontext(&local.context);
 
 			// get previous continuation
-			ucontext_t& continuation = *fiber->continuation;
+			ext_ucontext_t& continuation = *fiber->continuation;
 
 			// make local state the new continuation for this fiber
 			fiber->continuation = &local;
@@ -267,11 +290,11 @@ namespace utils {
 			assert_true(f->running);
 
 			// get local context
-			ucontext_t local;
-			getcontext(&local);
+			ext_ucontext_t local;
+			getcontext(&local.context);
 
 			// get fiber continuation
-			ucontext_t& continuation = *f->continuation;
+			ext_ucontext_t& continuation = *f->continuation;
 
 			// set local as the next continuation
 			f->continuation = &local;
@@ -305,31 +328,15 @@ namespace utils {
 
 	private:
 
-		static spinlock*& getMutexLock() {
-			thread_local static spinlock* tl_lock = nullptr;
-			return tl_lock;
-		}
-
-		static void setMutexLock(spinlock* newLock) {
-			auto& lock = getMutexLock();
-			assert_false(lock);
-			lock = newLock;
-		}
-
-		static void clearMutexLock() {
-			auto& lock = getMutexLock();
-			if (!lock) return;
-			lock->unlock();
-			lock = nullptr;
-		}
-
-		static void swap(ucontext_t& src, ucontext_t& trg, spinlock* lock = nullptr) {
+		static void swap(ext_ucontext_t& src, ext_ucontext_t& trg, spinlock* lock = nullptr) {
 
 			// get current context
 			auto currentFiber = getCurrentFiberInfo();
 
+			std::mutex mux;
+
 			// record mutex lock
-			if (lock) setMutexLock(lock);
+			trg.lock = lock;
 
 			// clear fiber context info
 			resetCurrentFiberInfo();
@@ -338,11 +345,14 @@ namespace utils {
 			if (currentFiber) currentFiber->deactivate();
 
 			// switch context
-			int success = swapcontext(&src,&trg);
+			int success = swapcontext(&src.context,&trg.context);
 			if (success != 0) assert_fail() << "Unable to switch thread context!";
 
-			// unlock src-lock
-			clearMutexLock();
+			// unlock src-lock (which after the swap is in the source context)
+			if (src.lock) {
+				src.lock->unlock();
+				src.lock = nullptr;
+			}
 
 			// re-activate current fiber
 			if (currentFiber) currentFiber->activate();
@@ -355,8 +365,9 @@ namespace utils {
 
 		}
 
-		static fiber_info*& getCurrentFiberInfo() {
+		__attribute__ ((noinline)) static fiber_info*& getCurrentFiberInfo() {
 			static thread_local fiber_info* info = nullptr;
+			asm(""); // for the compiler, this changes everything :)
 			return info;
 		}
 
@@ -412,8 +423,8 @@ namespace utils {
 			assert_eq(&info,getCurrentFiberInfo());
 
 			// swap back to continuation
-			ucontext_t local;
-			ucontext_t& continuation = *info.continuation;
+			ext_ucontext_t local;
+			ext_ucontext_t& continuation = *info.continuation;
 			info.continuation = nullptr;
 
 			// free info block

@@ -124,7 +124,7 @@ namespace utils {
 		std::vector<fiber_info*> freeInfos;
 
 		// a lock to synchronize accesses to the free lists
-		mutable spinlock lock;
+		mutable spinlock freeInfosLock;
 
 		// the guard type used for protection operations
 		using guard = std::lock_guard<spinlock>;
@@ -172,7 +172,7 @@ namespace utils {
 			// get fiber info
 			fiber_info* fiber;
 			{
-				guard g(lock);
+				guard g(freeInfosLock);
 
 				// re-use an existing fiber or create a new one
 				if (!freeInfos.empty()) {
@@ -328,14 +328,14 @@ namespace utils {
 
 	private:
 
+		// __attribute__((noinline,noclone,optimize(0),aligned(16)))
 		static void swap(ext_ucontext_t& src, ext_ucontext_t& trg, spinlock* lock = nullptr) {
 
 			// get current context
 			auto currentFiber = getCurrentFiberInfo();
 
-			std::mutex mux;
-
 			// record mutex lock
+			assert_true(trg.lock == nullptr);
 			trg.lock = lock;
 
 			// clear fiber context info
@@ -347,6 +347,8 @@ namespace utils {
 			// switch context
 			int success = swapcontext(&src.context,&trg.context);
 			if (success != 0) assert_fail() << "Unable to switch thread context!";
+
+			std::atomic_thread_fence(std::memory_order_seq_cst);
 
 			// unlock src-lock (which after the swap is in the source context)
 			if (src.lock) {
@@ -428,13 +430,14 @@ namespace utils {
 			info.continuation = nullptr;
 
 			// free info block
-			info.pool.lock.lock();
+			info.pool.freeInfosLock.lock();
 			if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
 			assert_false(info.running);
 			info.pool.freeInfos.push_back(&info);
 
 			// swap back to continuation, and release lock for free list to make this info re-usable
-			swap(local,continuation,&info.pool.lock);
+//			std::cout << "Submitting to free lock " << &info.pool.freeInfosLock << "\n";
+			swap(local,continuation,&info.pool.freeInfosLock);
 
 			// Note: this code will never be reached!
 			assert_fail() << "Should never be reached!";
@@ -641,17 +644,21 @@ namespace utils {
 
 		mutable Fiber fiber = nullptr;		// a potential fiber being blocked
 
-		FiberFuture(promise_t& promise) : promise(&promise) {
+		using yield_function_t = std::function<void()>;
+
+		yield_function_t yield;
+
+		FiberFuture(promise_t& promise, const yield_function_t& yield) : promise(&promise), yield(yield) {
 			promise.set_future(*this);
 		};
 
 	public:
 
-		FiberFuture() : promise(nullptr) {}
+		FiberFuture() : promise(nullptr), yield(&std::this_thread::yield) {}
 
 		FiberFuture(const FiberFuture& other) = delete;
 
-		FiberFuture(FiberFuture&& other) : promise(nullptr) {
+		FiberFuture(FiberFuture&& other) : promise(nullptr), yield(other.yield) {
 
 			{
 				guard g(FiberPromiseFutureBase<T>::getLock());
@@ -679,8 +686,8 @@ namespace utils {
 		}
 
 		// support initialization with the result value
-		FiberFuture(const T& value) : promise(nullptr), value(value) {}
-		FiberFuture(T&& value) : promise(nullptr), value(std::move(value)) {}
+		FiberFuture(const T& value) : promise(nullptr), value(value), yield(nullptr) {}
+		FiberFuture(T&& value) : promise(nullptr), value(std::move(value)), yield(nullptr) {}
 
 		FiberFuture& operator=(const FiberFuture&) = delete;
 
@@ -708,6 +715,9 @@ namespace utils {
 			// move value
 			value = std::move(other.value);
 
+			// move yield
+			yield = std::move(other.yield);
+
 			return *this;
 		}
 
@@ -734,7 +744,7 @@ namespace utils {
 					assert_eq(fiber,FiberPool::getCurrentFiber());
 				} else {
 					wait_lock.unlock();
-					std::this_thread::yield();
+					yield();	// < user defined yield
 					wait_lock.lock();
 				}
 			}
@@ -813,9 +823,9 @@ namespace utils {
 		 * Obtains a future associated to this promise. This function
 		 * must only be called once.
 		 */
-		future_t get_future() {
+		future_t get_future(const std::function<void()>& yield = &std::this_thread::yield) {
 			assert_true(nullptr == future);
-			future_t res(*this);
+			future_t res(*this,yield);
 			return res;
 		}
 

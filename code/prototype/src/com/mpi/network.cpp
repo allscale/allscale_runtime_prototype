@@ -220,11 +220,13 @@ namespace mpi {
 			return done == true;
 		};
 
+		// TODO: do not make fibers busy-wait here ... suspend them
+		auto fiber = allscale::utils::FiberPool::getCurrentFiber();
+
 		// wait for completion of send call
 		while(!done()) {
-			pool.start([&]{
-				Network::getNetwork().processMessage();
-			});
+			if (fiber) continue;
+			processMessageNonBlocking();
 		}
 	}
 
@@ -313,7 +315,7 @@ namespace mpi {
 
 		// finally, register the response handler
 		{
-			guard g(responde_handler_lock);
+			std::lock_guard<allscale::utils::spinlock> g(responde_handler_lock);
 			responde_handler[key] = { *fiber , senderFiber, &lock };
 		}
 
@@ -326,16 +328,14 @@ namespace mpi {
 
 		// if in a fiber ..
 		if (senderFiber) {
-			// suspend the local fiber until message is received
+			// suspend the local fiber until message is received (avoiding dead-locks)
 			allscale::utils::suspend(lock);
 			assert_true(done);
 		} else {
 			// while not done ..
 			while(!done) {
 				// .. help processing requests
-				pool.start([&]{
-					processMessage();
-				});
+				processMessageNonBlocking();
 			}
 		}
 
@@ -369,7 +369,7 @@ namespace mpi {
 				// obtain the handler registered for this message
 				response_handler handler;
 				{
-					guard g(responde_handler_lock);
+					std::lock_guard<utils::spinlock> g(responde_handler_lock);
 					auto pos = responde_handler.find(id);
 					assert_true(pos != responde_handler.end());
 					handler = pos->second;
@@ -421,7 +421,7 @@ namespace mpi {
 			allscale::utils::Archive a(std::move(buffer));
 			auto msg = allscale::utils::deserialize<request_msg_t>(a);
 
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << "\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing message " << (void*)(std::get<0>(msg)) << " of request " << status.MPI_TAG << "\n";
 
 			// process message
 			node.run([&](Node&){
@@ -433,6 +433,12 @@ namespace mpi {
 
 		// done
 		return true;
+	}
+
+	void Network::processMessageNonBlocking() {
+		pool.start([&]{
+			processMessage();
+		});
 	}
 
 	void Network::runRequestServer() {

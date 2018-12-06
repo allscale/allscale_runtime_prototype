@@ -19,7 +19,7 @@ namespace utils {
 		spinlock() : state(ATOMIC_FLAG_INIT) {}
 
 		void lock() {
-			// spin until aquired
+			// spin until acquired
 			while(state.test_and_set(std::memory_order_acquire)) ;
 		}
 

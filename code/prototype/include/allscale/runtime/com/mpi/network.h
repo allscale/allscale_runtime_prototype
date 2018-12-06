@@ -119,7 +119,7 @@ namespace mpi {
 		std::map<response_id,response_handler> responde_handler;
 
 		// a lock to protect accesses to the responde_handler registry
-		mutable std::mutex responde_handler_lock;
+		mutable utils::spinlock responde_handler_lock;
 
 	public:
 
@@ -179,10 +179,14 @@ namespace mpi {
 				// run service
 				R res = detail::runOperationOn<R>(node, args);
 
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " ...\n";
+
 				// encapsulate result and send back
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
 				net.sendResponse(buffer,source,getResponseTag(request_tag));
+
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " ...\n";
 			}
 
 			/**
@@ -238,7 +242,7 @@ namespace mpi {
 				RemoteCallResult<R> res;
 				network.pool.start([&]{
 					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future();
+					res = promise.get_future([&]{ network.processMessageNonBlocking(); });
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);
@@ -278,19 +282,19 @@ namespace mpi {
 			RemoteProcedure(Network& net, Node& local, rank_t target, const Selector& selector, void(S::*fun)(Args...))
 				: network(net), local(local), target(target), selector(selector), fun(fun) {}
 
-			static void handleProcedure(Network&, rank_t source, int, com::Node& node, allscale::utils::Archive& archive) {
+			static void handleProcedure(Network&, rank_t source, int request_tag, com::Node& node, allscale::utils::Archive& archive) {
 				// unpack archive to obtain arguments
 				auto args = allscale::utils::deserialize<args_tuple>(archive);
 
 				// count calls
 				getLocalStats().received_calls++;
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request from " << source << " ...\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Processing request " << request_tag << " from " << source << " ...\n";
 
 				// run service
 				detail::runProcedureOn(node, args);
 
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Request processed, no result produced\n";
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Request " << request_tag << " processed, no result produced\n";
 			}
 
 
@@ -373,10 +377,14 @@ namespace mpi {
 				// run service
 				R res = detail::runOperationOn<R>(node, args);
 
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Sending response to request " << request_tag << " ...\n";
+
 				// encapsulate result and send back
 				allscale::utils::Archive a = allscale::utils::serialize(res);
 				auto& buffer = a.getBuffer();
 				net.sendResponse(buffer,source,getResponseTag(request_tag));
+
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Response sent to request " << request_tag << " ...\n";
 			}
 
 			/**
@@ -432,7 +440,7 @@ namespace mpi {
 				RemoteCallResult<R> res;
 				network.pool.start([&]{
 					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future();
+					res = promise.get_future([&]{ network.processMessageNonBlocking(); });
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);
@@ -649,6 +657,8 @@ namespace mpi {
 		void runRequestServer();
 
 		bool processMessage();
+
+		void processMessageNonBlocking();
 
 		void sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag);
 

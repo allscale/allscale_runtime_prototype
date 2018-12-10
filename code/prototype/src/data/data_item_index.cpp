@@ -554,7 +554,7 @@ namespace data {
 		assert_true(isLocked(lock));
 
 		// make sure the requested data is complete
-		assert_eq(regions,res.getCoveredRegions());
+//		assert_eq(regions,res.getCoveredRegions());
 
 		// register ownership
 		addRegionsInternal(regions);
@@ -593,8 +593,8 @@ namespace data {
 			// the parent should have requested the lock
 			assert_true(isLocked(lock));
 
-			// this should cover all requested data
-			assert_eq(regions,data.getCoveredRegions());
+//			// this should cover all requested data
+//			assert_eq(regions,data.getCoveredRegions());
 
 			// -- Phase 4: forward data to calling child --
 
@@ -624,7 +624,7 @@ namespace data {
 
 		// Phase 3: recursively collect transfer data
 		auto res = collectOwnershipFromChildren(regions);
-		assert_eq(regions,res.getCoveredRegions());
+//		assert_eq(regions,res.getCoveredRegions());
 
 		// Phase 4: transfer ownership to calling child
 
@@ -670,10 +670,12 @@ namespace data {
 	 * This function implements the recursive bottom-up collection of region data (phase 3) and
 	 * removes ownership by doing so.
 	 */
-	DataItemMigrationData DataItemIndexService::abandonOwnership(const DataItemRegions& regions) {
+	DataItemMigrationData DataItemIndexService::abandonOwnership(const DataItemRegions& requested) {
 
 		// lock this node (save since we are walking top-down)
 		guard g(lock);
+
+		auto regions = intersect(requested,getAvailableDataInternal());
 
 		// make sure a owned part of the tree is requested
 		assert_pred2(isSubRegion,regions,getAvailableDataInternal())
@@ -734,8 +736,8 @@ namespace data {
 				// retract ownership and retrieve data
 				auto data = network.getRemoteProcedure(myAddress.getLeftChild(), &DataItemIndexService::abandonOwnership)(part).get();
 
-				// make sure it is what was expected
-				assert_eq(part,data.getCoveredRegions());
+//				// make sure it is what was expected
+//				assert_eq(part,data.getCoveredRegions());
 
 				// update management information
 				removeRegionsLeftInternal(part);
@@ -756,8 +758,8 @@ namespace data {
 				// retract ownership and retrieve data
 				auto data = network.getRemoteProcedure(myAddress.getRightChild(), &DataItemIndexService::abandonOwnership)(part).get();
 
-				// make sure it is what was expected
-				assert_eq(part,data.getCoveredRegions());
+//				// make sure it is what was expected
+//				assert_eq(part,data.getCoveredRegions());
 
 				// update management information
 				removeRegionsRightInternal(part);

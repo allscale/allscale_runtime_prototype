@@ -328,7 +328,6 @@ namespace utils {
 
 	private:
 
-		// __attribute__((noinline,noclone,optimize(0),aligned(16)))
 		static void swap(ext_ucontext_t& src, ext_ucontext_t& trg, spinlock* lock = nullptr) {
 
 			// get current context
@@ -347,8 +346,6 @@ namespace utils {
 			// switch context
 			int success = swapcontext(&src.context,&trg.context);
 			if (success != 0) assert_fail() << "Unable to switch thread context!";
-
-			std::atomic_thread_fence(std::memory_order_seq_cst);
 
 			// unlock src-lock (which after the swap is in the source context)
 			if (src.lock) {
@@ -436,7 +433,6 @@ namespace utils {
 			info.pool.freeInfos.push_back(&info);
 
 			// swap back to continuation, and release lock for free list to make this info re-usable
-//			std::cout << "Submitting to free lock " << &info.pool.freeInfosLock << "\n";
 			swap(local,continuation,&info.pool.freeInfosLock);
 
 			// Note: this code will never be reached!

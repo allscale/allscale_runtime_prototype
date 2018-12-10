@@ -656,19 +656,16 @@ namespace utils {
 
 		FiberFuture(FiberFuture&& other) : promise(nullptr), yield(other.yield) {
 
-			{
-				guard g(FiberPromiseFutureBase<T>::getLock());
+			guard g(FiberPromiseFutureBase<T>::getLock());
 
-				// if there is still a promise
-				if (other.promise) {
+			// if there is still a promise
+			if (other.promise) {
 
-					// move promise
-					std::swap(promise,other.promise);
+				// move promise
+				std::swap(promise,other.promise);
 
-					// inform promise about new future target
-					promise->set_future(*this);
-				}
-
+				// inform promise about new future target
+				promise->set_future(*this);
 			}
 
 			// move value
@@ -706,10 +703,11 @@ namespace utils {
 					// inform promise about new future target
 					promise->set_future(*this);
 				}
-			}
 
-			// move value
-			value = std::move(other.value);
+				// move value
+				value = std::move(other.value);
+
+			}
 
 			// move yield
 			yield = std::move(other.yield);

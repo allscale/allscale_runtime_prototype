@@ -240,9 +240,10 @@ namespace mpi {
 				}
 
 				RemoteCallResult<R> res;
+				Network* net = &network;
 				network.pool.start([&]{
 					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future([&]{ network.processMessageNonBlocking(); });
+					res = promise.get_future([net]{ net->processMessageNonBlocking(); });
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);
@@ -438,9 +439,10 @@ namespace mpi {
 				}
 
 				RemoteCallResult<R> res;
+				Network* net = &network;
 				network.pool.start([&]{
 					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future([&]{ network.processMessageNonBlocking(); });
+					res = promise.get_future([net]{ net->processMessageNonBlocking(); });
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);

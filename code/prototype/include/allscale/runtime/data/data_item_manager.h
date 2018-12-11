@@ -316,7 +316,7 @@ namespace data {
 			shared_data_t sharedInfo(std::forward<Args>(args)...);
 
 			// register data item in network (also locally)
-			com::Network::getNetwork().broadcast(&DataItemManagerService::registerDataItem<DataItem>)(res,sharedInfo);
+			com::Network::getNetwork().broadcastAndSync(&DataItemManagerService::registerDataItem<DataItem>)(res,sharedInfo);
 
 			// return reference
 			return res;

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <stdlib.h>
 #include <ucontext.h>
 #include <mutex>

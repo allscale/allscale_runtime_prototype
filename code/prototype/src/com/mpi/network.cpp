@@ -145,6 +145,7 @@ namespace mpi {
 
 		// install epoch counter service
 		localNode->startService<detail::EpochService>(*this);
+		localNode->startService<SyncCallHandlerService>();
 
 		// create communicator groups
 		MPI_Comm_dup(MPI_COMM_WORLD,&point2point);

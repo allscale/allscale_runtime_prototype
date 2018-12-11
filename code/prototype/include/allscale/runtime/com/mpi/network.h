@@ -483,6 +483,108 @@ namespace mpi {
 
 		};
 
+		/**
+		 * The syncing target of syncing broad-casts.
+		 */
+		class SyncCallHandlerService {
+
+			Node& node;
+
+		public:
+
+			SyncCallHandlerService(Node& node) : node(node) {}
+
+			template<typename S, typename ... Args>
+			bool process(void(S::* fun)(Args...), Args... args) {
+				(node.getService<S>().*fun)(args...);
+				return true;
+			}
+		};
+
+		/**
+		 * A handle for broadcasts waiting for task completion.
+		 */
+		template<typename R, typename S, typename ... Args>
+		class BroadcastAndSync {
+
+			// the targeted service function
+			R(S::* fun)(Args...);
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			BroadcastAndSync(R(S::*fun)(Args...))
+				: fun(fun) {}
+
+			/**
+			 * Realizes the actual broadcast.
+			 */
+			void operator()(Args ... args) const {
+
+				// send one-by-one to each other node
+				auto& net = Network::getNetwork();
+
+				// collect handles
+				std::vector<RemoteCallResult<R>> calls;
+				calls.reserve(net.numNodes());
+
+				for(rank_t r = 0; r<net.numNodes(); r++) {
+					calls.push_back(net.getRemoteProcedure(r,fun)(args...));
+				}
+
+				// wait for completion
+				for(auto& cur : calls) {
+					cur.wait();
+				}
+
+			}
+
+		};
+
+		/**
+		 * A handle for broadcasts waiting for task completion.
+		 */
+		template<typename S, typename ... Args>
+		class BroadcastAndSync<void,S,Args...> {
+
+			// the targeted service function
+			void(S::* fun)(Args...);
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			BroadcastAndSync(void(S::*fun)(Args...))
+				: fun(fun) {}
+
+			/**
+			 * Realizes the actual broadcast.
+			 */
+			void operator()(Args ... args) const {
+
+				// send one-by-one to each other node
+				auto& net = Network::getNetwork();
+
+				// collect handles
+				std::vector<RemoteCallResult<bool>> calls;
+				calls.reserve(net.numNodes());
+
+				for(rank_t r = 0; r<net.numNodes(); r++) {
+					calls.push_back(net.getRemoteProcedure(r,&SyncCallHandlerService::process<S,Args...>)(fun,args...));
+				}
+
+				// wait for completion
+				for(auto& cur : calls) {
+					cur.wait();
+				}
+
+			}
+
+		};
+
 	private:
 
 		// number of nodes in this network
@@ -574,6 +676,16 @@ namespace mpi {
 		Broadcast<S,Args...> broadcast(void(S::*fun)(Args...)) {
 			return { fun };
 		}
+
+		/**
+		 * Obtains a handle for performing broad-casts on selected remote services, waiting
+		 * for all services to complete the operation.
+		 */
+		template<typename R, typename S, typename ... Args>
+		BroadcastAndSync<R,S,Args...> broadcastAndSync(R(S::*fun)(Args...)) {
+			return { fun };
+		}
+
 
 		// -------- development and debugging interface --------
 

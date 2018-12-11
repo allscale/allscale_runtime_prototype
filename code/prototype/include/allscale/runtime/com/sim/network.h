@@ -373,6 +373,56 @@ namespace sim {
 		};
 
 		/**
+		 * A handle for syncing broadcasts.
+		 */
+		template<typename R, typename S, typename ... Args>
+		class BroadcastAndSync {
+
+			// the nodes to address
+			std::vector<std::unique_ptr<Node>>& nodes;
+
+			// the targeted service function
+			R(S::* fun)(Args...);
+
+		public:
+
+			/**
+			 * Creates a new remote procedure reference.
+			 */
+			BroadcastAndSync(std::vector<std::unique_ptr<Node>>& nodes, R(S::*fun)(Args...))
+				: nodes(nodes), fun(fun) {}
+
+			/**
+			 * Realizes the actual broadcast.
+			 */
+			void operator()(Args ... args) const {
+				auto src = Node::getLocalRank();
+				auto& srcStats = nodes[src]->template getService<NetworkStatisticService>().getLocalNodeStats();
+				srcStats.sent_bcasts += 1;
+				for(auto& node : nodes) {
+					auto trg = node->getRank();
+
+					// short-cut for local communication
+					if (src == trg) {
+						node->run([&](Node&){
+							(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+						});
+						continue;
+					}
+
+					// perform remote call
+					auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+					trgStats.received_bcasts += 1;
+					node->run([&](Node&){
+						(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+					});
+
+				}
+			}
+
+		};
+
+		/**
 		 * Creates a network of the given size.
 		 */
 		Network(size_t size = 1);
@@ -444,6 +494,16 @@ namespace sim {
 		Broadcast<S,Args...> broadcast(void(S::*fun)(Args...)) {
 			return { nodes, fun };
 		}
+
+		/**
+		 * Obtains a handle for performing broad-casts on selected remote services, waiting
+		 * for all services to complete the operation.
+		 */
+		template<typename R, typename S, typename ... Args>
+		BroadcastAndSync<R,S,Args...> broadcastAndSync(R(S::*fun)(Args...)) {
+			return { nodes, fun };
+		}
+
 
 		// -------- development and debugging interface --------
 

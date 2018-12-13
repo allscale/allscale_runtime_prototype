@@ -106,6 +106,19 @@ namespace data {
 			return fragment.mask();
 		}
 
+	private:
+
+		friend class DataItemManager;
+
+		/**
+		 * Provides access to the maintained fragment type to friend types.
+		 */
+		fragment_type& getFragment() {
+			return fragment;
+		}
+
+	public:
+
 		region_type getDataItemSize() const {
 			return fragment.getTotalSize();
 		}
@@ -332,6 +345,19 @@ namespace data {
 			return getRegister<DataItem>().get(ref).getDataItem();
 		}
 
+	private:
+
+		friend class DataItemManager;
+
+		/**
+		 * Obtains access to the fragment handler managing the referenced data item.
+		 */
+		template<typename DataItem>
+		DataFragmentHandler<DataItem>& getFragmentHandlerOf(const DataItemReference<DataItem>& ref) {
+			return getRegister<DataItem>().get(ref);
+		}
+
+	public:
 
 		/**
 		 * Requests the allocation of the requested data item regions. Blocks until available.
@@ -474,8 +500,19 @@ namespace data {
 		template<typename DataItem>
 		static typename DataItem::facade_type get(const DataItemReference<DataItem>& ref) {
 
-			// forward this call to the local service
-			return DataItemManagerService::getLocalService().get(ref);
+			// use cached fragment to obtain facade, if available
+			if (ref.fragment) {
+				return ref.fragment->mask();
+			}
+
+			// obtain reference to locally maintained fragment
+			auto& fragment = DataItemManagerService::getLocalService().getFragmentHandlerOf(ref).getFragment();
+
+			// cache lookup result
+			ref.fragment = &fragment;
+
+			// return mask
+			return fragment.mask();
 		}
 
 	};

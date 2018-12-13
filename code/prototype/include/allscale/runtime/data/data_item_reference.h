@@ -28,13 +28,21 @@ namespace data {
 	template<typename DataItemType>
 	class DataItemReference {
 
+		// allow the data item manger service to access internal state (the cached fragment pointer)
+		friend class DataItemManager;
+
+		using fragment_type = typename DataItemType::fragment_type;
+
 		// the id of this data item
 		DataItemID id;
+
+		// an internally cached reference to the local data fragment (performance optimization to shortcut lookups)
+		mutable fragment_type* fragment = nullptr;
 
 	public:
 
 		// a constructor to create a data item reference
-		explicit DataItemReference(DataItemID id) : id(id) {}
+		explicit DataItemReference(DataItemID id) : id(id), fragment(nullptr) {}
 
 		/**
 		 * A factory for fresh data item references.
@@ -86,6 +94,7 @@ namespace data {
 
 namespace std {
 
+	// provide hash support for the data item reference type
 	template<typename DataItemType>
 	struct hash<allscale::runtime::data::DataItemReference<DataItemType>> {
 		std::size_t operator()(const allscale::runtime::data::DataItemReference<DataItemType>& x) const {

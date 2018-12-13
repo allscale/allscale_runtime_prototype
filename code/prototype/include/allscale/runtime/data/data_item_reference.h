@@ -83,3 +83,14 @@ namespace data {
 } // end of namespace data
 } // end of namespace runtime
 } // end of namespace allscale
+
+namespace std {
+
+	template<typename DataItemType>
+	struct hash<allscale::runtime::data::DataItemReference<DataItemType>> {
+		std::size_t operator()(const allscale::runtime::data::DataItemReference<DataItemType>& x) const {
+			return x.getID();
+		}
+	};
+
+}

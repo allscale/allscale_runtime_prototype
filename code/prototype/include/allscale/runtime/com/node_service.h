@@ -11,7 +11,7 @@
 #include <typeindex>
 #include <cstdint>
 #include <ostream>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -49,7 +49,7 @@ namespace com {
 		Node& node;
 
 		// The service registry.
-		std::map<std::type_index,std::unique_ptr<ServiceBase>> services;
+		std::unordered_map<std::type_index,std::unique_ptr<ServiceBase>> services;
 
 		mutable std::mutex lock;
 

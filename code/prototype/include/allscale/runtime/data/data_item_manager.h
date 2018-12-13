@@ -8,6 +8,7 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <memory>
 #include <mutex>
 #include <typeinfo>
@@ -188,7 +189,7 @@ namespace data {
 			using facade_type = typename DataItem::facade_type;
 
 			// the index of registered items
-			std::map<DataItemReference<DataItem>,std::unique_ptr<DataFragmentHandler<DataItem>>> items;
+			std::unordered_map<DataItemReference<DataItem>,std::unique_ptr<DataFragmentHandler<DataItem>>> items;
 
 			// the network this service is a part of
 			com::Network& network;
@@ -279,7 +280,7 @@ namespace data {
 		};
 
 		// the maintained register of data item registers (type specific)
-		std::map<std::type_index,std::unique_ptr<DataItemRegisterBase>> registers;
+		std::unordered_map<std::type_index,std::unique_ptr<DataItemRegisterBase>> registers;
 
 		// the network this service is a part of
 		com::Network& network;
@@ -472,6 +473,7 @@ namespace data {
 		 */
 		template<typename DataItem>
 		static typename DataItem::facade_type get(const DataItemReference<DataItem>& ref) {
+
 			// forward this call to the local service
 			return DataItemManagerService::getLocalService().get(ref);
 		}

@@ -11,6 +11,7 @@
 #include <array>
 #include <bitset>
 #include <map>
+#include <unordered_map>
 #include <memory>
 #include <mutex>
 
@@ -22,6 +23,7 @@
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/work/task_id.h"
+
 
 namespace allscale {
 namespace runtime {
@@ -121,14 +123,17 @@ namespace work {
 
 	class TreetureStateService {
 
+		// the lock type to be utilized to protect internal state
+		using lock_t = std::mutex;
+
 		// a lock to sync concurrent accesses
-		mutable std::mutex lock;
+		mutable lock_t lock;
 
 		// maintains the list of treeture states of tasks managed by this service
-		std::map<std::uint64_t,std::unique_ptr<detail::TreetureStateServiceBase>> states;
+		std::unordered_map<std::uint64_t,std::unique_ptr<detail::TreetureStateServiceBase>> states;
 
 		// the guard type to sync concurrent accesses
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<lock_t>;
 
 		// the network being part of
 		com::Network& network;

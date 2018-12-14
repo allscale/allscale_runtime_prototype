@@ -8,8 +8,9 @@
 #pragma once
 
 #include <mutex>
-#include <list>
+#include <deque>
 
+#include <allscale/utils/spinlock.h>
 #include "allscale/runtime/com/node_service.h"
 
 #include "allscale/runtime/work/task.h"
@@ -23,11 +24,15 @@ namespace work {
 	 */
 	class WorkQueue {
 
+		// determine lock type to be used
+		using lock_t = std::mutex;
+		using guard = std::lock_guard<lock_t>;
+
 		// a lock for queue operations
-		mutable std::mutex lock;
+		mutable lock_t lock;
 
 		// the queue of tasks maintained
-		std::list<TaskPtr> queue;
+		std::deque<TaskPtr> queue;
 
 	public:
 

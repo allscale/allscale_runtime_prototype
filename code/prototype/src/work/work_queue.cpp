@@ -6,8 +6,6 @@ namespace runtime {
 namespace work {
 
 
-	using guard = std::lock_guard<std::mutex>;
-
 	bool WorkQueue::empty() const {
 		guard g(lock);
 		return queue.empty();

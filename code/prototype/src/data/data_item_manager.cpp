@@ -123,8 +123,9 @@ namespace data {
 
 			// -- retrieve the data, if not available, restart --
 
-			std::vector<DataItemMigrationData> allData;
-			allData.reserve(locations.getLocationInfo().size());
+			std::vector<std::pair<const DataItemRegions*,allscale::runtime::com::RemoteCallResult<DataItemMigrationData>>> calls;
+			calls.reserve(locations.getLocationInfo().size());
+
 
 			// track whether all data has been found where expected
 			bool allFine = true;
@@ -138,7 +139,8 @@ namespace data {
 				allFine = false;
 			};
 
-			// retrieve data from their source locations
+
+			// start RPC calls to retrieve data from their source locations
 			for(const auto& cur : locations.getLocationInfo()) {
 
 				// handle local queries
@@ -156,10 +158,26 @@ namespace data {
 				}
 
 				// retrieve data
-				allData.push_back(network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second).get());
+				calls.emplace_back(
+					&cur.second,
+					network.getRemoteProcedure(cur.first,&DataItemManagerService::extractRegions)(cur.second)
+				);
+
+			}
+
+			// if not all calls have been send => restart
+			if (!allFine) continue;
+
+			// wait for data to be retrieved
+			std::vector<DataItemMigrationData> allData;
+			allData.reserve(locations.getLocationInfo().size());
+
+			for(auto& call : calls) {
+				// retrieve data
+				allData.emplace_back(std::move(call.second.get()));
 
 				// test that all data is included
-				if (cur.second != allData.back().getCoveredRegions()) {
+				if (*call.first != allData.back().getCoveredRegions()) {
 					invalidateCache();
 					break;
 				}

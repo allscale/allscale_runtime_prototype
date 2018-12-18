@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <deque>
 
@@ -33,6 +34,8 @@ namespace work {
 
 		// the queue of tasks maintained
 		std::deque<TaskPtr> queue;
+
+		std::atomic<bool> isEmpty {true};
 
 	public:
 

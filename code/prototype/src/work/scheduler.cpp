@@ -7,6 +7,7 @@
 #include "allscale/utils/serializer/pairs.h"
 
 #include "allscale/runtime/utils/timer.h"
+#include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/com/hierarchy.h"
 
@@ -28,6 +29,8 @@
 #include "allscale/runtime/work/tuner.h"
 
 #include "allscale/runtime/mon/task_stats.h"
+
+#include "allscale/runtime/hw/model.h"
 
 namespace allscale {
 namespace runtime {
@@ -53,19 +56,20 @@ namespace work {
 		/**
 		 * Determines the cut-off level for task splitting for a network of the given size.
 		 */
-		int getCutOffLevel(int numNodes) {
+		int getCutOffLevel(int numNodes, int numWorkers) {
 			// the cut-off level for "forced" distribution
-			return ceilLog2(numNodes) * 2 + 3;
+			return ceilLog2(numNodes) * 2 + ceilLog2(numWorkers) + 3;
 		}
 
 		/**
 		 * Determines the cut-off level for task splitting
 		 */
 		int getCutOffLevel() {
-			// get the network
-			auto& net = com::Network::getNetwork();
+			static auto numNodes = com::Network::getNetwork().numNodes();
+			static auto numWorkers = hw::getWorkerPoolConfig(com::Node::getLocalRank()).size();
+
 			// use its size
-			return getCutOffLevel(net.numNodes());
+			return getCutOffLevel(numNodes, numWorkers);
 		}
 
 	}
@@ -572,7 +576,7 @@ namespace work {
 				// enforce policy
 				switch(newType) {
 				case SchedulerType::Random : {
-					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel(numNodes));
+					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel());
 					activeConfig.nodes = NodeMask(numNodes);
 					updatePolicy(random,activeConfig);
 					break;

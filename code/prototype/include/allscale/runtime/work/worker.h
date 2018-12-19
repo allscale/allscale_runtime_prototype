@@ -210,11 +210,6 @@ namespace work {
 		void stop();
 
 		/**
-		 * Obtains a reference to the local worker pool.
-		 */
-		static WorkerPool& getLocalWorkerPool();
-
-		/**
 		 * Adds the given task to the work-queue of this worker pool.
 		 * The pool will take ownership of the task.
 		 */

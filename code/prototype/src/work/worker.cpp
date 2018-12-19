@@ -17,7 +17,7 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
-	thread_local WorkerPool* tl_current_worker_pool = nullptr;
+	thread_local Worker* tl_current_worker = nullptr;
 
 	void startWorkerPool(com::Network& net) {
 
@@ -88,7 +88,7 @@ namespace work {
 	void Worker::run() {
 
 		// set thread-local worker
-		tl_current_worker_pool = &pool;
+		tl_current_worker = this;
 
 		// fix thread affinity
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &config.affinityMask);
@@ -107,7 +107,7 @@ namespace work {
 		}
 
 		// reset thread local worker
-		tl_current_worker_pool = nullptr;
+		tl_current_worker = nullptr;
 	}
 
 	bool Worker::step() {
@@ -192,8 +192,8 @@ namespace work {
 
 	void yield() {
 		// attempt to process another task while waiting
-		if (WorkerPool* pool = tl_current_worker_pool) {
-			pool->workers[0]->step();
+		if (Worker* worker = tl_current_worker) {
+			worker->step();
 		} else {
 			// yield this thread (the main thread, not a worker)
 			using namespace std::chrono_literals;
@@ -213,11 +213,6 @@ namespace work {
 		for(const auto& workerConfig : config) {
 			workers.push_back(std::make_unique<Worker>(*this,workerConfig));
 		}
-	}
-
-	WorkerPool& WorkerPool::getLocalWorkerPool() {
-		assert_true(tl_current_worker_pool) << "Can not localize worker pool outside of any worker thread!";
-		return *tl_current_worker_pool;
 	}
 
 	void WorkerPool::start() {

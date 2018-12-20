@@ -199,6 +199,9 @@ namespace utils {
 		// the type to reference events
 		using EventId = int;
 
+		// a special event id for events to be ignored
+		constexpr EventId EVENT_IGNORE = 0;
+
 		class EventRegister {
 
 			std::atomic<EventId> counter { 0 };
@@ -215,20 +218,39 @@ namespace utils {
 				auto res = ++counter;
 				guard g(lock);
 				events[res];
+				assert_ne(EVENT_IGNORE,res);
 				return res;
 			}
 
-			void trigger(EventId event);
+			void trigger(EventId event) {
+				assert_ne(EVENT_IGNORE,event);
+				std::vector<Fiber*> waiting;
+				{
+					guard g(lock);
+					auto pos = events.find(event);
+					assert_true(pos != events.end()) << "Invalid event: " << event;
+					waiting.swap(pos->second);
+					events.erase(pos);
+				}
 
-			void waitFor(Fiber& fiber, EventId event) {
+				for(auto& fiber : waiting) {
+					fiber->resume();
+				}
+			}
+
+			void waitFor(EventId event, Fiber* current = nullptr) {
+				assert_ne(EVENT_IGNORE,event);
+				if (event == EVENT_IGNORE) return;
 
 				guard g(lock);
 				auto pos = events.find(event);
 				if (pos == events.end()) return;
 
 				// register fiber for suspension
-				pos->second.push_back(&fiber);
-				fiber.suspend(lock);
+				auto fiber = current ? current : getCurrentFiber();
+				assert_true(fiber) << "Unable to suspend non-fiber context.";
+				pos->second.push_back(fiber);
+				fiber->suspend(lock);
 			}
 
 		};
@@ -534,17 +556,7 @@ namespace utils {
 		void suspend(EventId event) {
 			auto fiber = getCurrentFiber();
 			assert_true(fiber) << "Error: can not suspend non-fiber context!";
-			fiber->ctxt.eventRegister.waitFor(*fiber,event);
-		}
-
-		void EventRegister::trigger(EventId event) {
-			guard g(lock);
-			auto pos = events.find(event);
-			assert_true(pos != events.end()) << "Invalid event: " << event;
-
-			for(auto& fiber : pos->second) {
-				fiber->resume();
-			}
+			fiber->ctxt.eventRegister.waitFor(event, fiber);
 		}
 
 	} // end namespace fiber

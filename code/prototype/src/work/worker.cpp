@@ -110,6 +110,17 @@ namespace work {
 		tl_current_worker = nullptr;
 	}
 
+	namespace {
+
+		void suspendHandler(void* task) {
+			Task::notifySuspend(reinterpret_cast<Task*>(task));
+		};
+
+		void resumeHandler(void* task) {
+			Task::notifyResume(reinterpret_cast<Task*>(task));
+		};
+	}
+
 	bool Worker::step() {
 
 		// process a task if available

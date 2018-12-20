@@ -126,6 +126,12 @@ namespace work {
 		// support printing of tasks
 		friend std::ostream& operator<<(std::ostream&,const Task&);
 
+		// a function to be called when suspending a task
+		static void notifySuspend(Task* task);
+
+		// a function to be called when resuming a task
+		static void notifyResume(Task* task);
+
 		// ----- serialization -----
 
 		// the type of the load function to be provided by implementations

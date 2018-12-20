@@ -58,6 +58,19 @@ namespace utils {
 			spinlock* volatile lock = nullptr;		// < a potential lock to be freed after a context switch (the pointer is volatile, not the object)
 		};
 
+		// a event handler to be registered
+		struct handler_t {
+			void (*fun)(void*) = nullptr;		// < the function to be called
+			void* arg;							// < the argument to be passed
+			void trigger() {
+				if (!fun) return;
+				(*fun)(arg);
+			}
+			void reset() {
+				fun = nullptr;
+			}
+		};
+
 		// the management information required per fiber
 		struct fiber_info {
 			FiberPool& pool;			   // < the pool it belongs to
@@ -66,6 +79,10 @@ namespace utils {
 			void* stack;				   // < the associated stack memory
 			const int stack_size;		   // < the size of the stack
 			ext_ucontext_t* continuation;  // < an optional continuation to be processed after finishing or suspending a fiber
+
+			// event handler
+			handler_t suspend_handler;
+			handler_t resume_handler;
 
 			fiber_info(FiberPool& pool, int stackSize = DEFAULT_STACK_SIZE)
 				: pool(pool),
@@ -114,6 +131,12 @@ namespace utils {
 					auto success = active.compare_exchange_strong(cur,false);
 					assert_true(success) << "Possible double-usage of fiber detected!";
 				});
+			}
+
+			void reset() {
+				running = false;
+				suspend_handler.reset();
+				resume_handler.reset();
 			}
 
 		};
@@ -168,7 +191,11 @@ namespace utils {
 		 * @return the id of the fiber created if the fiber got suspended, or nothing if the fiber terminated.
 		 */
 		template<typename Fun>
-		allscale::utils::optional<Fiber> start(Fun&& lambda) {
+		allscale::utils::optional<Fiber> start(
+				Fun&& lambda,
+				void (*suspend_handler)(void*) = nullptr, void* suspend_arg = nullptr,
+				void (*resume_handler)(void*) = nullptr, void* resume_arg = nullptr
+		) {
 
 			// get fiber info
 			fiber_info* fiber;
@@ -194,6 +221,10 @@ namespace utils {
 			// make sure the fiber is not running
 			assert_false(fiber->running) << "Faulty fiber: " << fiber;
 			assert_false(fiber->active) << "Fiber: " << fiber;
+
+			// set up suspend and resume handler
+			fiber->suspend_handler = { suspend_handler, suspend_arg };
+			fiber->resume_handler = { resume_handler, resume_arg };
 
 			// capture current context
 			ext_ucontext_t local;
@@ -262,6 +293,7 @@ namespace utils {
 			getcontext(&local.context);
 
 			// get previous continuation
+			assert_true(fiber->continuation);
 			ext_ucontext_t& continuation = *fiber->continuation;
 
 			// make local state the new continuation for this fiber
@@ -334,6 +366,9 @@ namespace utils {
 			// get current context
 			auto currentFiber = getCurrentFiberInfo();
 
+			// run suspension handler
+			if (currentFiber) currentFiber->suspend_handler.trigger();
+
 			// record mutex lock
 			assert_true(trg.lock == nullptr);
 			trg.lock = lock;
@@ -359,6 +394,9 @@ namespace utils {
 
 			// reset current fiber information
 			setCurrentFiberInfo(currentFiber);
+
+			// run suspension handler
+			if (currentFiber) currentFiber->resume_handler.trigger();
 
 			// restore lock
 			if (lock) lock->lock();
@@ -417,7 +455,7 @@ namespace utils {
 			if (DEBUG) std::cout << "Completing fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
 
 			// mark fiber as done
-			info.running = false;
+			info.reset();
 
 			// make sure fiber info has been maintained
 			assert_eq(&info,getCurrentFiberInfo());

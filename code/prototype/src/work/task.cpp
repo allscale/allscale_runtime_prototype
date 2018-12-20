@@ -3,6 +3,8 @@
 
 #include "allscale/utils/unused.h"
 
+#include "allscale/utils/fiber.h"
+
 namespace allscale {
 namespace runtime {
 namespace work {
@@ -28,6 +30,7 @@ namespace work {
 		processInternal();
 
 		// reset up current task
+		assert_eq(tl_current_task,this);
 		tl_current_task = oldTask;
 
 		// update state done
@@ -56,6 +59,7 @@ namespace work {
 		splitInternal();
 
 		// reset up current task
+		assert_eq(tl_current_task,this);
 		tl_current_task = oldTask;
 
 		// update state done
@@ -78,6 +82,17 @@ namespace work {
 	// support printing of tasks
 	std::ostream& operator<<(std::ostream& out, const Task& task) {
 		return out << task.getId() << ":" << task.state;
+	}
+
+	void Task::notifySuspend(Task* task) {
+		// nothing to do yet ..
+		std::cout << "\t\tSuspending " << task->getId() << " in " << allscale::utils::FiberPool::getCurrentFiber() << "\n";
+	}
+
+	void Task::notifyResume(Task* task) {
+		// reset thread local task reference
+		tl_current_task = task;
+		std::cout << "\t\tResuming " << task->getId() << "\n";
 	}
 
 	Task* Task::getCurrent() {

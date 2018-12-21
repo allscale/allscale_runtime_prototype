@@ -219,6 +219,58 @@ namespace fiber {
 
 	}
 
+	TEST(FiberPriorities, Properties) {
+		EXPECT_EQ(Priority::DEFAULT,Priority::MEDIUM);
+	}
+
+	TEST(FiberContext, Priorities) {
+
+		FiberContext ctxt;
+
+		Mutex lock;
+		lock.lock();
+
+		int x = 0;
+		ctxt.start([&]{
+			lock.lock();
+			x = 1;
+			lock.unlock();
+		}, fiber::Priority::LOW);
+
+		ctxt.start([&]{
+			lock.lock();
+			x = 2;
+			lock.unlock();
+		}, fiber::Priority::MEDIUM);
+
+		ctxt.start([&]{
+			lock.lock();
+			x = 3;
+			lock.unlock();
+		}, fiber::Priority::HIGH);
+
+		EXPECT_EQ(0,x);
+
+		// free the lock
+		lock.unlock();
+		EXPECT_EQ(0,x);		// nothing happened so far
+
+		// process one step
+		EXPECT_TRUE(ctxt.yield());
+		EXPECT_EQ(3,x);
+
+		// process second step
+		EXPECT_TRUE(ctxt.yield());
+		EXPECT_EQ(2,x);
+
+		// process third step
+		EXPECT_TRUE(ctxt.yield());
+		EXPECT_EQ(1,x);
+
+		// this should be all
+		EXPECT_FALSE(ctxt.yield());
+	}
+
 
 } // end of namespace fiber
 } // end of namespace utils

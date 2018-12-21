@@ -1,8 +1,9 @@
 #pragma once
 
 #include <atomic>
-#include <mutex>
 #include <memory>
+#include <mutex>
+#include <queue>
 #include <ucontext.h>
 #include <unordered_map>
 #include <vector>
@@ -79,8 +80,18 @@ namespace utils {
 
 		};
 
+		/**
+		 * Fiber execution priority. The higher the priority,
+		 * the sooner it will be processed.
+		 */
+		enum class Priority : int {
+			LOW = 0,
+			MEDIUM = 1,
+			HIGH = 2,
 
-		using priority_t = int;
+			// the default priority
+			DEFAULT = MEDIUM
+		};
 
 
 		struct Fiber {
@@ -89,7 +100,7 @@ namespace utils {
 			FiberContext& ctxt;
 
 			// the priority of this fiber
-			priority_t priority = 0;
+			Priority priority = Priority::DEFAULT;
 
 			// the owned stack
 			Stack stack;
@@ -324,9 +335,22 @@ namespace utils {
 		friend class fiber::Mutex;
 		friend class fiber::ConditionalVariable;
 
+		struct fiber_priority_compare {
+			bool operator()(fiber::Fiber* a, fiber::Fiber* b) {
+				assert_true(a); assert_true(b);
+				return a->priority < b->priority;
+			}
+		};
+
+		using priority_queue_t = std::priority_queue<
+				fiber::Fiber*,
+				std::vector<fiber::Fiber*>,
+				fiber_priority_compare
+		>;
+
 		fiber::Pool pool;
 
-		std::vector<fiber::Fiber*> runable;
+		priority_queue_t runable;
 
 		spinlock runableLock;
 
@@ -343,13 +367,16 @@ namespace utils {
 
 
 		template<typename Fun>
-		void start(Fun&& lambda) {
+		void start(Fun&& lambda, const fiber::Priority& priority = fiber::Priority::DEFAULT) {
 
 			using namespace fiber;
 
 			// get a fresh fiber
 			auto fiber = pool.getFreeFiber();
 			assert_true(fiber);
+
+			// fix priority
+			fiber->priority = priority;
 
 			// capture current context
 			ext_ucontext_t local;
@@ -382,8 +409,8 @@ namespace utils {
 			{
 				guard g(runableLock);
 				if(runable.empty()) return false;
-				fiber = runable.back();
-				runable.pop_back();
+				fiber = runable.top();	// < take fiber with highest priority
+				runable.pop();
 			}
 
 
@@ -409,9 +436,11 @@ namespace utils {
 			// short-cut for empty list
 			if (begin == end) return;
 
-			// add fibers to runables
+			// add fibers to queue of runables
 			guard g(runableLock);
-			runable.insert(runable.end(),begin,end);
+			for(auto it = begin; it != end; ++it) {
+				runable.push(*it);
+			}
 		}
 
 		template<typename List>

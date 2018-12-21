@@ -16,10 +16,17 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
+		installFiberContextService(net);
 		net.installServiceOnNodes<TreetureStateService>();
 
-		net.runOn(0,[&](com::Node&){
-			op();
+		net.runOn(0,[&](com::Node& node){
+			auto& ctxt = node.getService<FiberContextService>().getContext();
+			bool done = false;
+			ctxt.start([&]{
+				op();
+				done = true;
+			});
+			while (!done) ctxt.yield();
 		});
 	}
 
@@ -50,10 +57,12 @@ namespace work {
 			// simulate completion of task
 			TreetureStateService::getLocal().setDone<int>(rank,id,14);
 			EXPECT_TRUE(y.valid());
-			EXPECT_TRUE(y.isDone());
+			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
 
 			EXPECT_EQ(14,y.get_result());
+			EXPECT_TRUE(y.isDone());
+			EXPECT_TRUE(y.valid());
 		});
 
 	}
@@ -101,11 +110,12 @@ namespace work {
 			// simulate completion of treeture
 			TreetureStateService::getLocal().setDone<int>(rank,id,14);
 			EXPECT_TRUE(y.valid());
-			EXPECT_TRUE(y.isDone());
+			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
 
 			EXPECT_EQ(14,y.get_result());
-
+			EXPECT_TRUE(y.isDone());
+			EXPECT_TRUE(y.valid());
 		});
 	}
 
@@ -127,10 +137,12 @@ namespace work {
 			// simulate completion of task
 			TreetureStateService::getLocal().setDone<int>(rank,id,14);
 			EXPECT_TRUE(x.valid());
-			EXPECT_TRUE(x.isDone());
+			EXPECT_FALSE(x.isDone());
 			EXPECT_TRUE(x.valid());
 
 			EXPECT_EQ(14,x.get_result());
+			EXPECT_TRUE(x.isDone());
+			EXPECT_TRUE(x.valid());
 
 			// simulate transfer
 			auto a = allscale::utils::serialize(x);
@@ -144,7 +156,6 @@ namespace work {
 			EXPECT_TRUE(y.valid());
 			EXPECT_TRUE(y.isDone());
 			EXPECT_EQ(14,y.get_result());
-
 		});
 	}
 
@@ -171,7 +182,7 @@ namespace work {
 			// simulate completion of task
 			TreetureStateService::getLocal().setDone(rank,id);
 			EXPECT_TRUE(y.valid());
-			EXPECT_TRUE(y.isDone());
+			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
 		});
 
@@ -220,9 +231,12 @@ namespace work {
 			// simulate completion of treeture
 			TreetureStateService::getLocal().setDone(rank,id);
 			EXPECT_TRUE(y.valid());
-			EXPECT_TRUE(y.isDone());
+			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
 
+			y.wait();
+			EXPECT_TRUE(y.isDone());
+			EXPECT_TRUE(y.valid());
 		});
 	}
 
@@ -244,6 +258,9 @@ namespace work {
 			// simulate completion of task
 			TreetureStateService::getLocal().setDone(rank,id);
 			EXPECT_TRUE(x.valid());
+			EXPECT_FALSE(x.isDone());
+			EXPECT_TRUE(x.valid());
+			x.wait();
 			EXPECT_TRUE(x.isDone());
 			EXPECT_TRUE(x.valid());
 

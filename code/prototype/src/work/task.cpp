@@ -9,7 +9,11 @@ namespace allscale {
 namespace runtime {
 namespace work {
 
-	thread_local Task* tl_current_task = nullptr;
+	__attribute__ ((noinline))
+	Task*& tl_current_task() {
+		static thread_local Task* current_task = nullptr;
+		return current_task;
+	}
 
 	data::DataItemRequirements Task::getProcessRequirements() const {
 		return {};
@@ -23,15 +27,15 @@ namespace work {
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task
-		auto oldTask = tl_current_task;
-		tl_current_task = this;
+		auto oldTask = tl_current_task();
+		tl_current_task() = this;
 
 		// process task
 		processInternal();
 
 		// reset up current task
-		assert_eq(tl_current_task,this);
-		tl_current_task = oldTask;
+		assert_eq(tl_current_task(),this);
+		tl_current_task() = oldTask;
 
 		// update state done
 		st = Running;
@@ -52,15 +56,15 @@ namespace work {
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task
-		auto oldTask = tl_current_task;
-		tl_current_task = this;
+		auto oldTask = tl_current_task();
+		tl_current_task() = this;
 
 		// split this task
 		splitInternal();
 
 		// reset up current task
-		assert_eq(tl_current_task,this);
-		tl_current_task = oldTask;
+		assert_eq(tl_current_task(),this);
+		tl_current_task() = oldTask;
 
 		// update state done
 		st = Running;
@@ -84,19 +88,17 @@ namespace work {
 		return out << task.getId() << ":" << task.state;
 	}
 
-	void Task::notifySuspend(Task* task) {
+	void Task::notifySuspend(Task*) {
 		// nothing to do yet ..
-		std::cout << "\t\tSuspending " << task->getId() << " in " << allscale::utils::FiberPool::getCurrentFiber() << "\n";
 	}
 
 	void Task::notifyResume(Task* task) {
 		// reset thread local task reference
-		tl_current_task = task;
-		std::cout << "\t\tResuming " << task->getId() << "\n";
+		tl_current_task() = task;
 	}
 
 	Task* Task::getCurrent() {
-		return tl_current_task;
+		return tl_current_task();
 	}
 
 } // end of namespace com

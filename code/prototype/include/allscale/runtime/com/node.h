@@ -98,11 +98,11 @@ namespace com {
 		template<typename Op>
 		auto run(const Op& op) -> decltype(op(*this)) {
 			// fix the local node
-			auto old = tp_local_node;
-			tp_local_node = this;
+			auto old = tp_local_node();
+			tp_local_node() = this;
 
 			// ensure recovery after execution
-			auto _ = allscale::utils::run_finally([&]{ tp_local_node = old; });
+			auto _ = allscale::utils::run_finally([&]{ tp_local_node() = old; });
 
 			// run this operation on this node
 			return op(*this);
@@ -115,8 +115,8 @@ namespace com {
 		 * Obtains a reference to the local node instance.
 		 */
 		static Node& getLocalNode() {
-			assert_true(tp_local_node) << "Not processed within a node!";
-			return *tp_local_node;
+			assert_true(tp_local_node()) << "Not processed within a node!";
+			return *tp_local_node();
 		}
 
 		/**
@@ -144,7 +144,7 @@ namespace com {
 		/**
 		 * A thread private value to trace who is currently executing code.
 		 */
-		static thread_local Node* tp_local_node;
+		static Node*& tp_local_node();
 
 	};
 

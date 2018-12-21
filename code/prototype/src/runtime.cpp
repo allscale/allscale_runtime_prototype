@@ -6,6 +6,7 @@
 #include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/data/data_item_manager.h"
 #include "allscale/runtime/work/scheduler.h"
+#include "allscale/runtime/work/fiber_service.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/worker.h"
 #include "allscale/runtime/mon/dashboard.h"
@@ -20,6 +21,9 @@ namespace runtime {
 
 		// install data item manager services
 		network.installServiceOnNodes<data::DataItemManagerService>();
+
+		// install fiber context service
+		work::installFiberContextService(network);
 
 		// install treeture service
 		work::installTreetureStateService(network);

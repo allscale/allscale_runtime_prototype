@@ -29,7 +29,6 @@
 namespace allscale {
 namespace runtime {
 
-
 	/**
 	 * The wrapper for the main function of an application handling the startup
 	 * and shutdown procedure as well as lunching the entry point work item.
@@ -44,27 +43,42 @@ namespace runtime {
 		// process the entry point on root node (rank 0)
 		auto treeture = rt.getNetwork().runOn(0,[&](com::Node& node){
 
-			// TODO:
-			//  - create task ID
-			//  - create task linked to treeture
-			//  - return treeture
+			std::mutex sync;
+			sync.lock();
 
-			using task_type = work::WorkItemTask<MainWorkItem,decltype(std::make_tuple(argc,argv))>;
+			work::treeture<int> treeture;
 
-			// create the task
-			auto task = work::make_task<task_type>(0,std::make_tuple(argc,argv));
+			// register a termination event handler
+			allscale::utils::fiber::FiberEvents handler;
+			handler.terminate = { [](void* l) { reinterpret_cast<std::mutex*>(l)->unlock(); } , &sync };
 
-			// extract treeture
-			auto treeture = task->getTreeture();
+			node.getService<work::FiberContextService>().getContext().start([&]{
 
-			// schedule task
-			node.getService<work::WorkerPool>().schedule(std::move(task));
+				// TODO:
+				//  - create task ID
+				//  - create task linked to treeture
+				//  - return treeture
 
-			// wait for completion
-			treeture.wait();
+				using task_type = work::WorkItemTask<MainWorkItem,decltype(std::make_tuple(argc,argv))>;
+
+				// create the task
+				auto task = work::make_task<task_type>(0,std::make_tuple(argc,argv));
+
+				// extract treeture
+				treeture = task->getTreeture();
+
+				// schedule task
+				node.getService<work::WorkerPool>().schedule(std::move(task));
+
+				// wait for completion
+				treeture.wait();
+
+			}, allscale::utils::fiber::Priority::MEDIUM, handler);
+
+			sync.lock();
 
 			// done
-			return std::move(treeture);
+			return treeture;
 		});
 
 		// the rest should only run on node 0, the one with the valid treeture

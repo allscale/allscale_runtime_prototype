@@ -12,7 +12,7 @@
 #include <memory>
 #include <mutex>
 
-#include "allscale/utils/fiber.h"
+#include "allscale/utils/fibers.h"
 
 #include "allscale/api/core/data.h"
 
@@ -381,10 +381,10 @@ namespace data {
 		mutable DataItemLocationCache locationCache;
 
 		// a lock to synchronize transfers on this instance
-		mutable allscale::utils::FiberMutex lock;
+		mutable allscale::utils::fiber::Mutex lock;
 
 		// the guard type to utilize
-		using guard = std::lock_guard<allscale::utils::FiberMutex>;
+		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
 
 	public:
 

@@ -19,10 +19,12 @@
 #include "allscale/utils/optional.h"
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/optionals.h"
+#include "allscale/utils/fibers.h"
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/work/task_id.h"
+#include "allscale/runtime/work/fiber_service.h"
 
 
 namespace allscale {
@@ -78,21 +80,45 @@ namespace work {
 
 			using opt_result_t = allscale::utils::optional<R>;
 
+			static constexpr std::size_t MAX_NUM_SUB_TASKS = (1<<MAX_TASK_LEVELS);
+
+			allscale::utils::fiber::EventRegister& eventRegister;
+
 			// we support a decomposition of up to level
-			std::array<opt_result_t,(1<<MAX_TASK_LEVELS)> results;
+			std::array<opt_result_t,MAX_NUM_SUB_TASKS> results;
+			std::array<allscale::utils::fiber::EventId,MAX_NUM_SUB_TASKS> events;
+
 
 		public:
+
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {
+				reg.create(MAX_NUM_SUB_TASKS,events.begin());
+			}
 
 			void setResult(const TaskPath& path, R&& value) {
 				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
 				assert_false(bool(results[toPosition(path)]));
-				results[toPosition(path)] = std::move(value);
+
+				auto pos = toPosition(path);
+				results[pos] = std::move(value);
+				eventRegister.trigger(events[pos]);
+
+				// TODO: signal child tasks as being completed
 			}
 
-			opt_result_t getResult(const TaskPath& path) {
+			allscale::utils::fiber::EventId getSyncEvent(const TaskPath& path) {
 				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
 				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
-				return std::move(results[toPosition(path)]);
+				auto pos = toPosition(path);
+				return events[pos];
+			}
+
+			R getResult(const TaskPath& path) {
+				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
+				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
+				auto pos = toPosition(path);
+				assert_true(bool(results[pos]));
+				return std::move(*results[pos]);
 			}
 
 		};
@@ -100,20 +126,29 @@ namespace work {
 		template<>
 		class TreetureStateService<void> : public TreetureStateServiceBase {
 
-			std::bitset<(1<<MAX_TASK_LEVELS)> states;
+			static constexpr std::size_t MAX_NUM_SUB_TASKS = (1<<MAX_TASK_LEVELS);
+
+			allscale::utils::fiber::EventRegister& eventRegister;
+
+			std::array<allscale::utils::fiber::EventId,MAX_NUM_SUB_TASKS> events;
 
 		public:
 
-			void setDone(const TaskPath& path) {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				assert_false(isDone(path));
-				states.set(toPosition(path));
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {
+				reg.create(MAX_NUM_SUB_TASKS,events.begin());
 			}
 
-			bool isDone(const TaskPath& path) const {
+			void setDone(const TaskPath& path) {
+				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
+				eventRegister.trigger(events[toPosition(path)]);
+			}
+
+
+
+			allscale::utils::fiber::EventId getEvent(const TaskPath& path) const {
 				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
 				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
-				return states.test(toPosition(path));
+				return events[toPosition(path)];
 			}
 
 		};
@@ -141,11 +176,14 @@ namespace work {
 		// the rank of the node this service is running on
 		com::rank_t myRank;
 
+		// the context to be utilized for synchronization operations
+		allscale::utils::fiber::EventRegister& eventRegister;
+
 	public:
 
 		// the service constructor
 		TreetureStateService(com::Node& node)
-			: network(com::Network::getNetwork()), myRank(node.getRank()) {}
+			: network(com::Network::getNetwork()), myRank(node.getRank()), eventRegister(node.getService<FiberContextService>().getContext().getEventRegister()) {}
 
 		static TreetureStateService& getLocal() {
 			return com::Node::getLocalService<TreetureStateService>();
@@ -154,28 +192,35 @@ namespace work {
 		// -- treeture side interface --
 
 		// tests non-blocking whether the referenced task is done
-		bool isDone(com::rank_t owner, const TaskID& id) {
+		bool wait(com::rank_t owner, const TaskID& id) {
 
 			// test whether this is the right one
 			if (myRank != owner) {
 				// query remote
-				return network.getRemoteProcedure(owner,&TreetureStateService::isDone)(owner,id).get();
+				return network.getRemoteProcedure(owner,&TreetureStateService::wait)(owner,id).get();
 			}
 
-			guard g(lock);
-			auto pos = states.find(id.getRootID());
-			if (pos == states.end()) return true;
+			allscale::utils::fiber::EventId syncEvent;
+			{
+				guard g(lock);
+				auto pos = states.find(id.getRootID());
+				if (pos == states.end()) return true;
+				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
+				syncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
+			}
 
-			// check consistent accesses
-			assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-			bool res = static_cast<detail::TreetureStateService<void>&>(*pos->second).isDone(id.getPath());
-			if (res) freeTaskStateInternal(id);
-			return res;
+			// suspend fiber
+			allscale::utils::fiber::suspend(syncEvent);
+
+			// free resources
+			guard g(lock);
+			freeTaskStateInternal(id);
+			return true;
 		}
 
 		// obtains the result of the corresponding task, or nothing if not yet available
 		template<typename R>
-		allscale::utils::optional<R> getResult(com::rank_t owner, const TaskID& id) {
+		R getResult(com::rank_t owner, const TaskID& id) {
 
 			// test whether this is the right one
 			if (myRank != owner) {
@@ -183,15 +228,26 @@ namespace work {
 				return network.getRemoteProcedure(owner,&TreetureStateService::getResult<R>)(owner,id).get();
 			}
 
-			guard g(lock);
+			detail::TreetureStateService<R>* service;
 
-			// retrieve the current result state
-			auto pos = states.find(id.getRootID());
-			assert_true(pos != states.end()) << "Invalid state: targeted task not registered!";
-			auto res = static_cast<detail::TreetureStateService<R>&>(*pos->second).getResult(id.getPath());
+			{
+				guard g(lock);
+
+				// retrieve the current result state
+				auto pos = states.find(id.getRootID());
+				assert_true(pos != states.end()) << "Invalid state: targeted task not registered!";
+				service = &static_cast<detail::TreetureStateService<R>&>(*pos->second);
+			}
+
+			// wait for result to arrive
+			allscale::utils::fiber::suspend(service->getSyncEvent(id.getPath()));
+
+			// collect result
+			auto res = service->getResult(id.getPath());
 
 			// if this result is present, this is the last thing we will here from this task
-			if (bool(res)) freeTaskStateInternal(id);
+			guard g(lock);
+			freeTaskStateInternal(id);
 
 			// done
 			return res;
@@ -229,7 +285,7 @@ namespace work {
 			if (state) return;
 
 			// if not, create a new state manager
-			state = std::make_unique<detail::TreetureStateService<R>>();
+			state = std::make_unique<detail::TreetureStateService<R>>(eventRegister);
 		}
 
 		template<typename R>
@@ -367,7 +423,6 @@ namespace work {
 		}
 
 		bool isDone() const {
-			retrieveValue();
 			return bool(value);
 		}
 
@@ -378,10 +433,7 @@ namespace work {
 		}
 
 		void wait() const {
-			// TODO: consider an exponential back-off
-			while(!isDone()) {
-				yield();
-			}
+			retrieveValue();
 		}
 
 		void store(allscale::utils::ArchiveWriter& out) const {
@@ -479,15 +531,11 @@ namespace work {
 		}
 
 		bool isDone() const {
-			retrieveValue();
 			return done;
 		}
 
 		void wait() const {
-			// TODO: consider an exponential back-off
-			while(!isDone()) {
-				yield();
-			}
+			retrieveValue();
 		}
 
 		treeture<void> get_left_child() const {
@@ -539,7 +587,8 @@ namespace work {
 			if (done) return;
 
 			// retrieve the value
-			done = getStateService().isDone(owner,*id);
+			getStateService().wait(owner,*id);
+			done = true;
 		}
 
 		TreetureStateService& getStateService() const {

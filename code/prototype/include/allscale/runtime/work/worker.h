@@ -7,9 +7,12 @@
 
 #pragma once
 
+#include <allscale/runtime/work/fiber_service.h>
 #include <atomic>
 #include <chrono>
 #include <thread>
+
+#include "allscale/utils/fibers.h"
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/hw/model.h"
@@ -174,6 +177,9 @@ namespace work {
 
 		friend class Worker;
 
+		// the underlying context for synchronization events
+		allscale::utils::FiberContext& fiberContext;
+
 		// the work queue to be processed by this worker
 		WorkQueue queue;
 
@@ -183,15 +189,15 @@ namespace work {
 		// the node this worker is working on (if there is one)
 		com::Node* node;
 
-		WorkerPool(com::Node* node);
+		WorkerPool(allscale::utils::FiberContext& ctxt, com::Node* node);
 
 	public:
 
-		WorkerPool()
-			: WorkerPool(nullptr) {}
+		WorkerPool(allscale::utils::FiberContext& fiberCtxt)
+			: WorkerPool(fiberCtxt,nullptr) {}
 
 		WorkerPool(com::Node& node)
-			: WorkerPool(&node) {};
+			: WorkerPool(node.getService<FiberContextService>().getContext(),&node) {};
 
 		WorkerPool(const WorkerPool&) = delete;
 		WorkerPool(WorkerPool&&) = delete;

@@ -123,8 +123,23 @@ namespace work {
 
 	bool Worker::step() {
 
+		// look for some already running task ...
+		if (pool.fiberContext.yield()) return true;
+
+		// look for an new task
+		auto t = pool.queue.dequeueBack();
+		if (!t) return false;
+
+		// get address of task
+		auto taskPointer = t.get();
+
+		// set up event handler
+		allscale::utils::fiber::FiberEvents taskEventHandler;
+		taskEventHandler.suspend = { &suspendHandler, taskPointer };
+		taskEventHandler.resume  = { &resumeHandler, taskPointer };
+
 		// process a task if available
-		if (auto t = pool.queue.dequeueBack()) {
+		pool.fiberContext.start([&,t{move(t)}]{
 
 			// get a reference to the local data item manager
 			auto dim = (pool.node) ? &data::DataItemManagerService::getLocalService() : nullptr;
@@ -192,11 +207,10 @@ namespace work {
 
 			}
 
-			return true;
-		}
+		}, allscale::utils::fiber::Priority::MEDIUM, taskEventHandler);
 
-		// no task was available
-		return false;
+		// we started a new task
+		return true;
 
 	}
 
@@ -212,8 +226,8 @@ namespace work {
 		}
 	}
 
-	WorkerPool::WorkerPool(com::Node* node)
-		: node(node) {
+	WorkerPool::WorkerPool(allscale::utils::FiberContext& ctxt, com::Node* node)
+		: fiberContext(ctxt), node(node) {
 
 		// get rank
 		com::rank_t rank = (node ? node->getRank() : 0);

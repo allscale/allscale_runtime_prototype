@@ -56,10 +56,17 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
+		installFiberContextService(net);
 		installTreetureStateService(net);
 
-		net.runOn(0,[&](com::Node&){
-			op();
+		net.runOn(0,[&](com::Node& node){
+			auto& ctxt = node.getService<FiberContextService>().getContext();
+			std::atomic<bool> done(false);
+			ctxt.start([&]{
+				op();
+				done = true;
+			});
+			while (!done) ctxt.yield();
 		});
 	}
 
@@ -77,8 +84,8 @@ namespace work {
 
 			task->process();
 
-			EXPECT_TRUE(t.isDone());
 			EXPECT_EQ(1,t.get_result());
+			EXPECT_TRUE(t.isDone());
 
 		});
 
@@ -100,6 +107,7 @@ namespace work {
 
 			task->process();
 
+			t.wait();
 			EXPECT_TRUE(t.isDone());
 
 		});

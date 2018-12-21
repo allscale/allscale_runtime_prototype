@@ -14,6 +14,7 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
+		installFiberContextService(net);
 		installTreetureStateService(net);
 		net.runOn(0,[&](com::Node&){op();});
 	}

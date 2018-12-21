@@ -1,9 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <thread>
 #include <ucontext.h>
 #include <unordered_map>
 #include <vector>
@@ -25,13 +27,22 @@ namespace utils {
 		// --- fiber ---
 
 		struct EventHandler {
-			void(*fun)(void*) =nullptr;	// < the function to be triggered
-			void* arg;					// < the argument to be passed
+			void(*fun)(void*) = nullptr;	// < the function to be triggered
+			void* arg = nullptr;			// < the argument to be passed
 			void trigger() {
 				if (fun) (fun)(arg);
 			}
+			void reset() {
+				fun = nullptr;
+			}
 		};
 
+
+		struct FiberEvents {
+			EventHandler suspend;
+			EventHandler resume;
+			EventHandler terminate;
+		};
 
 		// an extended context to allow parameter passing along context switches
 		struct ext_ucontext_t {
@@ -39,6 +50,7 @@ namespace utils {
 			ucontext_t context;
 			// extra parameter to be passed along context switches
 			spinlock* volatile lock = nullptr;		// < a potential lock to be freed after a context switch (the pointer is volatile, not the object)
+			EventHandler postSwapHandler;			// < to be triggered after a swap
 		};
 
 
@@ -106,9 +118,7 @@ namespace utils {
 			Stack stack;
 
 			// -- registered event handler --
-			EventHandler suspendHandler;
-			EventHandler resumeHandler;
-			EventHandler terminateHandler;
+			FiberEvents eventHandler;
 
 			// the context information when targeting this fiber
 			ext_ucontext_t ucontext = {};
@@ -133,26 +143,13 @@ namespace utils {
 		};
 
 
-		__attribute__ ((noinline)) static Fiber*& getCurrentFiberInfo() {
-			static thread_local Fiber* fiber = nullptr;
-			asm(""); // for the compiler, this changes everything :)
-			return fiber;
-		}
+		Fiber*& getCurrentFiberInfo();
 
-		inline void setCurrentFiberInfo(Fiber* info) {
-			auto& context = getCurrentFiberInfo();
-			context = info;
-		}
+		void setCurrentFiberInfo(Fiber* info);
 
-		inline void resetCurrentFiberInfo() {
-			auto& context = getCurrentFiberInfo();
-			context = nullptr;
-		}
+		void resetCurrentFiberInfo();
 
-
-		inline Fiber* getCurrentFiber() {
-			return getCurrentFiberInfo();
-		}
+		Fiber* getCurrentFiber();
 
 
 
@@ -215,7 +212,7 @@ namespace utils {
 
 		class EventRegister {
 
-			std::atomic<EventId> counter { 0 };
+			std::atomic<EventId> counter { 1 };
 
 			spinlock lock;
 
@@ -226,11 +223,22 @@ namespace utils {
 		public:
 
 			EventId create() {
-				auto res = ++counter;
+				auto res = counter++;
 				guard g(lock);
 				events[res];
 				assert_ne(EVENT_IGNORE,res);
 				return res;
+			}
+
+			template<typename Iter>
+			void create(int num, Iter target) {
+				auto first = counter.fetch_add(num);
+				guard g(lock);
+				for(int i=0; i<num; i++) {
+					*target = first + i;
+					events[*target];
+					target++;
+				}
 			}
 
 			void trigger(EventId event);
@@ -316,9 +324,13 @@ namespace utils {
 		};
 
 
-
-
-
+		/**
+		 * Suspends the currently processed fiber until the given event is triggered.
+		 * If the event already has been triggered, the thread will not be suspended.
+		 *
+		 * @pre must be executed within a fiber
+		 * @param event the event to wait for
+		 */
 		void suspend(EventId event);
 
 	} // end namespace fiber
@@ -370,7 +382,11 @@ namespace utils {
 		}
 
 		template<typename Fun>
-		void start(Fun&& lambda, const fiber::Priority& priority = fiber::Priority::DEFAULT) {
+		void start(
+				Fun&& lambda,
+				const fiber::Priority& priority = fiber::Priority::DEFAULT,
+				const fiber::FiberEvents& handler = {}
+		) {
 
 			using namespace fiber;
 
@@ -380,6 +396,9 @@ namespace utils {
 
 			// fix priority
 			fiber->priority = priority;
+
+			// install event handler
+			fiber->eventHandler = handler;
 
 			// capture current context
 			ext_ucontext_t local;
@@ -444,6 +463,8 @@ namespace utils {
 			for(auto it = begin; it != end; ++it) {
 				runable.push(*it);
 			}
+
+			// TODO: switch to higher-priority task if available
 		}
 
 		template<typename List>
@@ -462,7 +483,7 @@ namespace utils {
 			auto currentFiber = fiber::getCurrentFiber();
 
 			// run suspension handler
-			if (currentFiber) currentFiber->suspendHandler.trigger();
+			if (currentFiber) currentFiber->eventHandler.suspend.trigger();
 
 			// record mutex lock
 			assert_true(trg.lock == nullptr);
@@ -471,12 +492,13 @@ namespace utils {
 			// clear fiber context info
 			fiber::resetCurrentFiberInfo();
 
-//			// deactivate current fiber
-//			if (currentFiber) currentFiber->deactivate();
-
 			// switch context
 			int success = swapcontext(&src.context,&trg.context);
 			if (success != 0) assert_fail() << "Unable to switch thread context!";
+
+			// process final task of previous context
+			src.postSwapHandler.trigger();
+			src.postSwapHandler.reset();
 
 			// unlock src-lock (which after the swap is in the source context)
 			if (src.lock) {
@@ -484,14 +506,11 @@ namespace utils {
 				src.lock = nullptr;
 			}
 
-//			// re-activate current fiber
-//			if (currentFiber) currentFiber->activate();
-
 			// reset current fiber information
-			setCurrentFiberInfo(currentFiber);
+			fiber::setCurrentFiberInfo(currentFiber);
 
 			// run suspension handler
-			if (currentFiber) currentFiber->resumeHandler.trigger();
+			if (currentFiber) currentFiber->eventHandler.resume.trigger();
 
 			// restore lock
 			if (lock) lock->lock();
@@ -510,16 +529,10 @@ namespace utils {
 			Fun& lambda = *reinterpret_cast<Fun*>(lambdaPtr);
 
 			// set up thread-local state
-			setCurrentFiberInfo(&info);
+			fiber::setCurrentFiberInfo(&info);
 
-//			// mark fiber as running
-//			assert_false(info.running);
-//			info.running = true;
-//
-//			// mark info as being actively processed
-//			info.activate();
-
-//			if (DEBUG) std::cout << "Starting fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
+			auto& currentInfo = fiber::getCurrentFiberInfo();
+			assert_true(currentInfo);
 
 			{
 
@@ -531,26 +544,17 @@ namespace utils {
 
 			} // destruct function context
 
-//			if (DEBUG) std::cout << "Completing fiber " << &info << "/" << getCurrentFiber() << " @ " << &getCurrentFiberInfo() << "\n";
-//
-//			// mark fiber as done
-//			info.reset();
-//
-//			// make sure fiber info has been maintained
-//			assert_eq(&info,getCurrentFiberInfo());
-
-			info.terminateHandler.trigger();
-
 			// swap back to continuation
 			fiber::ext_ucontext_t local;
 			fiber::ext_ucontext_t& continuation = *info.continuation;
 			info.continuation = nullptr;
 
+			// register terminate handler as a post-swap action
+			continuation.postSwapHandler = info.eventHandler.terminate;
+
 			// free info block
 			auto& pool = info.ctxt.pool;
 			pool.freeListLock.lock();
-//			if (DEBUG) std::cout << "Recycling fiber " << &info << " by thread " << &getCurrentFiberInfo()<< "\n";
-//			assert_false(info.running);
 			pool.free.push_back(&info);
 
 			// swap back to continuation, and release lock for free list to make this info re-usable
@@ -570,7 +574,7 @@ namespace utils {
 			FiberContext::swap(ucontext,*continuation,&lock);
 		}
 
-		void EventRegister::trigger(EventId event) {
+		inline void EventRegister::trigger(EventId event) {
 			assert_ne(EVENT_IGNORE,event);
 			std::vector<Fiber*> waiting;
 			{
@@ -588,7 +592,7 @@ namespace utils {
 			waiting.front()->ctxt.resume(waiting);
 		}
 
-		void ConditionalVariable::notifyOne() {
+		inline void ConditionalVariable::notifyOne() {
 			Fiber* f = nullptr;
 			{
 				guard g(waitingListLock);
@@ -599,7 +603,7 @@ namespace utils {
 			f->ctxt.resume(*f);
 		}
 
-		void ConditionalVariable::notifyAll() {
+		inline void ConditionalVariable::notifyAll() {
 			std::vector<Fiber*> fibers;
 			{
 				guard g(waitingListLock);
@@ -610,8 +614,10 @@ namespace utils {
 		}
 
 
-		void suspend(EventId event) {
+		inline void suspend(EventId event) {
 			auto fiber = getCurrentFiber();
+			auto& context_info = getCurrentFiberInfo();
+			assert_true(&context_info);
 			assert_true(fiber) << "Error: can not suspend non-fiber context!";
 			fiber->ctxt.getEventRegister().waitFor(event, fiber);
 		}

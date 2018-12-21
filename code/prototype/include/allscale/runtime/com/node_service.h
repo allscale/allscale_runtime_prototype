@@ -111,7 +111,7 @@ namespace com {
 		template<typename S>
 		S& getService() const {
 			guard g(lock);
-			assert_true(hasServiceInternal<S>());
+			assert_true(hasServiceInternal<S>()) << typeid(S).name();
 			return static_cast<Service<S>&>(*services.find(typeid(S))->second).service;
 		}
 

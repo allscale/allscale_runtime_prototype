@@ -11,7 +11,11 @@ namespace com {
 		return x+1;
 	}
 
-	thread_local Node* Node::tp_local_node = nullptr;
+	__attribute__ ((noinline))
+	Node*& Node::tp_local_node() {
+		static thread_local Node* node = nullptr;
+		return node;
+	}
 
 } // end of namespace com
 } // end of namespace runtime

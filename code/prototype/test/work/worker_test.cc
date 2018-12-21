@@ -11,8 +11,10 @@ namespace work {
 
 	TEST(WorkerPool, StartStop) {
 
+		utils::FiberContext ctxt;
+
 		// create a pool
-		WorkerPool pool;
+		WorkerPool pool(ctxt);
 
 		// start the worker pool
 		pool.start();
@@ -32,6 +34,7 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
+		installFiberContextService(net);
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 		startWorkerPool(net);
@@ -60,6 +63,7 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
+		installFiberContextService(net);
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 

@@ -348,23 +348,26 @@ namespace utils {
 				fiber_priority_compare
 		>;
 
+		using guard = std::lock_guard<spinlock>;
+
 		fiber::Pool pool;
 
 		priority_queue_t runable;
 
 		spinlock runableLock;
 
-		using guard = std::lock_guard<spinlock>;
+		fiber::EventRegister eventRegister;
 
 	public:
-
-		fiber::EventRegister eventRegister;
 
 		FiberContext() : pool(*this) {}
 
 		FiberContext(const FiberContext&) = delete;
 		FiberContext(FiberContext&&) = delete;
 
+		fiber::EventRegister& getEventRegister() {
+			return eventRegister;
+		}
 
 		template<typename Fun>
 		void start(Fun&& lambda, const fiber::Priority& priority = fiber::Priority::DEFAULT) {
@@ -610,7 +613,7 @@ namespace utils {
 		void suspend(EventId event) {
 			auto fiber = getCurrentFiber();
 			assert_true(fiber) << "Error: can not suspend non-fiber context!";
-			fiber->ctxt.eventRegister.waitFor(event, fiber);
+			fiber->ctxt.getEventRegister().waitFor(event, fiber);
 		}
 
 	} // end namespace fiber

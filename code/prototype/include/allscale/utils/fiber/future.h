@@ -139,7 +139,7 @@ namespace fiber {
 		void wait() const {
 			assert_true(valid());
 			if (!ctxt) return;
-			ctxt->eventRegister.waitFor(event);
+			ctxt->getEventRegister().waitFor(event);
 		}
 
 		T get() {
@@ -196,7 +196,7 @@ namespace fiber {
 			: ctxt(nullptr), event(EVENT_IGNORE), future(nullptr) {}
 
 		Promise(FiberContext& ctxt)
-			: ctxt(&ctxt), event(ctxt.eventRegister.create()), future(nullptr) {}
+			: ctxt(&ctxt), event(ctxt.getEventRegister().create()), future(nullptr) {}
 
 		Promise(const Promise&) = delete;
 
@@ -261,7 +261,7 @@ namespace fiber {
 					future = nullptr;
 				}
 			}
-			ctxt->eventRegister.trigger(event);
+			ctxt->getEventRegister().trigger(event);
 		}
 
 
@@ -279,7 +279,7 @@ namespace fiber {
 					future = nullptr;
 				}
 			}
-			ctxt->eventRegister.trigger(event);
+			ctxt->getEventRegister().trigger(event);
 		}
 
 	private:

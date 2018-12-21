@@ -34,7 +34,7 @@ namespace fiber {
 
 		FiberContext ctxt;
 
-		auto event = ctxt.eventRegister.create();
+		auto event = ctxt.getEventRegister().create();
 
 		int x = 0;
 		ctxt.start([&]{
@@ -48,7 +48,7 @@ namespace fiber {
 		EXPECT_EQ(1,x);
 
 		// onlock the fiber
-		ctxt.eventRegister.trigger(event);
+		ctxt.getEventRegister().trigger(event);
 
 		// give the fiber context a chance to process the unlocked fiber
 		ctxt.yield();
@@ -61,8 +61,8 @@ namespace fiber {
 
 		FiberContext ctxt;
 
-		auto evtA = ctxt.eventRegister.create();
-		auto evtB = ctxt.eventRegister.create();
+		auto evtA = ctxt.getEventRegister().create();
+		auto evtB = ctxt.getEventRegister().create();
 
 		int x = 0;
 		ctxt.start([&]{
@@ -75,12 +75,12 @@ namespace fiber {
 
 		EXPECT_EQ(1,x);
 
-		ctxt.eventRegister.trigger(evtA);
+		ctxt.getEventRegister().trigger(evtA);
 		ctxt.yield();
 
 		EXPECT_EQ(2,x);
 
-		ctxt.eventRegister.trigger(evtB);
+		ctxt.getEventRegister().trigger(evtB);
 		ctxt.yield();
 
 		EXPECT_EQ(3,x);
@@ -91,13 +91,13 @@ namespace fiber {
 
 		FiberContext ctxt;
 
-		auto evtA = ctxt.eventRegister.create();
-		auto evtB = ctxt.eventRegister.create();
-		auto evtC = ctxt.eventRegister.create();
-		auto evtD = ctxt.eventRegister.create();
+		auto evtA = ctxt.getEventRegister().create();
+		auto evtB = ctxt.getEventRegister().create();
+		auto evtC = ctxt.getEventRegister().create();
+		auto evtD = ctxt.getEventRegister().create();
 
 		auto trigger = [&](EventId evt) {
-			ctxt.eventRegister.trigger(evt);
+			ctxt.getEventRegister().trigger(evt);
 			ctxt.yield();
 		};
 

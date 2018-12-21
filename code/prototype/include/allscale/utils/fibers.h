@@ -31,8 +31,6 @@ namespace utils {
 			}
 		};
 
-		using priority_t = int;
-
 
 		// an extended context to allow parameter passing along context switches
 		struct ext_ucontext_t {
@@ -81,6 +79,10 @@ namespace utils {
 
 		};
 
+
+		using priority_t = int;
+
+
 		struct Fiber {
 
 			// the context this fiber is part of
@@ -116,8 +118,6 @@ namespace utils {
 			};
 
 			void suspend(spinlock& lock);
-
-			void resume();
 
 		};
 
@@ -222,21 +222,7 @@ namespace utils {
 				return res;
 			}
 
-			void trigger(EventId event) {
-				assert_ne(EVENT_IGNORE,event);
-				std::vector<Fiber*> waiting;
-				{
-					guard g(lock);
-					auto pos = events.find(event);
-					assert_true(pos != events.end()) << "Invalid event: " << event;
-					waiting.swap(pos->second);
-					events.erase(pos);
-				}
-
-				for(auto& fiber : waiting) {
-					fiber->resume();
-				}
-			}
+			void trigger(EventId event);
 
 			void waitFor(EventId event, Fiber* current = nullptr) {
 				assert_ne(EVENT_IGNORE,event);
@@ -276,27 +262,9 @@ namespace utils {
 				fiber->suspend(lock);
 			}
 
-			void notifyOne() {
-				Fiber* f = nullptr;
-				{
-					guard g(waitingListLock);
-					if (waiting.empty()) return;
-					f = waiting.back();
-					waiting.pop_back();
-				}
-				f->resume();
-			}
+			void notifyOne();
 
-			void notifyAll() {
-				std::vector<Fiber*> fibers;
-				{
-					guard g(waitingListLock);
-					fibers.swap(waiting);
-				}
-				for(auto& fiber : fibers) {
-					fiber->resume();
-				}
-			}
+			void notifyAll();
 
 		};
 
@@ -352,6 +320,9 @@ namespace utils {
 	class FiberContext {
 
 		friend class fiber::Fiber;
+		friend class fiber::EventRegister;
+		friend class fiber::Mutex;
+		friend class fiber::ConditionalVariable;
 
 		fiber::Pool pool;
 
@@ -430,9 +401,27 @@ namespace utils {
 
 	private:
 
-		void resume(fiber::Fiber& fiber) {
+		template<typename Iter>
+		void resume(const Iter& begin, const Iter& end) {
+			// make sure all fibers belong to this context
+			assert_true(std::all_of(begin,end,[&](const fiber::Fiber* f){ return &(f->ctxt) == this; }));
+
+			// short-cut for empty list
+			if (begin == end) return;
+
+			// add fibers to runables
 			guard g(runableLock);
-			runable.push_back(&fiber);
+			runable.insert(runable.end(),begin,end);
+		}
+
+		template<typename List>
+		void resume(const List& list) {
+			resume(list.begin(),list.end());
+		}
+
+		void resume(fiber::Fiber& fiber) {
+			std::array<fiber::Fiber*,1> list = { &fiber };
+			resume(list);
 		}
 
 		static void swap(fiber::ext_ucontext_t& src, fiber::ext_ucontext_t& trg, spinlock* lock = nullptr) {
@@ -549,9 +538,45 @@ namespace utils {
 			FiberContext::swap(ucontext,*continuation,&lock);
 		}
 
-		inline void Fiber::resume() {
-			ctxt.resume(*this);
+		void EventRegister::trigger(EventId event) {
+			assert_ne(EVENT_IGNORE,event);
+			std::vector<Fiber*> waiting;
+			{
+				guard g(lock);
+				auto pos = events.find(event);
+				assert_true(pos != events.end()) << "Invalid event: " << event;
+				waiting.swap(pos->second);
+				events.erase(pos);
+			}
+
+			// if there is nothing, there is nothing to do
+			if (waiting.empty()) return;
+
+			// resume waiting tasks
+			waiting.front()->ctxt.resume(waiting);
 		}
+
+		void ConditionalVariable::notifyOne() {
+			Fiber* f = nullptr;
+			{
+				guard g(waitingListLock);
+				if (waiting.empty()) return;
+				f = waiting.back();
+				waiting.pop_back();
+			}
+			f->ctxt.resume(*f);
+		}
+
+		void ConditionalVariable::notifyAll() {
+			std::vector<Fiber*> fibers;
+			{
+				guard g(waitingListLock);
+				if (waiting.empty()) return;
+				fibers.swap(waiting);
+			}
+			fibers.front()->ctxt.resume(fibers);
+		}
+
 
 		void suspend(EventId event) {
 			auto fiber = getCurrentFiber();

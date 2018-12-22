@@ -88,13 +88,18 @@ namespace work {
 		return out << task.getId() << ":" << task.state;
 	}
 
-	void Task::notifySuspend(Task*) {
-		// nothing to do yet ..
+	void Task::notifySuspend(Task* t) {
+		// back up processing node
+		t->processingNode = &com::Node::getLocalNode();
 	}
 
 	void Task::notifyResume(Task* task) {
 		// reset thread local task reference
 		tl_current_task() = task;
+
+		// restore local node state
+		assert_true(task->processingNode);
+		com::Node::setLocalNode(*task->processingNode);
 	}
 
 	Task* Task::getCurrent() {

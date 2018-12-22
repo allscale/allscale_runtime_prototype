@@ -56,6 +56,9 @@ namespace work {
 		// a counter for the number of child tasks
 		int num_children = 0;
 
+		// a buffer for backing up processing nodes while suspending tasks
+		com::Node* processingNode = nullptr;
+
 	public:
 
 		// creates a new task, not completed yet

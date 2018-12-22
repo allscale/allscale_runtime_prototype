@@ -16,6 +16,10 @@
 
 namespace allscale {
 namespace runtime {
+
+// forward declaration
+namespace work { class Task; }
+
 namespace com {
 
 	// The type used for identifying ranks in networks.
@@ -26,6 +30,9 @@ namespace com {
 	 * A node is the entity running once within each process, managing the processes data and tasks.
 	 */
 	class Node {
+
+		// provide tasks access to setLocalNode state for fiber switching
+		friend class work::Task;
 
 		/**
 		 * The rank of this node within it's network.
@@ -145,6 +152,11 @@ namespace com {
 		 * A thread private value to trace who is currently executing code.
 		 */
 		static Node*& tp_local_node();
+
+		/**
+		 * A utility to update the local node.
+		 */
+		static void setLocalNode(Node& node);
 
 	};
 

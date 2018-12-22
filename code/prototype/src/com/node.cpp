@@ -17,6 +17,10 @@ namespace com {
 		return node;
 	}
 
+	void Node::setLocalNode(Node& node) {
+		tp_local_node() = &node;
+	}
+
 } // end of namespace com
 } // end of namespace runtime
 } // end of namespace allscale

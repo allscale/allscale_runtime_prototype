@@ -7,7 +7,6 @@
 
 #pragma once
 
-#include <allscale/runtime/work/fiber_service.h>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -199,7 +198,7 @@ namespace work {
 			: WorkerPool(fiberCtxt,nullptr) {}
 
 		WorkerPool(com::Node& node)
-			: WorkerPool(node.getService<FiberContextService>().getContext(),&node) {};
+			: WorkerPool(node.getFiberContext(),&node) {};
 
 		WorkerPool(const WorkerPool&) = delete;
 		WorkerPool(WorkerPool&&) = delete;

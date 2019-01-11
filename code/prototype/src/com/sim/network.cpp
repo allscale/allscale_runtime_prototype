@@ -1,19 +1,9 @@
 #include "allscale/runtime/com/sim/network.h"
 
-#include "allscale/runtime/work/fiber_service.h"
-
 namespace allscale {
 namespace runtime {
 namespace com {
 namespace sim {
-
-	namespace detail {
-
-		allscale::utils::FiberContext& getFiberContextOn(com::Node& node) {
-			return node.getLocalService<work::FiberContextService>().getContext();
-		}
-
-	}
 
 	Network::Network(size_t size) {
 		nodes.reserve(size);

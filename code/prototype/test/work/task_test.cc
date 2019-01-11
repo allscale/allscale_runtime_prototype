@@ -56,11 +56,10 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
-		installFiberContextService(net);
 		installTreetureStateService(net);
 
 		net.runOn(0,[&](com::Node& node){
-			auto& ctxt = node.getService<FiberContextService>().getContext();
+			auto& ctxt = node.getFiberContext();
 			std::atomic<bool> done(false);
 			ctxt.start([&]{
 				op();

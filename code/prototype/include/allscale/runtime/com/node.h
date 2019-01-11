@@ -12,6 +12,8 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/finalize.h"
+#include "allscale/utils/fibers.h"
+
 #include "allscale/runtime/com/node_service.h"
 
 namespace allscale {
@@ -37,6 +39,14 @@ namespace com {
 		rank_t rank;
 
 		/**
+		 * A context for performing fiber operations on this node.
+		 * NOTE: this could be a service, but it is essential for the implementation of
+		 * network communication and thus always required. A more direct access is thus
+		 * granted and cyclic dependencies avoided.
+		 */
+		allscale::utils::FiberContext context;
+
+		/**
 		 * A register of services running on this node.
 		 */
 		NodeServiceRegistry services;
@@ -52,6 +62,14 @@ namespace com {
 		 */
 		rank_t getRank() const {
 			return rank;
+		}
+
+		/**
+		 * Provides access to the fiber context maintained for concurrent operations
+		 * on this node.
+		 */
+		allscale::utils::FiberContext& getFiberContext() {
+			return context;
 		}
 
 		/**
@@ -126,6 +144,13 @@ namespace com {
 		static Node& getLocalNode() {
 			assert_true(getLocalNodeInternal()) << "Not processed within a node!";
 			return *getLocalNodeInternal();
+		}
+
+		/**
+		 * Obtains the fiber context active within this node.
+		 */
+		allscale::utils::FiberContext& getLocalFiberContext() {
+			return getLocalNode().getFiberContext();
 		}
 
 		/**

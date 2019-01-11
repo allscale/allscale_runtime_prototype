@@ -34,7 +34,6 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
-		installFiberContextService(net);
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 		startWorkerPool(net);
@@ -63,7 +62,6 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
-		installFiberContextService(net);
 		installTreetureStateService(net);
 		data::installDataItemManagerService(net);
 

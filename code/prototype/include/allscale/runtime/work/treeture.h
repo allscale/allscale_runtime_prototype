@@ -24,7 +24,6 @@
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/work/task_id.h"
-#include "allscale/runtime/work/fiber_service.h"
 
 #include "allscale/utils/printer/vectors.h"
 
@@ -268,7 +267,7 @@ namespace work {
 
 		// the service constructor
 		TreetureStateService(com::Node& node)
-			: network(com::Network::getNetwork()), myRank(node.getRank()), eventRegister(node.getService<FiberContextService>().getContext().getEventRegister()) {}
+			: network(com::Network::getNetwork()), myRank(node.getRank()), eventRegister(node.getFiberContext().getEventRegister()) {}
 
 		static TreetureStateService& getLocal() {
 			return com::Node::getLocalService<TreetureStateService>();

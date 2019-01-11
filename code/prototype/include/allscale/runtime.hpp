@@ -52,7 +52,7 @@ namespace runtime {
 			allscale::utils::fiber::FiberEvents handler;
 			handler.terminate = { [](void* l) { reinterpret_cast<std::mutex*>(l)->unlock(); } , &sync };
 
-			node.getService<work::FiberContextService>().getContext().start([&]{
+			node.getFiberContext().start([&]{
 
 				// TODO:
 				//  - create task ID

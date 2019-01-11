@@ -59,8 +59,6 @@ namespace sim {
 
 		};
 
-		allscale::utils::FiberContext& getFiberContextOn(com::Node&);
-
 	}
 
 	/**
@@ -236,7 +234,7 @@ namespace sim {
 				node.run([&](Node& node){
 
 					// wrap up remote procedure call in remote fiber
-					auto& localCtxt = detail::getFiberContextOn(node);
+					auto& localCtxt = node.getFiberContext();
 					localCtxt.start([&]{
 						// perform operation
 						result = remoteOp(node);
@@ -317,7 +315,7 @@ namespace sim {
 				node.run([&](Node& node){
 
 					// wrap up remote procedure call in remote fiber
-					auto& localCtxt = detail::getFiberContextOn(node);
+					auto& localCtxt = node.getFiberContext();
 					localCtxt.start([&]{
 						// perform operation
 						remoteOp(node);
@@ -399,7 +397,7 @@ namespace sim {
 				node.run([&](Node& node){
 
 					// wrap up remote procedure call in remote fiber
-					auto& localCtxt = detail::getFiberContextOn(node);
+					auto& localCtxt = node.getFiberContext();
 					localCtxt.start([&]{
 						// perform operation
 						result = remoteOp(node);
@@ -499,7 +497,7 @@ namespace sim {
 						node->run([&](Node& node){
 
 							// wrap up remote procedure call in remote fiber
-							auto& localCtxt = detail::getFiberContextOn(node);
+							auto& localCtxt = node.getFiberContext();
 							localCtxt.start([&]{
 								// perform operation
 								remoteOp(node,trgStats);
@@ -606,7 +604,7 @@ namespace sim {
 							events.push_back(doneEvent);
 
 							// wrap up remote procedure call in remote fiber
-							auto& localCtxt = detail::getFiberContextOn(node);
+							auto& localCtxt = node.getFiberContext();
 							localCtxt.start([&]{
 								// perform operation
 								remoteOp(node,trgStats);

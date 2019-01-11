@@ -16,11 +16,10 @@ namespace work {
 		assert_true(network);
 
 		auto& net = *network;
-		installFiberContextService(net);
 		net.installServiceOnNodes<TreetureStateService>();
 
 		net.runOn(0,[&](com::Node& node){
-			auto& ctxt = node.getService<FiberContextService>().getContext();
+			auto& ctxt = node.getFiberContext();
 			bool done = false;
 			ctxt.start([&]{
 				op();

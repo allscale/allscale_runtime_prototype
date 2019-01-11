@@ -22,7 +22,8 @@
 #include "allscale/utils/serializer/functions.h"
 #include "allscale/utils/serializer/tuple.h"
 
-#include "allscale/utils/fiber.h"
+#include "allscale/utils/fibers.h"
+#include "allscale/utils/fiber/future.h"
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/statistics.h"
@@ -86,7 +87,7 @@ namespace mpi {
 	 * Define the type of result produced by remote calls.
 	 */
 	template<typename T>
-	using RemoteCallResult = utils::FiberFuture<T>;
+	using RemoteCallResult = utils::fiber::Future<T>;
 
 	/**
 	 * The network implementation for an MPI based implementation.
@@ -105,19 +106,10 @@ namespace mpi {
 		using clock = std::chrono::high_resolution_clock;
 		using time = typename clock::time_point;
 
-		// a pool for handling light-weight out-of-order request / response processing
-		utils::FiberPool pool;
-
 		using response_id = std::pair<int,int>;
 
-		struct response_handler {
-			utils::FiberPool::Fiber receiver;
-			utils::FiberPool::Fiber sender;
-			allscale::utils::spinlock* lock;
-		};
-
-		// a registry for fibers waiting for responses from remote calls
-		std::map<response_id,response_handler> responde_handler;
+		// a registry for events fibers are waiting on for responses from remote calls
+		std::map<response_id,utils::fiber::EventId> responde_handler;
 
 		// a lock to protect accesses to the responde_handler registry
 		mutable utils::spinlock responde_handler_lock;
@@ -241,10 +233,9 @@ namespace mpi {
 				}
 
 				RemoteCallResult<R> res;
-				Network* net = &network;
-				network.pool.start([&]{
-					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future([net]{ net->processMessageNonBlocking(); });
+				local.getFiberContext().start([&]{
+					allscale::utils::fiber::Promise<R> promise(local.getFiberContext());
+					res = promise.get_future();
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);
@@ -316,18 +307,18 @@ namespace mpi {
 				// count calls
 				getLocalStats().sent_calls++;
 
-				// perform remote call
-				{
+				// perform remote call (in suspendable fiber context)
+				local.getFiberContext().start([&]{
+
 					// create an argument tuple and serialize it
 					auto aa  = allscale::utils::serialize(args_tuple(fun,selector,std::forward<Args>(args)...));
 					auto msg = allscale::utils::serialize(request_msg_t(&handleProcedure,aa));
 					auto& buffer = msg.getBuffer();
 
-
 					// send to target node
 					network.sendRequest(buffer,trg,getFreshRequestTag());
 
-				}
+				});
 			}
 
 		};
@@ -440,10 +431,9 @@ namespace mpi {
 				}
 
 				RemoteCallResult<R> res;
-				Network* net = &network;
-				network.pool.start([&]{
-					allscale::utils::FiberPromise<R> promise;
-					res = promise.get_future([net]{ net->processMessageNonBlocking(); });
+				local.getFiberContext().start([&]{
+					allscale::utils::fiber::Promise<R> promise(local.getFiberContext());
+					res = promise.get_future();
 					promise.set_value(call(std::forward<Args>(args)...));
 				});
 				return std::move(res);

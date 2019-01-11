@@ -222,7 +222,7 @@ namespace mpi {
 		};
 
 		// TODO: do not make fibers busy-wait here ... suspend them
-		auto fiber = allscale::utils::FiberPool::getCurrentFiber();
+		auto fiber = allscale::utils::fiber::getCurrentFiber();
 
 		// wait for completion of send call
 		while(!done()) {
@@ -267,18 +267,27 @@ namespace mpi {
 
 		// -- First install the response handler --
 
-		// get the id of the response waiting for
+		// create a response event
+		auto& eventReg = localNode->getFiberContext().getEventRegister();
+		auto responseReadyEvent = eventReg.create();
+
+		// register response event
 		std::pair<int,int> key(trg,response_tag);
+		{
+			std::lock_guard<utils::spinlock> g(responde_handler_lock);
+			responde_handler[key] = responseReadyEvent;
+		}
 
-		// submit a fiber waiting for the response
-		std::atomic<bool> done(false);
+		// send request
+		sendRequest(msg,trg,request_tag);
+
+		// wait for response to be ready
+		utils::fiber::suspend(responseReadyEvent);
+
+		// retrieve response
 		std::vector<char> response;
-		auto fiber = pool.start([&]{
-
-			// suspend fiber immediately
-			utils::FiberPool::suspend();
-
-			// NOTE: the lock protection is given by the context continuing this fiber
+		{
+			std::lock_guard<allscale::utils::spinlock> g(G_MPI_MUTEX);
 
 			// upon awakening, the message should be available
 			int flag;
@@ -299,48 +308,9 @@ namespace mpi {
 			DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " from " << trg << " of size " << count << " bytes ...\n";
 			Network::getLocalStats().received_bytes += count;
 			MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-
-			// signal completion
-			done = true;
-		});
-
-		// the fiber should be suspended
-		assert_true(fiber);
-
-		// a mutex to handle call back synchronization for resuming sender fiber
-		allscale::utils::spinlock lock;
-
-		auto senderFiber = allscale::utils::FiberPool::getCurrentFiber();
-		if (senderFiber) lock.lock();
-
-
-		// finally, register the response handler
-		{
-			std::lock_guard<allscale::utils::spinlock> g(responde_handler_lock);
-			responde_handler[key] = { *fiber , senderFiber, &lock };
 		}
 
-		// -- send request --
-
-		sendRequest(msg,trg,request_tag);
-
-
-		// -- finally wait for response --
-
-		// if in a fiber ..
-		if (senderFiber) {
-			// suspend the local fiber until message is received (avoiding dead-locks)
-			allscale::utils::suspend(lock);
-			assert_true(done);
-		} else {
-			// while not done ..
-			while(!done) {
-				// .. help processing requests
-				processMessageNonBlocking();
-			}
-		}
-
-		// done
+		// process response
 		return response;
 
 	}
@@ -368,29 +338,27 @@ namespace mpi {
 				response_id id(status.MPI_SOURCE,status.MPI_TAG);
 
 				// obtain the handler registered for this message
-				response_handler handler;
+				allscale::utils::fiber::EventId readyEvent = allscale::utils::fiber::EVENT_IGNORE;
 				{
 					std::lock_guard<utils::spinlock> g(responde_handler_lock);
 					auto pos = responde_handler.find(id);
-					assert_true(pos != responde_handler.end());
-					handler = pos->second;
-					responde_handler.erase(pos);
+					if (pos != responde_handler.end()) {
+						readyEvent = pos->second;
+						responde_handler.erase(pos);
+					}
 				}
-
-				// process handler (also unlocks the global MPI mutex)
-				pool.resume(handler.receiver);
 
 				// free MPI access
 				G_MPI_MUTEX.unlock();
 
-				// resume sender
-				if (handler.sender) {
-					// ensure sender is suspended indicated by available lock ..
-					handler.lock->lock();
-					handler.lock->unlock();
-					// .. resume sender
-					pool.resume(handler.sender);
-				}
+				// if there was no event (it has already been triggered) return no progress
+				if (readyEvent == allscale::utils::fiber::EVENT_IGNORE) return false;
+
+				// signal readiness of response
+				localNode->getFiberContext().getEventRegister().trigger(readyEvent);
+
+				// yield the control -- probably to the receiver
+				node.getFiberContext().yield();
 
 				// done
 				return true;
@@ -416,7 +384,7 @@ namespace mpi {
 		}
 
 		// process request handler in a fiber context (to allow interrupts)
-		pool.start([&]{
+		localNode->getFiberContext().start([&]{
 
 			// parse message
 			allscale::utils::Archive a(std::move(buffer));
@@ -437,7 +405,7 @@ namespace mpi {
 	}
 
 	void Network::processMessageNonBlocking() {
-		pool.start([&]{
+		localNode->getFiberContext().start([&]{
 			processMessage();
 		});
 	}
@@ -466,18 +434,68 @@ namespace mpi {
 
 	}
 
+	namespace {
+
+		NetworkStatistics getStatisticsWithinThread(Network& net) {
+			// this implementation does not support calls within fibers
+			assert_false(allscale::utils::fiber::getCurrentFiber())
+				<< "Calls within fibers not supported!";
+
+			auto num_nodes = net.numNodes();
+			NetworkStatistics res(num_nodes);
+
+			// use an actual lock to sync on completion of operation
+			std::mutex lock;
+			lock.lock();
+
+			net.getLocalNode().getFiberContext().start([&]{
+				std::vector<RemoteCallResult<NodeStatistics>> futures(num_nodes);
+				for(rank_t i=0; i<num_nodes; i++) {
+					futures[i] = net.getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+				}
+				for(rank_t i=0; i<num_nodes; i++) {
+					res[i] = futures[i].get();
+				}
+				lock.unlock();
+			});
+
+			// block until done
+			lock.lock();
+
+			// done
+			return res;
+		}
+
+		NetworkStatistics getStatisticsWithinFiber(Network& net) {
+			// this implementation does not support calls within fibers
+			assert_true(allscale::utils::fiber::getCurrentFiber())
+				<< "Must be called within a fiber!";
+
+			auto num_nodes = net.numNodes();
+			NetworkStatistics res(num_nodes);
+
+			// collect data asynchron
+			std::vector<RemoteCallResult<NodeStatistics>> futures(num_nodes);
+			for(rank_t i=0; i<num_nodes; i++) {
+				futures[i] = net.getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+			}
+			for(rank_t i=0; i<num_nodes; i++) {
+				res[i] = futures[i].get();
+			}
+
+			// done
+			return res;
+		}
+
+	}
+
+
 	NetworkStatistics Network::getStatistics() {
-
-		NetworkStatistics res(num_nodes);
-
-		std::vector<RemoteCallResult<NodeStatistics>> futures(num_nodes);
-		for(rank_t i=0; i<num_nodes; i++) {
-			futures[i] = getNetwork().getRemoteProcedure(i,&NetworkStatisticService::getNodeStats)();
+		auto fiber = allscale::utils::fiber::getCurrentFiber();
+		if (fiber) {
+			return getStatisticsWithinFiber(*this);
 		}
-		for(rank_t i=0; i<num_nodes; i++) {
-			res[i] = futures[i].get();
-		}
-		return res;
+		return getStatisticsWithinThread(*this);
 	}
 
 	NodeStatistics& Network::getLocalStats() {

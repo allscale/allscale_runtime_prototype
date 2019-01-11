@@ -765,6 +765,10 @@ namespace mon {
 
 	SystemState getSystemState(com::Network& net) {
 
+		// this call must be invoked within fiber
+		assert_true(allscale::utils::fiber::getCurrentFiber())
+			<< "Current implementation must run in fiber!";
+
 		using namespace std::literals::chrono_literals;
 
 		// simply collect state from all nodes

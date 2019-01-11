@@ -15,7 +15,7 @@ namespace work {
 		// wait eagerly
 		a.wait();
 		b.wait();
-		return treeture<void>();
+		return treeture<void>(true);
 	}
 
 

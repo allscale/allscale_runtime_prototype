@@ -174,7 +174,7 @@ namespace data {
 
 			for(auto& call : calls) {
 				// retrieve data
-				allData.emplace_back(std::move(call.second.get()));
+				allData.emplace_back(call.second.get());
 
 				// test that all data is included
 				if (*call.first != allData.back().getCoveredRegions()) {

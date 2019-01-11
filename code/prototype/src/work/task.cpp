@@ -27,15 +27,10 @@ namespace work {
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task
-		auto oldTask = tl_current_task();
 		tl_current_task() = this;
 
 		// process task
 		processInternal();
-
-		// reset up current task
-		assert_eq(tl_current_task(),this);
-		tl_current_task() = oldTask;
 
 		// update state done
 		st = Running;
@@ -56,15 +51,10 @@ namespace work {
 		assert_true(success) << "Attempted to start non-ready task, actual state: " << st << "\n";
 
 		// set up current task
-		auto oldTask = tl_current_task();
 		tl_current_task() = this;
 
 		// split this task
 		splitInternal();
-
-		// reset up current task
-		assert_eq(tl_current_task(),this);
-		tl_current_task() = oldTask;
 
 		// update state done
 		st = Running;
@@ -88,18 +78,9 @@ namespace work {
 		return out << task.getId() << ":" << task.state;
 	}
 
-	void Task::notifySuspend(Task* t) {
-		// back up processing node
-		t->processingNode = &com::Node::getLocalNode();
-	}
-
 	void Task::notifyResume(Task* task) {
 		// reset thread local task reference
 		tl_current_task() = task;
-
-		// restore local node state
-		assert_true(task->processingNode);
-		com::Node::setLocalNode(*task->processingNode);
 	}
 
 	Task* Task::getCurrent() {

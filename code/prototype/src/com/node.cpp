@@ -11,14 +11,15 @@ namespace com {
 		return x+1;
 	}
 
+	static thread_local Node* tl_current_node = nullptr;
+
 	__attribute__ ((noinline))
-	Node*& Node::tp_local_node() {
-		static thread_local Node* node = nullptr;
-		return node;
+	Node* Node::getLocalNodeInternal() {
+		return tl_current_node;
 	}
 
-	void Node::setLocalNode(Node& node) {
-		tp_local_node() = &node;
+	void Node::setLocalNode(Node* node) {
+		tl_current_node = node;
 	}
 
 } // end of namespace com

@@ -112,10 +112,6 @@ namespace work {
 
 	namespace {
 
-		void suspendHandler(void* task) {
-			Task::notifySuspend(reinterpret_cast<Task*>(task));
-		};
-
 		void resumeHandler(void* task) {
 			Task::notifyResume(reinterpret_cast<Task*>(task));
 		};
@@ -135,7 +131,6 @@ namespace work {
 
 		// set up event handler
 		allscale::utils::fiber::FiberEvents taskEventHandler;
-		taskEventHandler.suspend = { &suspendHandler, taskPointer };
 		taskEventHandler.resume  = { &resumeHandler, taskPointer };
 
 		// process a task if available

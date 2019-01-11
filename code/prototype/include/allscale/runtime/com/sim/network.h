@@ -14,6 +14,7 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
+#include "allscale/utils/fibers.h"
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/statistics.h"
@@ -57,6 +58,8 @@ namespace sim {
 			}
 
 		};
+
+		allscale::utils::FiberContext& getFiberContextOn(com::Node&);
 
 	}
 
@@ -205,14 +208,45 @@ namespace sim {
 					});
 				}
 
-				// update statistics
+				// account this as an actual remote call
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
 
-				// perform an actual remote call
-				return node.run([&](Node&){
-					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+				using namespace allscale::utils::fiber;
+
+				// get current fiber
+				auto fiber = getCurrentFiber();
+
+				// if computation is not in a fiber => use thread based RPC
+				if (!fiber) {
+
+					return node.run([&](Node&){
+						return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+					});
+
+				}
+
+				// get source-nodes event register
+				auto& eventReg = fiber->ctxt.getEventRegister();
+				EventId doneEvent = eventReg.create();		// < the event signaling the completion of the remote execution
+
+				R result;
+
+				node.run([&](Node& node){
+
+					// wrap up remote procedure call in remote fiber
+					auto& localCtxt = detail::getFiberContextOn(node);
+					localCtxt.start([&]{
+						// perform operation
+						result = transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+						// signal back completion
+						eventReg.trigger(doneEvent);
+					});
+
 				});
+
+				suspend(doneEvent);
+				return result;
 			}
 
 		};
@@ -259,12 +293,36 @@ namespace sim {
 					return;
 				}
 
-				// perform an actual remote call
+				// account this as an actual remote call
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
-				node.run([&](Node&){
-					(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+
+				using namespace allscale::utils::fiber;
+
+				// get current fiber
+				auto fiber = getCurrentFiber();
+
+				// if computation is not in a fiber => use thread based RPC
+				if (!fiber) {
+
+					node.run([&](Node&){
+						(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+					});
+
+					return;
+				}
+
+				node.run([&](Node& node){
+
+					// wrap up remote procedure call in remote fiber
+					auto& localCtxt = detail::getFiberContextOn(node);
+					localCtxt.start([&]{
+						// perform operation
+						(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+					});
+
 				});
+
 			}
 
 		};
@@ -311,12 +369,46 @@ namespace sim {
 					});
 				}
 
-				// perform an actual remote call
+				// account this as an actual remote call
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
-				return node.run([&](Node&){
-					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+
+				using namespace allscale::utils::fiber;
+
+				// get current fiber
+				auto fiber = getCurrentFiber();
+
+				// if computation is not in a fiber => use thread based RPC
+				if (!fiber) {
+
+					return node.run([&](Node&){
+						return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+					});
+
+				}
+
+				// get source-nodes event register
+				auto& eventReg = fiber->ctxt.getEventRegister();
+				EventId doneEvent = eventReg.create();		// < the event signaling the completion of the remote execution
+
+				R result;
+
+				node.run([&](Node& node){
+
+					// wrap up remote procedure call in remote fiber
+					auto& localCtxt = detail::getFiberContextOn(node);
+					localCtxt.start([&]{
+						// perform operation
+						result = transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+						// signal back completion
+						eventReg.trigger(doneEvent);
+					});
+
 				});
+
+				suspend(doneEvent);
+				return result;
+
 			}
 
 		};
@@ -349,25 +441,70 @@ namespace sim {
 				auto src = Node::getLocalRank();
 				auto& srcStats = nodes[src]->template getService<NetworkStatisticService>().getLocalNodeStats();
 				srcStats.sent_bcasts += 1;
-				for(auto& node : nodes) {
-					auto trg = node->getRank();
 
-					// short-cut for local communication
-					if (src == trg) {
+				using namespace allscale::utils::fiber;
+
+				// get current fiber
+				auto fiber = getCurrentFiber();
+
+				// if computation is not in a fiber => use thread based RPC
+				if (!fiber) {
+
+					// perform call on each remote node
+					for(auto& node : nodes) {
+						auto trg = node->getRank();
+
+						// short-cut for local communication
+						if (src == trg) {
+							node->run([&](Node&){
+								(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							});
+							continue;
+						}
+
+						// perform remote call
+						auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+						trgStats.received_bcasts += 1;
 						node->run([&](Node&){
-							(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
 						});
-						continue;
+
 					}
 
-					// perform remote call
-					auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
-					trgStats.received_bcasts += 1;
-					node->run([&](Node&){
-						(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
-					});
+				} else {
+
+					// perform call on each remote node
+					for(auto& node : nodes) {
+						auto trg = node->getRank();
+
+						// short-cut for local communication
+						if (src == trg) {
+							node->run([&](Node&){
+								(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							});
+							continue;
+						}
+
+						// perform remote call
+						auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+						trgStats.received_bcasts += 1;
+						node->run([&](Node& node){
+
+							// wrap up remote procedure call in remote fiber
+							auto& localCtxt = detail::getFiberContextOn(node);
+							localCtxt.start([&]{
+								// perform operation
+								(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+							});
+
+						});
+
+					}
+
+					// not necessary to wait for any events (async broadcast)
 
 				}
+
 			}
 
 		};
@@ -399,25 +536,82 @@ namespace sim {
 				auto src = Node::getLocalRank();
 				auto& srcStats = nodes[src]->template getService<NetworkStatisticService>().getLocalNodeStats();
 				srcStats.sent_bcasts += 1;
-				for(auto& node : nodes) {
-					auto trg = node->getRank();
 
-					// short-cut for local communication
-					if (src == trg) {
+				using namespace allscale::utils::fiber;
+
+				// get current fiber
+				auto fiber = getCurrentFiber();
+
+				// if computation is not in a fiber => use thread based RPC
+				if (!fiber) {
+
+					// perform call on each remote node
+					for(auto& node : nodes) {
+						auto trg = node->getRank();
+
+						// short-cut for local communication
+						if (src == trg) {
+							node->run([&](Node&){
+								(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							});
+							continue;
+						}
+
+						// perform remote call
+						auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+						trgStats.received_bcasts += 1;
 						node->run([&](Node&){
-							(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
 						});
-						continue;
+
 					}
 
-					// perform remote call
-					auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
-					trgStats.received_bcasts += 1;
-					node->run([&](Node&){
-						(node->template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
-					});
+				} else {
+
+					// get source-nodes event register
+					auto& eventReg = fiber->ctxt.getEventRegister();
+					std::vector<EventId> events;		// < list of events signaling remote call to be completed
+
+					// perform call on each remote node
+					for(auto& node : nodes) {
+						auto trg = node->getRank();
+
+						// short-cut for local communication
+						if (src == trg) {
+							node->run([&](Node&){
+								(node->template getService<S>().*fun)(std::forward<Args>(args)...);
+							});
+							continue;
+						}
+
+						// perform remote call
+						auto& trgStats = nodes[trg]->template getService<NetworkStatisticService>().getLocalNodeStats();
+						trgStats.received_bcasts += 1;
+						node->run([&](Node& node){
+
+							auto doneEvent = eventReg.create();
+							events.push_back(doneEvent);
+
+							// wrap up remote procedure call in remote fiber
+							auto& localCtxt = detail::getFiberContextOn(node);
+							localCtxt.start([&]{
+								// perform operation
+								(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+								// signal back completion
+								eventReg.trigger(doneEvent);
+							});
+
+						});
+
+					}
+
+					// wait for completion of all remote calls
+					for(const auto& cur : events) {
+						suspend(cur);
+					}
 
 				}
+
 			}
 
 		};

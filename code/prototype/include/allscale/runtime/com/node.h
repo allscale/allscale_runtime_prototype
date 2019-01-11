@@ -31,9 +31,6 @@ namespace com {
 	 */
 	class Node {
 
-		// provide tasks access to setLocalNode state for fiber switching
-		friend class work::Task;
-
 		/**
 		 * The rank of this node within it's network.
 		 */
@@ -105,11 +102,16 @@ namespace com {
 		template<typename Op>
 		auto run(const Op& op) -> decltype(op(*this)) {
 			// fix the local node
-			auto old = tp_local_node();
-			tp_local_node() = this;
+			auto old = getLocalNodeInternal();
+			setLocalNode(this);
 
 			// ensure recovery after execution
-			auto _ = allscale::utils::run_finally([&]{ tp_local_node() = old; });
+			auto _ = allscale::utils::run_finally([&]{
+				// make sure the local node is still the same
+				assert_eq(getLocalNodeInternal(),this);
+				// reset to old one
+				setLocalNode(old);
+			});
 
 			// run this operation on this node
 			return op(*this);
@@ -122,8 +124,8 @@ namespace com {
 		 * Obtains a reference to the local node instance.
 		 */
 		static Node& getLocalNode() {
-			assert_true(tp_local_node()) << "Not processed within a node!";
-			return *tp_local_node();
+			assert_true(getLocalNodeInternal()) << "Not processed within a node!";
+			return *getLocalNodeInternal();
 		}
 
 		/**
@@ -149,14 +151,15 @@ namespace com {
 	private:
 
 		/**
-		 * A thread private value to trace who is currently executing code.
+		 * A utility to internally obtain the currently configured local node
+		 * for the current thread, or null, if there is none.
 		 */
-		static Node*& tp_local_node();
+		static Node* getLocalNodeInternal();
 
 		/**
 		 * A utility to update the local node.
 		 */
-		static void setLocalNode(Node& node);
+		static void setLocalNode(Node* node);
 
 	};
 

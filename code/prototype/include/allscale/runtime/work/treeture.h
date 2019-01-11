@@ -26,6 +26,7 @@
 #include "allscale/runtime/work/task_id.h"
 #include "allscale/runtime/work/fiber_service.h"
 
+#include "allscale/utils/printer/vectors.h"
 
 namespace allscale {
 namespace runtime {
@@ -78,47 +79,76 @@ namespace work {
 		template<typename R>
 		class TreetureStateService : public TreetureStateServiceBase {
 
-			using opt_result_t = allscale::utils::optional<R>;
+			mutable allscale::utils::spinlock lock;
 
-			static constexpr std::size_t MAX_NUM_SUB_TASKS = (1<<MAX_TASK_LEVELS);
+			using guard = std::lock_guard<allscale::utils::spinlock>;
 
 			allscale::utils::fiber::EventRegister& eventRegister;
 
-			// we support a decomposition of up to level
-			std::array<opt_result_t,MAX_NUM_SUB_TASKS> results;
-			std::array<allscale::utils::fiber::EventId,MAX_NUM_SUB_TASKS> events;
+			// the list of completed tasks and their results
+			std::unordered_map<TaskPath,R> results;
 
+			// lazy-generated events used to sync on sub-treetures
+			std::unordered_map<TaskPath,allscale::utils::fiber::EventId> events;
 
 		public:
 
-			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {
-				reg.create(MAX_NUM_SUB_TASKS,events.begin());
-			}
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
 
 			void setResult(const TaskPath& path, R&& value) {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				assert_false(bool(results[toPosition(path)]));
 
-				auto pos = toPosition(path);
-				results[pos] = std::move(value);
-				eventRegister.trigger(events[pos]);
+				guard g(lock);
 
-				// TODO: signal child tasks as being completed
+				// the task must not be done yet (can only trigger once)
+				assert_false(isDone(path));
+
+				// record the result
+				results.emplace( path, std::move(value) );
+
+				// trigger potential registered events of this task or sub-tasks
+				for(auto it = events.begin(), last = events.end(); it != last;) {
+					if (isSubPath(path,it->first)) {
+						eventRegister.trigger(it->second);
+						it = events.erase(it);
+					} else {
+						++it;
+					}
+				}
+
 			}
 
 			allscale::utils::fiber::EventId getSyncEvent(const TaskPath& path) {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
-				auto pos = toPosition(path);
-				return events[pos];
+
+				guard g(lock);
+
+				// test whether the task has completed by now
+				if (isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
+
+				// test whether there is already a event waiting for this task
+				auto pos = events.find(path);
+				if (pos != events.end()) return pos->second;
+
+				// register a new event
+				return events[path] = eventRegister.create();
 			}
 
 			R getResult(const TaskPath& path) {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
-				auto pos = toPosition(path);
-				assert_true(bool(results[pos]));
-				return std::move(*results[pos]);
+				guard g(lock);
+				auto pos = results.find(path);
+				assert_true(pos != results.end());
+				R res = std::move(pos->second);
+				results.erase(pos);
+				return std::move(res);
+			}
+
+		private:
+
+			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
+				return parent == child || parent.isPrefixOf(child);
+			}
+
+			bool isDone(const TaskPath& path) const {
+				return results.find(path) != results.end();
 			}
 
 		};
@@ -126,29 +156,84 @@ namespace work {
 		template<>
 		class TreetureStateService<void> : public TreetureStateServiceBase {
 
-			static constexpr std::size_t MAX_NUM_SUB_TASKS = (1<<MAX_TASK_LEVELS);
+			mutable allscale::utils::spinlock lock;
+
+			using guard = std::lock_guard<allscale::utils::spinlock>;
 
 			allscale::utils::fiber::EventRegister& eventRegister;
 
-			std::array<allscale::utils::fiber::EventId,MAX_NUM_SUB_TASKS> events;
+			// the list of completed tasks
+			std::vector<TaskPath> completedTasks;
+
+			// lazy-generated events used to sync on sub-treetures
+			std::unordered_map<TaskPath,allscale::utils::fiber::EventId> events;
 
 		public:
 
-			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {
-				reg.create(MAX_NUM_SUB_TASKS,events.begin());
-			}
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
+
 
 			void setDone(const TaskPath& path) {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				eventRegister.trigger(events[toPosition(path)]);
+
+				guard g(lock);
+
+				// the event must not be done yet
+				assert_false(isDone(path)) << "Path " << path << " already done.\nCompleted: " << completedTasks << "\n";
+
+				// mark as completed
+				markDone(path);
+
+				// trigger potential registered events of this task or sub-tasks
+				for(auto it = events.begin(), last = events.end(); it != last;) {
+					if (isSubPath(path,it->first)) {
+						eventRegister.trigger(it->second);
+						it = events.erase(it);
+					} else {
+						++it;
+					}
+				}
+
 			}
 
 
+			allscale::utils::fiber::EventId getEvent(const TaskPath& path) {
 
-			allscale::utils::fiber::EventId getEvent(const TaskPath& path) const {
-				assert_lt(toPosition(path),(1<<MAX_TASK_LEVELS));
-				assert_lt(path.getLength(),MAX_TASK_LEVELS) << "Deeper levels not supported!";
-				return events[toPosition(path)];
+				guard g(lock);
+
+				// test whether the task has completed by now
+				if (isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
+
+				// test whether there is already a event waiting for this task
+				auto pos = events.find(path);
+				if (pos != events.end()) return pos->second;
+
+				// register a new event
+				return events[path] = eventRegister.create();
+			}
+
+		private:
+
+			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
+				return parent == child || parent.isPrefixOf(child);
+			}
+
+			bool isDone(const TaskPath& path) const {
+				// see whether this path or a parent path is done
+				for(const auto& cur : completedTasks) {
+					if (isSubPath(cur,path)) return true;
+				}
+				return false;
+			}
+
+			void markDone(const TaskPath& path) {
+
+				// filter out sub-tasks (to keep list of completed tasks short)
+				completedTasks.erase(std::remove_if(completedTasks.begin(), completedTasks.end(), [&](const TaskPath& cur){
+					return isSubPath(path,cur);
+				}), completedTasks.end());
+
+				// add newly completed path
+				completedTasks.push_back(path);
 			}
 
 		};
@@ -201,16 +286,38 @@ namespace work {
 			}
 
 			allscale::utils::fiber::EventId syncEvent;
+			detail::TreetureStateService<void>* service;
 			{
 				guard g(lock);
 				auto pos = states.find(id.getRootID());
 				if (pos == states.end()) return true;
 				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
 				syncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
+				service = dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get());
 			}
+
+			// see that processed fiber is on same event register as this treeture state service
+			assert_eq(
+				&allscale::utils::fiber::getCurrentFiber()->ctxt.getEventRegister(),
+				&eventRegister
+			);
 
 			// suspend fiber
 			allscale::utils::fiber::suspend(syncEvent);
+
+			// make sure task is done now
+			assert_decl({
+				guard g(lock);
+				auto pos = states.find(id.getRootID());
+				assert_false(pos == states.end());
+				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
+				auto newService = dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get());
+				auto newSyncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
+				assert_eq(newSyncEvent, allscale::utils::fiber::EVENT_IGNORE)
+					<< "Task: " << id << "\n"
+					<< "Events: " << syncEvent << " vs " << newSyncEvent << "\n"
+					<< "Services: " << service << " vs " << newService << " (" << (service == newService) << ")\n";
+			});
 
 			// free resources
 			guard g(lock);

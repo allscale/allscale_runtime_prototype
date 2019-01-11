@@ -266,11 +266,6 @@ namespace utils {
 
 		class ConditionalVariable {
 
-			#ifndef NDEBUG
-				static allscale::utils::spinlock allVarsLock;
-				static std::set<ConditionalVariable*> allVars;
-			#endif
-
 			using guard = std::lock_guard<spinlock>;
 
 			spinlock waitingListLock;
@@ -278,18 +273,6 @@ namespace utils {
 			std::vector<Fiber*> waiting;
 
 		public:
-
-			#ifndef NDEBUG
-				ConditionalVariable() {
-					guard g(allVarsLock);
-					allVars.insert(this);
-				}
-
-				~ConditionalVariable() {
-					guard g(allVarsLock);
-					allVars.erase(this);
-				}
-			#endif
 
 			void wait(spinlock& lock) {
 				auto fiber = getCurrentFiber();

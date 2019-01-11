@@ -4,11 +4,6 @@ namespace allscale {
 namespace utils {
 namespace fiber {
 
-	#ifndef NDEBUG
-		spinlock ConditionalVariable::allVarsLock;
-		std::set<ConditionalVariable*> ConditionalVariable::allVars;
-	#endif
-
 	__attribute__ ((noinline))
 	Fiber*& getCurrentFiberInfo() {
 		static thread_local Fiber* fiber = nullptr;

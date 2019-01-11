@@ -84,13 +84,28 @@ namespace utils {
 
 		PeriodicExecutor executor;
 
+		com::Node& node;
+
 	public:
 
-		PeriodicExecutorService(com::Node&) {}
+		PeriodicExecutorService(com::Node& node) : node(node) {}
 
 		template<typename Op>
 		void runPeriodically(const Op& op, const std::chrono::seconds& interval = std::chrono::seconds(1)) {
-			executor.runPeriodically(op,interval);
+			// schedule task to be processed in local node context and in a fiber context
+			executor.runPeriodically([=]{
+				bool res = false;
+				std::mutex lock;
+				lock.lock();
+				node.run([&](com::Node&) {
+					node.getFiberContext().start([&]{
+						res = op();
+						lock.unlock();
+					});
+				});
+				lock.lock();
+				return res;
+			},interval);
 		}
 
 	};

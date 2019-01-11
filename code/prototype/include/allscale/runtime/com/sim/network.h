@@ -212,6 +212,11 @@ namespace sim {
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
 
+				// extract remote operation (needed to avoid GCC internal compiler error)
+				auto remoteOp = [&](Node& node) {
+					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+				};
+
 				using namespace allscale::utils::fiber;
 
 				// get current fiber
@@ -219,11 +224,7 @@ namespace sim {
 
 				// if computation is not in a fiber => use thread based RPC
 				if (!fiber) {
-
-					return node.run([&](Node&){
-						return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
-					});
-
+					return node.run(remoteOp);
 				}
 
 				// get source-nodes event register
@@ -238,7 +239,7 @@ namespace sim {
 					auto& localCtxt = detail::getFiberContextOn(node);
 					localCtxt.start([&]{
 						// perform operation
-						result = transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+						result = remoteOp(node);
 						// signal back completion
 						eventReg.trigger(doneEvent);
 					});
@@ -297,6 +298,11 @@ namespace sim {
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
 
+				// extract remote operation (needed to avoid GCC internal compiler error)
+				auto remoteOp = [&](Node& node) {
+					(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+				};
+
 				using namespace allscale::utils::fiber;
 
 				// get current fiber
@@ -304,11 +310,7 @@ namespace sim {
 
 				// if computation is not in a fiber => use thread based RPC
 				if (!fiber) {
-
-					node.run([&](Node&){
-						(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
-					});
-
+					node.run(remoteOp);
 					return;
 				}
 
@@ -318,7 +320,7 @@ namespace sim {
 					auto& localCtxt = detail::getFiberContextOn(node);
 					localCtxt.start([&]{
 						// perform operation
-						(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+						remoteOp(node);
 					});
 
 				});
@@ -373,6 +375,11 @@ namespace sim {
 				srcStats.sent_calls += 1;
 				trgStats.received_calls += 1;
 
+				// extract remote operation (needed to avoid GCC internal compiler error)
+				auto remoteOp = [&](Node& node) {
+					return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+				};
+
 				using namespace allscale::utils::fiber;
 
 				// get current fiber
@@ -380,11 +387,7 @@ namespace sim {
 
 				// if computation is not in a fiber => use thread based RPC
 				if (!fiber) {
-
-					return node.run([&](Node&){
-						return transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
-					});
-
+					return node.run(remoteOp);
 				}
 
 				// get source-nodes event register
@@ -399,7 +402,7 @@ namespace sim {
 					auto& localCtxt = detail::getFiberContextOn(node);
 					localCtxt.start([&]{
 						// perform operation
-						result = transfer(trgStats,srcStats,(selector(node).*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...));
+						result = remoteOp(node);
 						// signal back completion
 						eventReg.trigger(doneEvent);
 					});
@@ -473,6 +476,11 @@ namespace sim {
 
 				} else {
 
+					// extract remote operation (needed to avoid GCC internal compiler error)
+					auto remoteOp = [&](Node& node, NodeStatistics& trgStats) {
+						(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+					};
+
 					// perform call on each remote node
 					for(auto& node : nodes) {
 						auto trg = node->getRank();
@@ -494,7 +502,7 @@ namespace sim {
 							auto& localCtxt = detail::getFiberContextOn(node);
 							localCtxt.start([&]{
 								// perform operation
-								(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+								remoteOp(node,trgStats);
 							});
 
 						});
@@ -568,6 +576,11 @@ namespace sim {
 
 				} else {
 
+					// extract remote operation (needed to avoid GCC internal compiler error)
+					auto remoteOp = [&](Node& node, NodeStatistics& trgStats) {
+						(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+					};
+
 					// get source-nodes event register
 					auto& eventReg = fiber->ctxt.getEventRegister();
 					std::vector<EventId> events;		// < list of events signaling remote call to be completed
@@ -596,7 +609,7 @@ namespace sim {
 							auto& localCtxt = detail::getFiberContextOn(node);
 							localCtxt.start([&]{
 								// perform operation
-								(node.template getService<S>().*fun)(transfer(srcStats,trgStats,std::forward<Args>(args))...);
+								remoteOp(node,trgStats);
 								// signal back completion
 								eventReg.trigger(doneEvent);
 							});

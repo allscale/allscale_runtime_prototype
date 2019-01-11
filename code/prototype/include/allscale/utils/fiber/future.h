@@ -155,6 +155,7 @@ namespace fiber {
 		 */
 		void deliver(const T& result) {
 			value = result;
+			promise = nullptr;
 		}
 
 		/**
@@ -163,6 +164,7 @@ namespace fiber {
 		 */
 		void deliver(T&& result) {
 			value = std::forward<T>(result);
+			promise = nullptr;
 		}
 
 		// callback from promise on move operation

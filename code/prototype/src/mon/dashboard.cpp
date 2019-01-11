@@ -697,6 +697,8 @@ namespace mon {
 				info.nodes.push_back(state);
 			}
 
+			info.scheduler = work::getCurrentSchedulerType();
+
 			// send shutdown info
 			sendUpdate(info,true);
 

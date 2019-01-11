@@ -9,6 +9,7 @@
 #include <ucontext.h>
 #include <unordered_map>
 #include <vector>
+#include <set>
 
 #include <sys/mman.h>
 
@@ -106,7 +107,8 @@ namespace utils {
 		};
 
 
-		struct Fiber {
+		class Fiber {
+		public:
 
 			// the context this fiber is part of
 			FiberContext& ctxt;
@@ -216,7 +218,8 @@ namespace utils {
 
 			spinlock lock;
 
-			std::unordered_map<EventId, std::vector<Fiber*>> events;
+			// TODO: make this more light-weight
+			std::unordered_multimap<EventId,Fiber*> events;
 
 			using guard = std::lock_guard<spinlock>;
 
@@ -225,7 +228,7 @@ namespace utils {
 			EventId create() {
 				auto res = counter++;
 				guard g(lock);
-				events[res];
+				events.insert({res,nullptr});
 				assert_ne(EVENT_IGNORE,res);
 				return res;
 			}
@@ -236,7 +239,7 @@ namespace utils {
 				guard g(lock);
 				for(int i=0; i<num; i++) {
 					*target = first + i;
-					events[*target];
+					events.insert({*target,nullptr});
 					target++;
 				}
 			}
@@ -244,7 +247,7 @@ namespace utils {
 			void trigger(EventId event);
 
 			void waitFor(EventId event, Fiber* current = nullptr) {
-				assert_ne(EVENT_IGNORE,event);
+				// if it is the ignore event, skip it
 				if (event == EVENT_IGNORE) return;
 
 				guard g(lock);
@@ -254,7 +257,7 @@ namespace utils {
 				// register fiber for suspension
 				auto fiber = current ? current : getCurrentFiber();
 				assert_true(fiber) << "Unable to suspend non-fiber context.";
-				pos->second.push_back(fiber);
+				events.insert({event, fiber});
 				fiber->suspend(lock);
 			}
 
@@ -263,6 +266,11 @@ namespace utils {
 
 		class ConditionalVariable {
 
+			#ifndef NDEBUG
+				static allscale::utils::spinlock allVarsLock;
+				static std::set<ConditionalVariable*> allVars;
+			#endif
+
 			using guard = std::lock_guard<spinlock>;
 
 			spinlock waitingListLock;
@@ -270,6 +278,18 @@ namespace utils {
 			std::vector<Fiber*> waiting;
 
 		public:
+
+			#ifndef NDEBUG
+				ConditionalVariable() {
+					guard g(allVarsLock);
+					allVars.insert(this);
+				}
+
+				~ConditionalVariable() {
+					guard g(allVarsLock);
+					allVars.erase(this);
+				}
+			#endif
 
 			void wait(spinlock& lock) {
 				auto fiber = getCurrentFiber();
@@ -313,6 +333,7 @@ namespace utils {
 			}
 
 			void unlock() {
+				guard g(syncLock);
 				mux.clear(std::memory_order_release);
 				var.notifyOne();
 			}
@@ -557,6 +578,9 @@ namespace utils {
 			pool.freeListLock.lock();
 			pool.free.push_back(&info);
 
+			// remove suspend notifier (should not be triggered upon termination)
+			info.eventHandler.suspend.reset();
+
 			// swap back to continuation, and release lock for free list to make this info re-usable
 			swap(local,continuation,&pool.freeListLock);
 
@@ -576,13 +600,18 @@ namespace utils {
 
 		inline void EventRegister::trigger(EventId event) {
 			assert_ne(EVENT_IGNORE,event);
+
 			std::vector<Fiber*> waiting;
 			{
 				guard g(lock);
-				auto pos = events.find(event);
-				assert_true(pos != events.end()) << "Invalid event: " << event;
-				waiting.swap(pos->second);
-				events.erase(pos);
+				auto range = events.equal_range(event);
+				assert_true(range.first != range.second) << "Invalid event: " << event;
+				for(auto it = range.first; it != range.second; it++) {
+					if (it->second) {
+						waiting.push_back(it->second);
+					}
+				}
+				events.erase(range.first,range.second);
 			}
 
 			// if there is nothing, there is nothing to do

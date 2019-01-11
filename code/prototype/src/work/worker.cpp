@@ -193,15 +193,17 @@ namespace work {
 				// increment processed counter
 				processedCounter++;
 
-				// increment workload counter (by the fraction of work processed)
-				processedWork = processedWork + 1.0/(1<<t->getId().getDepth());
-
-				// increment processing time
-				processTime = processTime.load() + (end - begin);
-
 				// keep task statistics up to date
 				{
-					guard g(taskTimesLock);
+					guard g(statisticsLock);
+
+					// increment workload counter (by the fraction of work processed)
+					processedWork += 1.0/(1<<t->getId().getDepth());
+
+					// increment processing time
+					processTime += (end - begin);
+
+					// update task statistics
 					taskTimes.add(t->getId(),(end-begin));
 				}
 

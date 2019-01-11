@@ -79,18 +79,18 @@ namespace work {
 		std::atomic<std::uint32_t> processedCounter;
 
 		// tracing the load processed by this worker, considering the task granularity
-		std::atomic<double> processedWork;
+		double processedWork;
 
 		// amount of time spend in processing tasks (in nanoseconds)
-		std::atomic<std::chrono::nanoseconds> processTime;
+		std::chrono::nanoseconds processTime;
 
 		// a statistic for the observed task execution times
 		mon::TaskTimes taskTimes;
 
 		// a lock to synchronize on task time statistic updates
-		mutable std::mutex taskTimesLock;
+		mutable allscale::utils::spinlock statisticsLock;
 
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<allscale::utils::spinlock>;
 
 	public:
 
@@ -131,6 +131,7 @@ namespace work {
 		 * Obtains an estimate of the processed work.
 		 */
 		double getProcessedWork() const {
+			guard g(statisticsLock);
 			return processedWork;
 		}
 
@@ -138,6 +139,7 @@ namespace work {
 		 * Obtains the amount of time spend on task processing.
 		 */
 		std::chrono::nanoseconds getProcessTime() const {
+			guard g(statisticsLock);
 			return processTime;
 		}
 
@@ -145,7 +147,7 @@ namespace work {
 		 * Obtains a summary of the task execution time processed by this worker.
 		 */
 		mon::TaskTimes getTaskTimeSummary() const {
-			guard g(taskTimesLock);
+			guard g(statisticsLock);
 			return taskTimes;
 		}
 

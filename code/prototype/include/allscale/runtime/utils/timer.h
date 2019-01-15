@@ -95,15 +95,23 @@ namespace utils {
 			// schedule task to be processed in local node context and in a fiber context
 			executor.runPeriodically([=]{
 				bool res = false;
-				std::mutex lock;
-				lock.lock();
 				node.run([&](com::Node&) {
+
+					std::atomic_flag done;
+					done.test_and_set();
+
 					node.getFiberContext().start([&]{
 						res = op();
-						lock.unlock();
+						done.clear();
 					});
+
+					// wait for completion ..
+					while(done.test_and_set()) {
+						// .. by doing work
+						node.getFiberContext().yield();
+					}
 				});
-				lock.lock();
+
 				return res;
 			},interval);
 		}

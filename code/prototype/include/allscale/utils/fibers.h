@@ -673,8 +673,6 @@ namespace utils {
 
 		inline void suspend(EventId event) {
 			auto fiber = getCurrentFiber();
-			auto& context_info = getCurrentFiberInfo();
-			assert_true(&context_info);
 			assert_true(fiber) << "Error: can not suspend non-fiber context!";
 			fiber->ctxt.getEventRegister().waitFor(event, fiber);
 		}

@@ -223,6 +223,7 @@ namespace mpi {
 
 		// wait for completion of send call
 		while(!done()) {
+			// TODO: suspend fibers here, and do something more useful instead ...
 			processMessageNonBlocking();
 		}
 	}
@@ -267,11 +268,14 @@ namespace mpi {
 		auto& eventReg = localNode->getFiberContext().getEventRegister();
 		auto responseReadyEvent = eventReg.create();
 
+		// create buffer for response
+		std::vector<char> response;
+
 		// register response event
 		std::pair<int,int> key(trg,response_tag);
 		{
 			std::lock_guard<utils::spinlock> g(responde_handler_lock);
-			responde_handler[key] = responseReadyEvent;
+			responde_handler[key] = { responseReadyEvent, &response };
 		}
 
 		// send request
@@ -280,31 +284,8 @@ namespace mpi {
 		// wait for response to be ready
 		utils::fiber::suspend(responseReadyEvent);
 
-		// retrieve response
-		std::vector<char> response;
-		{
-			std::lock_guard<allscale::utils::spinlock> g(G_MPI_MUTEX);
-
-			// upon awakening, the message should be available
-			int flag;
-			MPI_Status status;
-			MPI_Iprobe(trg,response_tag,point2point,&flag,&status);
-
-			// message should be available
-			assert_true(flag);
-
-			// retrieve message
-			int count = 0;
-			MPI_Get_count(&status,MPI_CHAR,&count);
-
-			// allocate memory
-			response.resize(count);
-
-			// receive message
-			DEBUG_MPI_NETWORK << "Node " << src << ": Receiving response " << response_tag << " from " << trg << " of size " << count << " bytes ...\n";
-			Network::getLocalStats().received_bytes += count;
-			MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-		}
+		// now the response should be available
+		assert_false(response.empty());
 
 		// process response
 		return response;
@@ -333,25 +314,37 @@ namespace mpi {
 			if (isResponseTag(status.MPI_TAG)) {
 				response_id id(status.MPI_SOURCE,status.MPI_TAG);
 
-				// obtain the handler registered for this message
-				allscale::utils::fiber::EventId readyEvent = allscale::utils::fiber::EVENT_IGNORE;
+				// locate response handler
+				ResponseHandler handler;
+
 				{
 					std::lock_guard<utils::spinlock> g(responde_handler_lock);
 					auto pos = responde_handler.find(id);
-					if (pos != responde_handler.end()) {
-						readyEvent = pos->second;
-						responde_handler.erase(pos);
-					}
+					assert_true(pos != responde_handler.end());
+					handler = pos->second;
+					responde_handler.erase(pos);
 				}
+
+				// get response message buffer
+				auto& response = *handler.message;
+
+				// retrieve message
+				int count = 0;
+				MPI_Get_count(&status,MPI_CHAR,&count);
+
+				// allocate memory
+				response.resize(count);
+
+				// receive message
+				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving response " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
+				Network::getLocalStats().received_bytes += count;
+				MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 
 				// free MPI access
 				G_MPI_MUTEX.unlock();
 
-				// if there was no event (it has already been triggered) return no progress
-				if (readyEvent == allscale::utils::fiber::EVENT_IGNORE) return false;
-
 				// signal readiness of response
-				localNode->getFiberContext().getEventRegister().trigger(readyEvent);
+				localNode->getFiberContext().getEventRegister().trigger(handler.event);
 
 				// yield the control -- probably to the receiver
 				node.getFiberContext().yield();

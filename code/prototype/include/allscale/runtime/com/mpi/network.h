@@ -108,8 +108,13 @@ namespace mpi {
 
 		using response_id = std::pair<int,int>;
 
+		struct ResponseHandler {
+			utils::fiber::EventId event;	// < the event the handler is waiting for
+			std::vector<char>* message;		// < a pointer to the storage for the received message
+		};
+
 		// a registry for events fibers are waiting on for responses from remote calls
-		std::map<response_id,utils::fiber::EventId> responde_handler;
+		std::map<response_id,ResponseHandler> responde_handler;
 
 		// a lock to protect accesses to the responde_handler registry
 		mutable utils::spinlock responde_handler_lock;

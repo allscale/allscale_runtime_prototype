@@ -148,6 +148,9 @@ namespace mpi {
 		localNode->startService<detail::EpochService>(*this);
 		localNode->startService<SyncCallHandlerService>();
 
+		// start the network statistic service
+		localNode->startService<NetworkStatisticService>();
+
 		// create communicator groups
 		MPI_Comm_dup(MPI_COMM_WORLD,&point2point);
 
@@ -157,9 +160,6 @@ namespace mpi {
 				runRequestServer();
 			});
 		});
-
-		// start the network statistic service
-		localNode->startService<NetworkStatisticService>();
 
 		// wait for all nodes to complete the startup phase
 		sync();

@@ -42,9 +42,6 @@ namespace runtime {
 		// wait until all network instances are at this point
 		network.sync();
 
-		// shut down workers
-		work::stopWorkerPool(network);
-
 		// start by stopping periodic operations
 		utils::removePeriodicExecutorService(network);
 
@@ -53,6 +50,9 @@ namespace runtime {
 
 		// shutdown dashboard service
 		mon::shutdownDashbordService(network);
+
+		// shut down workers
+		work::stopWorkerPool(network);
 
 	}
 

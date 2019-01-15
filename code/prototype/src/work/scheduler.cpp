@@ -5,6 +5,7 @@
 
 #include "allscale/utils/printer/vectors.h"
 #include "allscale/utils/serializer/pairs.h"
+#include "allscale/utils/fibers.h"
 
 #include "allscale/runtime/utils/timer.h"
 #include "allscale/runtime/com/node.h"
@@ -421,9 +422,9 @@ namespace work {
 
 			bool active;
 
-			mutable std::recursive_mutex lock;
+			mutable allscale::utils::fiber::Mutex lock;
 
-			using guard = std::lock_guard<std::recursive_mutex>;
+			using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
 
 		public:
 
@@ -549,6 +550,12 @@ namespace work {
 
 			void updatePolicy(const ExchangeableSchedulingPolicy& policy, const Configuration& newConfig) {
 				guard g(lock);
+				updatePolicyInternal(policy,newConfig);
+			}
+
+		private:
+
+			void updatePolicyInternal(const ExchangeableSchedulingPolicy& policy, const Configuration& newConfig) {
 
 				// get local scheduler service
 				auto& service = node.getService<com::HierarchyService<ScheduleService>>();
@@ -565,7 +572,6 @@ namespace work {
 				hw::setFrequency(node.getRank(), activeConfig.frequency);
 			}
 
-		private:
 
 			void updateSchedulerType(const SchedulerType& newType) {
 
@@ -648,10 +654,25 @@ namespace work {
 			}
 
 			void balance() {
-				guard g(lock);
 
-				// test whether balancing should be performed at all
-				if (type == SchedulerType::Random || type == SchedulerType::Uniform) return;
+				allscale::utils::optional<Configuration> optActiveConfig;
+				SchedulerType type;
+
+				{
+					guard g(lock);
+
+					// get a snapshot of the scheduler type
+					type = this->type;
+
+					// test whether balancing should be performed at all
+					if (type == SchedulerType::Random || type == SchedulerType::Uniform) return;
+
+					// get a snap-shot of the active configuration
+					optActiveConfig = this->activeConfig;
+				}
+
+				// unpack active configuration
+				auto& activeConfig = *optActiveConfig;
 
 				// The load balancing / optimization is split into two parts:
 				//  Part A: the balance function, attempting to even out resource utilization between nodes

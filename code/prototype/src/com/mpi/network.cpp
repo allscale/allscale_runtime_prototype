@@ -39,7 +39,7 @@ namespace mpi {
 			std::condition_variable condition_var;
 
 			// the epoch counter reflecting the globally reached epoch
-			std::atomic<int> counter;
+			int counter;
 
 			// a counter maintained by the root node to see how many nodes are ready for the next epoch
 			int ready_counter = 0;
@@ -55,7 +55,7 @@ namespace mpi {
 			void nextEpochReached() {
 
 				// get current epoch
-				int current = counter.load();
+				int current = counter;
 				DEBUG_MPI_NETWORK << "Rank " << rank << " leafing epoch " << current << " ...\n";
 
 				if (rank == 0) {
@@ -89,13 +89,13 @@ namespace mpi {
 						std::unique_lock<std::mutex> g(mutex);
 						// wait for reaching next global state
 						condition_var.wait(g,[&]{
-							return counter.load() > current;
+							return counter > current;
 						});
 					}
 
 				}
 
-				DEBUG_MPI_NETWORK << "Rank " << rank << " starting into epoch " << counter.load() << "\n";
+				DEBUG_MPI_NETWORK << "Rank " << rank << " starting into epoch " << counter << "\n";
 
 			}
 
@@ -108,6 +108,7 @@ namespace mpi {
 			}
 
 			void globalEpochReached(int epoch) {
+				std::lock_guard<std::mutex> g(mutex);
 				counter = epoch;
 				condition_var.notify_one();
 			}

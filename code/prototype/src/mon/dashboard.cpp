@@ -763,11 +763,24 @@ namespace mon {
 		net.removeServiceOnNodes<NodeStateService>();
 	}
 
+	namespace {
+
+		SystemState getSystemStateFromWithinFiber(com::Network& net) {
+			auto& node = com::Node::getLocalNode();
+			auto& ctxt = node.getFiberContext();
+			return ctxt.process([&]{
+				return getSystemState(net);
+			});
+		}
+
+	}
+
 	SystemState getSystemState(com::Network& net) {
 
 		// this call must be invoked within fiber
-		assert_true(allscale::utils::fiber::getCurrentFiber())
-			<< "Current implementation must run in fiber!";
+		if (!allscale::utils::fiber::getCurrentFiber()) {
+			return getSystemStateFromWithinFiber(net);
+		}
 
 		using namespace std::literals::chrono_literals;
 

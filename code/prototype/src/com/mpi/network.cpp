@@ -221,12 +221,8 @@ namespace mpi {
 			return done == true;
 		};
 
-		// TODO: do not make fibers busy-wait here ... suspend them
-		auto fiber = allscale::utils::fiber::getCurrentFiber();
-
 		// wait for completion of send call
 		while(!done()) {
-			if (fiber) continue;
 			processMessageNonBlocking();
 		}
 	}

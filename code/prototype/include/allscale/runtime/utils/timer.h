@@ -96,22 +96,8 @@ namespace utils {
 			executor.runPeriodically([=]{
 				bool res = false;
 				node.run([&](com::Node&) {
-
-					std::atomic_flag done;
-					done.test_and_set();
-
-					node.getFiberContext().start([&]{
-						res = op();
-						done.clear();
-					});
-
-					// wait for completion ..
-					while(done.test_and_set()) {
-						// .. by doing work
-						node.getFiberContext().yield();
-					}
+					res = node.getFiberContext().process(op);
 				});
-
 				return res;
 			},interval);
 		}

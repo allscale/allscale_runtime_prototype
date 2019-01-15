@@ -15,6 +15,7 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/spinlock.h"
+#include "allscale/utils/optional.h"
 
 namespace allscale {
 namespace utils {
@@ -428,6 +429,50 @@ namespace utils {
 			// switch to fiber context
 			swap(local,target);
 
+		}
+
+		template<typename Fun>
+		std::enable_if_t<std::is_same<std::result_of_t<Fun()>,void>::value,std::result_of_t<Fun()>>
+		process(Fun&& fun) {
+
+			// make sure this is called by a thread
+			assert_false(fiber::getCurrentFiber())
+				<< "Must not be called from within a fiber!";
+
+			// initialize done sync flag
+			std::atomic_flag done;
+			done.test_and_set();
+
+			start([&]{
+				// perform operation
+				fun();
+				// signal completion
+				done.clear();
+			});
+
+			// wait until done
+			while(done.test_and_set()) {
+				yield();	// < donate thread to processing task
+			}
+
+		}
+
+		template<typename Fun>
+		std::enable_if_t<!std::is_same<std::result_of_t<Fun()>,void>::value,std::result_of_t<Fun()>>
+		process(Fun&& fun) {
+			using result_t = std::result_of_t<Fun()>;
+
+			// initialize result
+			optional<result_t> res;
+
+			// perform the task, get the result
+			process([&]{ res = fun(); });
+
+			// result should be done now
+			assert_true(bool(res));
+
+			// done
+			return std::move(*res);
 		}
 
 		bool yield() {

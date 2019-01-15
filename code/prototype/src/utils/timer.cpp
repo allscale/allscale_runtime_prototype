@@ -21,7 +21,10 @@ namespace utils {
 	PeriodicExecutor::~PeriodicExecutor() {
 
 		// set alive to false
-		alive = false;
+		{
+			guard g(mutex);
+			alive = false;
+		}
 
 		// signal change to worker
 		var.notify_one();
@@ -41,11 +44,11 @@ namespace utils {
 
 	void PeriodicExecutor::run() {
 
+		// get ownership of state
+		std::unique_lock<std::mutex> g(mutex);
+
 		// process the task queue
 		while(alive) {
-
-			// split to next time
-			std::unique_lock<std::mutex> g(mutex);
 
 			// get next event
 			if (queue.empty()) {

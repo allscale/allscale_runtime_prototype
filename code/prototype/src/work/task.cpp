@@ -3,8 +3,6 @@
 
 #include "allscale/utils/unused.h"
 
-#include "allscale/utils/fiber.h"
-
 namespace allscale {
 namespace runtime {
 namespace work {

@@ -8,6 +8,15 @@ namespace fiber {
 
 	TEST(Fiber, Basic) {
 
+		EXPECT_FALSE(std::is_copy_constructible<FiberContext>::value);
+		EXPECT_FALSE(std::is_move_constructible<FiberContext>::value);
+
+		EXPECT_FALSE(std::is_copy_assignable<FiberContext>::value);
+		EXPECT_FALSE(std::is_move_assignable<FiberContext>::value);
+
+		// test that it can be constructed and destructed
+		FiberContext context;
+
 	}
 
 	TEST(Fiber, SimpleTask) {

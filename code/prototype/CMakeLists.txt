@@ -41,8 +41,21 @@ foreach(test ${prototype_integration_tests})
 
     # add additional node/worker/policy combination tests
     foreach( num_nodes 1 2 3 4 )
-        foreach( num_workers 1 2 4 )
+        foreach( num_workers 1 )
             foreach( policy uniform balanced random )
+                if (USE_MPI)
+                    add_test(NAME ${tgt}_N${num_nodes}_W${num_workers}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ART_NUM_WORKERS=${num_workers} ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${num_nodes} $<TARGET_FILE:${tgt}>)
+                else()
+                    add_test(NAME ${tgt}_N${num_nodes}_W${num_workers}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ART_NUM_NODES=${num_nodes} ART_NUM_WORKERS=${num_workers} $<TARGET_FILE:${tgt}>)
+                endif()
+            endforeach(policy)
+        endforeach(num_workers)
+    endforeach(num_nodes)
+
+    # add additional node/worker/policy combination tests
+    foreach( num_nodes 1 2 3 4 )
+        foreach( num_workers 2 4 )
+            foreach( policy uniform balanced )
                 if (USE_MPI)
                     add_test(NAME ${tgt}_N${num_nodes}_W${num_workers}_${policy} COMMAND ${CMAKE_COMMAND} -E env ART_SCHEDULER=${policy} ART_NUM_WORKERS=${num_workers} ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${num_nodes} $<TARGET_FILE:${tgt}>)
                 else()

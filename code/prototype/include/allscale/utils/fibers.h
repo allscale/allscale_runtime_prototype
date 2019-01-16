@@ -317,8 +317,10 @@ namespace utils {
 			}
 
 			void unlock() {
-				guard g(syncLock);
-				mux.clear(std::memory_order_release);
+				{
+					guard g(syncLock);
+					mux.clear(std::memory_order_release);
+				}
 				var.notifyOne();
 			}
 

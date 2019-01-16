@@ -285,14 +285,12 @@ namespace work {
 			}
 
 			allscale::utils::fiber::EventId syncEvent;
-			detail::TreetureStateService<void>* service;
 			{
 				guard g(lock);
 				auto pos = states.find(id.getRootID());
 				if (pos == states.end()) return true;
 				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
 				syncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
-				service = dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get());
 			}
 
 			// see that processed fiber is on same event register as this treeture state service
@@ -310,12 +308,10 @@ namespace work {
 				auto pos = states.find(id.getRootID());
 				assert_false(pos == states.end());
 				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-				auto newService = dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get());
 				auto newSyncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
 				assert_eq(newSyncEvent, allscale::utils::fiber::EVENT_IGNORE)
 					<< "Task: " << id << "\n"
-					<< "Events: " << syncEvent << " vs " << newSyncEvent << "\n"
-					<< "Services: " << service << " vs " << newService << " (" << (service == newService) << ")\n";
+					<< "Events: " << syncEvent << " vs " << newSyncEvent << "\n";
 			});
 
 			// free resources

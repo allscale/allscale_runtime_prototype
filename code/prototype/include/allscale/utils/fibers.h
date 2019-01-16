@@ -579,9 +579,7 @@ namespace utils {
 
 			// set up thread-local state
 			fiber::setCurrentFiberInfo(&info);
-
-			auto& currentInfo = fiber::getCurrentFiberInfo();
-			assert_true(currentInfo);
+			assert_true(fiber::getCurrentFiberInfo());
 
 			{
 

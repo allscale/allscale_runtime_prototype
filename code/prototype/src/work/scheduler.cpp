@@ -584,7 +584,7 @@ namespace work {
 				case SchedulerType::Random : {
 					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel());
 					activeConfig.nodes = NodeMask(numNodes);
-					updatePolicy(random,activeConfig);
+					updatePolicyInternal(random,activeConfig);
 					break;
 				}
 				case SchedulerType::Uniform :
@@ -593,7 +593,7 @@ namespace work {
 					// reset configuration to initial setup
 					auto uniform = DecisionTreeSchedulingPolicy::createUniform(activeConfig.nodes);
 					activeConfig.frequency = defaultFrequency;
-					updatePolicy(uniform,activeConfig);
+					updatePolicyInternal(uniform,activeConfig);
 					break;
 				}
 				}

@@ -27,7 +27,7 @@ namespace work {
 
 	TEST(WorkerPool, Processing) {
 
-		int x = 0;
+		std::atomic<int> x(0);
 
 		// get some network of any size
 		auto network = com::Network::create();
@@ -44,6 +44,9 @@ namespace work {
 			}));
 		});
 
+		// wait for completion
+		while(x.load() != 1) ;
+
 		// stop worker
 		stopWorkerPool(net);
 
@@ -55,7 +58,7 @@ namespace work {
 	TEST(WorkerPool, ProcessingLoop) {
 
 		int N = 100;
-		int x = 0;
+		std::atomic<int> x(0);
 
 		// create the network
 		auto network = com::Network::create();
@@ -77,6 +80,9 @@ namespace work {
 				}));
 			}
 		});
+
+		// wait for completion
+		while(x.load() != N) ;
 
 		// stop the worker
 		stopWorkerPool(net);

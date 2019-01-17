@@ -75,9 +75,6 @@ namespace work {
 		__allscale_unused bool success = state.compare_exchange_strong(st,Shutdown);
 		assert_true(success) << "Invalid state " << st << ": cannot shut down non-running worker.";
 
-		// unlock worker, in case it is currently blocked
-		pool.fiberContext.revalBlockingConditions();
-
 		// wait for the thread to finish its work
 		thread.join();
 
@@ -100,9 +97,7 @@ namespace work {
 		while(state == Running) {
 
 			// contribute this worker to process fibers
-			pool.fiberContext.yield([&]{
-				return state == Running;
-			});
+			pool.fiberContext.yield(true);
 
 		}
 

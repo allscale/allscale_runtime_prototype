@@ -400,8 +400,7 @@ namespace utils {
 				}
 			}
 
-			template<typename BlockingCondition>
-			Fiber* top(bool blocking, const BlockingCondition& condition) {
+			Fiber* top(bool blocking, const std::chrono::milliseconds& maxBlockingTime) {
 
 				guard g(runableLock);
 
@@ -412,11 +411,8 @@ namespace utils {
 					if (!blocking) return nullptr;
 
 					// wait for entry to show up ..
-					con_var.wait(runableLock, [&]{ return !runable.empty() || !condition(); });
+					con_var.wait_for(runableLock, maxBlockingTime, [&]{ return !runable.empty(); });
 				}
-
-				// at this point either there is something to do, or the condition is true
-				assert_true(!runable.empty() || !condition());
 
 				// check if there is something to do
 				if (runable.empty()) return nullptr;
@@ -562,19 +558,19 @@ namespace utils {
 		}
 
 		/**
-		 * Yield the current thread to allow a fiber to be processed, blocking
-		 * until either a fiber has been processed, or the given condition is
-		 * fulfilled.
+		 * Yield the current thread to allow a fiber to be processed, optionally
+		 * blocking until either a fiber has been processed, or the given time-out
+		 * is reached.
 		 *
-		 * @param condition a condition until which to block; if the condition returns false,
-		 * 		the blocking thread will be released upon the next notification.
+		 * @param blocking true, if the current thread should be suspended until a fiber is available,
+		 *  		false otherwise; in non-blocking mode, if no fiber is available, control will return immediately
+		 * @param maxBlockingTime the maximum duration a thread will be blocked before returning
 		 * @return true, if a fiber has been processed, false otherwise
 		 */
-		template<typename BlockingCondition>
-		bool yield(const BlockingCondition& condition) {
+		bool yield(bool blocking = false, const std::chrono::milliseconds& maxBlockingTime = std::chrono::milliseconds(10)) {
 
 			// get a runable fiber
-			fiber::Fiber* fiber = runable.top(true,condition);
+			fiber::Fiber* fiber = runable.top(blocking, maxBlockingTime);
 
 			// if non is available, we are done
 			if (!fiber) return false;
@@ -589,39 +585,6 @@ namespace utils {
 
 			return true;
 		}
-
-		/**
-		 * Yield the current thread to allow a fiber to be processed.
-		 * The execution will not block. If there is no fiber, control
-		 * will be returned immediately.
-		 *
-		 * @return true, if a fiber has been processed, false otherwise
-		 */
-		bool yield() {
-			// get a runable fiber
-			fiber::Fiber* fiber = runable.top(false,[]{return false;});
-
-			// if non is available, we are done
-			if (!fiber) return false;
-
-			// capture current context
-			fiber::ext_ucontext_t local;
-			getcontext(&local.context);
-
-			fiber->continuation = &local;
-
-			swap(local,fiber->ucontext);
-
-			return true;
-		}
-
-		/**
-		 * Notifies all threads blocked by a yield call to re-check their blocking condition.
-		 */
-		void revalBlockingConditions() {
-			runable.unblockAll();
-		}
-
 
 	private:
 

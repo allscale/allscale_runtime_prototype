@@ -24,11 +24,6 @@ namespace runtime {
 namespace work {
 
 	/**
-	 * A function to be called by tasks blocking within a worker.
-	 */
-	void yield();
-
-	/**
 	 * Installs and starts worker pool on the given network.
 	 */
 	void startWorkerPool(com::Network&);

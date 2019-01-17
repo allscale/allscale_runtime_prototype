@@ -41,10 +41,6 @@ namespace work {
 
 	// -- treetures --
 
-	// forward declaration (implemented by worker.h/cpp)
-	void yield();
-
-
 	namespace detail {
 
 		using TaskPath = allscale::api::core::impl::reference::TaskPath;

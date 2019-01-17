@@ -347,9 +347,6 @@ namespace mpi {
 				// signal readiness of response
 				localNode->getFiberContext().getEventRegister().trigger(handler.event);
 
-				// yield the control -- probably to the receiver
-				node.getFiberContext().yield();
-
 				// done
 				return true;
 			}

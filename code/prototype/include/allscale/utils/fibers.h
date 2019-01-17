@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -330,6 +331,13 @@ namespace utils {
 
 		};
 
+		/**
+		 * Suspends the current fiber and continues execution with the fiber's continuation,
+		 * thus the thread context processing the this fiber.
+		 *
+		 * @pre must be executed within a fiber
+		 */
+		void suspend();
 
 		/**
 		 * Suspends the currently processed fiber until the given event is triggered.
@@ -339,6 +347,99 @@ namespace utils {
 		 * @param event the event to wait for
 		 */
 		void suspend(EventId event);
+
+		/**
+		 * The type of queue used to organize runable tasks within a fiber context.
+		 */
+		class FiberQueue {
+
+			struct fiber_priority_compare {
+				bool operator()(Fiber* a, Fiber* b) {
+					assert_true(a); assert_true(b);
+					return a->priority < b->priority;
+				}
+			};
+
+			using priority_queue_t = std::priority_queue<
+					Fiber*,
+					std::vector<Fiber*>,
+					fiber_priority_compare
+			>;
+
+			using guard = std::lock_guard<spinlock>;
+
+
+			priority_queue_t runable;
+
+			spinlock runableLock;
+
+			std::condition_variable_any con_var;
+
+		public:
+
+			/**
+			 * Inserts a range of fibers into this queue.
+			 */
+			template<typename Iter>
+			void add(const Iter& begin, const Iter& end) {
+
+				// ignore empty lists
+				if (begin == end) return;
+
+				// add fibers to queue of runables
+				guard g(runableLock);
+				for(auto it = begin; it != end; ++it) {
+					runable.push(*it);
+				}
+
+				// wake up potential blocked threads waiting for tasks
+				if (std::distance(begin,end) < 2) {
+					con_var.notify_one();
+				} else {
+					con_var.notify_all();
+				}
+			}
+
+			template<typename BlockingCondition>
+			Fiber* top(bool blocking, const BlockingCondition& condition) {
+
+				guard g(runableLock);
+
+				// handle empty queue
+				if (runable.empty()) {
+
+					// return if no wait is requested ..
+					if (!blocking) return nullptr;
+
+					// wait for entry to show up ..
+					con_var.wait(runableLock, [&]{ return !runable.empty() || !condition(); });
+				}
+
+				// at this point either there is something to do, or the condition is true
+				assert_true(!runable.empty() || !condition());
+
+				// check if there is something to do
+				if (runable.empty()) return nullptr;
+
+				// take fiber with highest priority
+				auto fiber = runable.top();
+				runable.pop();
+				return fiber;
+
+			}
+
+			void unblockAll() {
+				con_var.notify_all();
+			}
+
+			void suspend(Fiber& fiber) {
+				guard g(runableLock);
+				runable.push(&fiber);
+				con_var.notify_one();
+				fiber.suspend(runableLock);
+			}
+
+		};
 
 	} // end namespace fiber
 
@@ -354,26 +455,9 @@ namespace utils {
 		friend class fiber::Mutex;
 		friend class fiber::ConditionalVariable;
 
-		struct fiber_priority_compare {
-			bool operator()(fiber::Fiber* a, fiber::Fiber* b) {
-				assert_true(a); assert_true(b);
-				return a->priority < b->priority;
-			}
-		};
-
-		using priority_queue_t = std::priority_queue<
-				fiber::Fiber*,
-				std::vector<fiber::Fiber*>,
-				fiber_priority_compare
-		>;
-
-		using guard = std::lock_guard<spinlock>;
-
 		fiber::Pool pool;
 
-		priority_queue_t runable;
-
-		spinlock runableLock;
+		fiber::FiberQueue runable;
 
 		fiber::EventRegister eventRegister;
 
@@ -477,15 +561,23 @@ namespace utils {
 			return std::move(*res);
 		}
 
-		bool yield() {
-			fiber::Fiber* fiber;
-			{
-				guard g(runableLock);
-				if(runable.empty()) return false;
-				fiber = runable.top();	// < take fiber with highest priority
-				runable.pop();
-			}
+		/**
+		 * Yield the current thread to allow a fiber to be processed, blocking
+		 * until either a fiber has been processed, or the given condition is
+		 * fulfilled.
+		 *
+		 * @param condition a condition until which to block; if the condition returns false,
+		 * 		the blocking thread will be released upon the next notification.
+		 * @return true, if a fiber has been processed, false otherwise
+		 */
+		template<typename BlockingCondition>
+		bool yield(const BlockingCondition& condition) {
 
+			// get a runable fiber
+			fiber::Fiber* fiber = runable.top(true,condition);
+
+			// if non is available, we are done
+			if (!fiber) return false;
 
 			// capture current context
 			fiber::ext_ucontext_t local;
@@ -498,8 +590,47 @@ namespace utils {
 			return true;
 		}
 
+		/**
+		 * Yield the current thread to allow a fiber to be processed.
+		 * The execution will not block. If there is no fiber, control
+		 * will be returned immediately.
+		 *
+		 * @return true, if a fiber has been processed, false otherwise
+		 */
+		bool yield() {
+			// get a runable fiber
+			fiber::Fiber* fiber = runable.top(false,[]{return false;});
+
+			// if non is available, we are done
+			if (!fiber) return false;
+
+			// capture current context
+			fiber::ext_ucontext_t local;
+			getcontext(&local.context);
+
+			fiber->continuation = &local;
+
+			swap(local,fiber->ucontext);
+
+			return true;
+		}
+
+		/**
+		 * Notifies all threads blocked by a yield call to re-check their blocking condition.
+		 */
+		void revalBlockingConditions() {
+			runable.unblockAll();
+		}
+
 
 	private:
+
+		friend void fiber::suspend();
+
+		void suspend(fiber::Fiber& fiber) {
+			assert_eq(&fiber.ctxt,this) << "Wrong context for suspension!";
+			runable.suspend(fiber);
+		}
 
 		template<typename Iter>
 		void resume(const Iter& begin, const Iter& end) {
@@ -509,11 +640,8 @@ namespace utils {
 			// short-cut for empty list
 			if (begin == end) return;
 
-			// add fibers to queue of runables
-			guard g(runableLock);
-			for(auto it = begin; it != end; ++it) {
-				runable.push(*it);
-			}
+			// re-insert runable tasks
+			runable.add(begin,end);
 
 			// TODO: switch to higher-priority task if available
 		}
@@ -670,6 +798,11 @@ namespace utils {
 			fibers.front()->ctxt.resume(fibers);
 		}
 
+		inline void suspend() {
+			auto fiber = getCurrentFiber();
+			assert_true(fiber) << "Error: can not suspend non-fiber context!";
+			fiber->ctxt.suspend(*fiber);
+		}
 
 		inline void suspend(EventId event) {
 			auto fiber = getCurrentFiber();

@@ -16,7 +16,7 @@
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/hw/model.h"
 
-#include "allscale/runtime/work/work_queue.h"
+#include "allscale/runtime/work/task.h"
 #include "allscale/runtime/mon/task_stats.h"
 
 namespace allscale {
@@ -152,6 +152,8 @@ namespace work {
 
 	private:
 
+		friend class WorkerPool;
+
 		/**
 		 * An internal function processing tasks (the one processed by the managed thread).
 		 */
@@ -162,6 +164,11 @@ namespace work {
 		 * Returns true if a step was processed, false otherwise.
 		 */
 		bool step();
+
+		/**
+		 * Processes the given task in the context of this worker.
+		 */
+		void process(const TaskPtr& task);
 
 	};
 
@@ -175,9 +182,6 @@ namespace work {
 
 		// the underlying context for synchronization events
 		allscale::utils::FiberContext& fiberContext;
-
-		// the work queue to be processed by this worker
-		WorkQueue queue;
 
 		// the list of workers being part of this pool
 		std::vector<std::unique_ptr<Worker>> workers;

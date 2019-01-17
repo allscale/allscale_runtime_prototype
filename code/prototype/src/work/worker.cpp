@@ -75,6 +75,9 @@ namespace work {
 		__allscale_unused bool success = state.compare_exchange_strong(st,Shutdown);
 		assert_true(success) << "Invalid state " << st << ": cannot shut down non-running worker.";
 
+		// unlock worker, in case it is currently blocked
+		pool.fiberContext.revalBlockingConditions();
+
 		// wait for the thread to finish its work
 		thread.join();
 
@@ -94,16 +97,13 @@ namespace work {
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &config.affinityMask);
 
 		// while running ..
-		while(true) {
+		while(state == Running) {
 
-			// process all tasks in the queue
-			while(step()) {}
+			// contribute this worker to process fibers
+			pool.fiberContext.yield([&]{
+				return state == Running;
+			});
 
-			// if terminated => terminate thread
-			if (state > Running) return;
-
-			// otherwise yield thread to allow other threads to run
-			std::this_thread::yield();
 		}
 
 		// reset thread local worker
@@ -117,97 +117,75 @@ namespace work {
 		};
 	}
 
-	bool Worker::step() {
+	void Worker::process(const TaskPtr& task) {
 
-		// look for some already running task ...
-		if (pool.fiberContext.yield()) return true;
+		// get a reference to the local data item manager
+		auto dim = (pool.node) ? &data::DataItemManagerService::getLocalService() : nullptr;
 
-		// look for an new task
-		auto t = pool.queue.dequeueBack();
-		if (!t) return false;
+		// ask the scheduler what to do
+		if (task->isSplitable() && shouldSplit(task)) {
 
-		// get address of task
-		auto taskPointer = t.get();
+			// the decision was to split the task, so do so
+			auto reqs = task->getSplitRequirements();
 
-		// set up event handler
-		allscale::utils::fiber::FiberEvents taskEventHandler;
-		taskEventHandler.resume  = { &resumeHandler, taskPointer };
+			// log this action
+			DLOG << "Splitting " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
 
-		// process a task if available
-		pool.fiberContext.start([&,t{move(t)}]{
+			// allocate requirements (blocks till ready)
+			if (dim) dim->allocate(reqs);
 
-			// get a reference to the local data item manager
-			auto dim = (pool.node) ? &data::DataItemManagerService::getLocalService() : nullptr;
+			// in this case we split the task
+			task->split();
 
-			// ask the scheduler what to do
-			if (t->isSplitable() && shouldSplit(t)) {
+			// free requirements
+			if (dim) dim->release(reqs);
 
-				// the decision was to split the task, so do so
-				auto reqs = t->getSplitRequirements();
+			DLOG << "Splitting " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
 
-				// log this action
-				DLOG << "Splitting " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
+			// increment split counter
+			splitCounter++;
 
-				// allocate requirements (blocks till ready)
-				if (dim) dim->allocate(reqs);
+		} else {
 
-				// in this case we split the task
-				t->split();
+			using clock = std::chrono::high_resolution_clock;
 
-				// free requirements
-				if (dim) dim->release(reqs);
+			// in this case we process the task
+			auto reqs = task->getProcessRequirements();
 
-				DLOG << "Splitting " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
+			// log this action
+			DLOG << "Processing " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
 
-				// increment split counter
-				splitCounter++;
+			// allocate requirements (blocks till ready)
+			if (dim) dim->allocate(reqs);
 
-			} else {
+			// process this task
+			auto begin = clock::now();
+			task->process();
+			auto end = clock::now();
 
-				using clock = std::chrono::high_resolution_clock;
+			// free requirements
+			if (dim) dim->release(reqs);
 
-				// in this case we process the task
-				auto reqs = t->getProcessRequirements();
+			DLOG << "Processing " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
 
-				// log this action
-				DLOG << "Processing " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
+			// increment processed counter
+			processedCounter++;
 
-				// allocate requirements (blocks till ready)
-				if (dim) dim->allocate(reqs);
+			// keep task statistics up to date
+			{
+				guard g(statisticsLock);
 
-				// process this task
-				auto begin = clock::now();
-				t->process();
-				auto end = clock::now();
+				// increment workload counter (by the fraction of work processed)
+				processedWork += 1.0/(1<<task->getId().getDepth());
 
-				// free requirements
-				if (dim) dim->release(reqs);
+				// increment processing time
+				processTime += (end - begin);
 
-				DLOG << "Processing " << t->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
-
-				// increment processed counter
-				processedCounter++;
-
-				// keep task statistics up to date
-				{
-					guard g(statisticsLock);
-
-					// increment workload counter (by the fraction of work processed)
-					processedWork += 1.0/(1<<t->getId().getDepth());
-
-					// increment processing time
-					processTime += (end - begin);
-
-					// update task statistics
-					taskTimes.add(t->getId(),(end-begin));
-				}
-
+				// update task statistics
+				taskTimes.add(task->getId(),(end-begin));
 			}
 
-		}, allscale::utils::fiber::Priority::MEDIUM, taskEventHandler);
-
-		// we started a new task
-		return true;
+		}
 
 	}
 
@@ -239,8 +217,28 @@ namespace work {
 	}
 
 	void WorkerPool::schedule(TaskPtr&& task) {
-		// simply add the task to the queue
-		queue.enqueueFront(std::move(task));
+
+		// get address of task
+		auto taskPointer = task.get();
+
+		// set up event handler
+		allscale::utils::fiber::FiberEvents taskEventHandler;
+		taskEventHandler.resume  = { &resumeHandler, taskPointer };
+
+		// initiate task
+		fiberContext.start([&,t{move(task)}]{
+
+			// TODO: reduce priority for initial suspend
+
+			// suspend this task, to allow parent task to continue spawning tasks
+			allscale::utils::fiber::suspend();
+
+			// process task in current worker
+			assert_true(tl_current_worker);
+			tl_current_worker->process(t);
+
+		}, allscale::utils::fiber::Priority::MEDIUM, taskEventHandler);
+
 	}
 
 	std::uint32_t WorkerPool::getNumSplitTasks() const {

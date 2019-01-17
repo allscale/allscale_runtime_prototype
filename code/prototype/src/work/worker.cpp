@@ -212,17 +212,6 @@ namespace work {
 	}
 
 
-	void yield() {
-		// attempt to process another task while waiting
-		if (Worker* worker = tl_current_worker) {
-			worker->step();
-		} else {
-			// yield this thread (the main thread, not a worker)
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(10ms);
-		}
-	}
-
 	WorkerPool::WorkerPool(allscale::utils::FiberContext& ctxt, com::Node* node)
 		: fiberContext(ctxt), node(node) {
 

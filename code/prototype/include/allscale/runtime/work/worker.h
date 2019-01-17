@@ -150,11 +150,6 @@ namespace work {
 			return taskTimes;
 		}
 
-		/**
-		 * A function to be called by tasks blocking within a worker.
-		 */
-		friend void yield();
-
 	private:
 
 		/**
@@ -253,11 +248,6 @@ namespace work {
 		 * Obtains a summary of the task execution time processed by this worker.
 		 */
 		mon::TaskTimes getTaskTimeSummary() const;
-
-		/**
-		 * A function to be called by tasks blocking within a worker.
-		 */
-		friend void yield();
 
 		/**
 		 * A function to schedule.

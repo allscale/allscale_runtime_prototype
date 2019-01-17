@@ -233,9 +233,11 @@ namespace work {
 			// suspend this task, to allow parent task to continue spawning tasks
 			allscale::utils::fiber::suspend();
 
-			// process task in current worker
-			assert_true(tl_current_worker);
-			tl_current_worker->process(t);
+			// process task in current worker - fall back to worker 0
+			auto worker = tl_current_worker ? tl_current_worker : workers[0].get();
+
+			assert_true(worker);
+			worker->process(t);
 
 		}, allscale::utils::fiber::Priority::MEDIUM, taskEventHandler);
 

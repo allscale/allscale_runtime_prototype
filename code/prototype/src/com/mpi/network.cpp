@@ -283,7 +283,7 @@ namespace mpi {
 		sendRequest(msg,trg,request_tag);
 
 		// wait for response to be ready
-		utils::fiber::suspend(responseReadyEvent);
+		utils::fiber::suspend(responseReadyEvent, allscale::utils::fiber::Priority::HIGH);
 
 		// now the response should be available
 		assert_false(response.empty());

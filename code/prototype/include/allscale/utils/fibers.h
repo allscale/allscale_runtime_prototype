@@ -341,6 +341,16 @@ namespace utils {
 		void suspend();
 
 		/**
+		 * Suspends the current fiber and continues execution with the fiber's continuation,
+		 * thus the thread context processing the this fiber.
+		 *
+		 * @pre must be executed within a fiber
+		 * @param priority the priority to assign to the fiber while being suspended
+		 */
+		void suspend(Priority priority);
+
+
+		/**
 		 * Suspends the currently processed fiber until the given event is triggered.
 		 * If the event already has been triggered, the thread will not be suspended.
 		 *
@@ -348,6 +358,16 @@ namespace utils {
 		 * @param event the event to wait for
 		 */
 		void suspend(EventId event);
+
+		/**
+		 * Suspends the currently processed fiber until the given event is triggered.
+		 * If the event already has been triggered, the thread will not be suspended.
+		 *
+		 * @pre must be executed within a fiber
+		 * @param event the event to wait for
+		 * @param priority the priority to assign to the fiber while being suspended
+		 */
+		void suspend(EventId event, Priority priority);
 
 		/**
 		 * The type of queue used to organize runable tasks within a fiber context.
@@ -615,6 +635,7 @@ namespace utils {
 	private:
 
 		friend void fiber::suspend();
+		friend void fiber::suspend(Priority);
 
 		void suspend(fiber::Fiber& fiber) {
 			assert_eq(&fiber.ctxt,this) << "Wrong context for suspension!";
@@ -793,10 +814,28 @@ namespace utils {
 			fiber->ctxt.suspend(*fiber);
 		}
 
+		inline void suspend(Priority priority) {
+			auto fiber = getCurrentFiber();
+			assert_true(fiber) << "Error: can not suspend non-fiber context!";
+			auto old = fiber->priority;
+			fiber->priority = priority;
+			fiber->ctxt.suspend(*fiber);
+			fiber->priority = old;
+		}
+
 		inline void suspend(EventId event) {
 			auto fiber = getCurrentFiber();
 			assert_true(fiber) << "Error: can not suspend non-fiber context!";
 			fiber->ctxt.getEventRegister().waitFor(event, fiber);
+		}
+
+		inline void suspend(EventId event, Priority priority) {
+			auto fiber = getCurrentFiber();
+			assert_true(fiber) << "Error: can not suspend non-fiber context!";
+			auto old = fiber->priority;
+			fiber->priority = priority;
+			fiber->ctxt.getEventRegister().waitFor(event, fiber);
+			fiber->priority = old;
 		}
 
 	} // end namespace fiber

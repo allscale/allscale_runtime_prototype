@@ -223,10 +223,11 @@ namespace work {
 		// initiate task
 		fiberContext.start([&,t{move(task)}]{
 
-			// TODO: reduce priority for initial suspend
-
 			// suspend this task, to allow parent task to continue spawning tasks
-			allscale::utils::fiber::suspend();
+			allscale::utils::fiber::runWithPriority(
+				allscale::utils::fiber::Priority::LOW,
+				[]{ allscale::utils::fiber::suspend(); }
+			);
 
 			// process task in current worker - fall back to worker 0
 			auto worker = tl_current_worker ? tl_current_worker : workers[0].get();

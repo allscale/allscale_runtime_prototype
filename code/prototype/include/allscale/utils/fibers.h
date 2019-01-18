@@ -15,6 +15,7 @@
 #include <sys/mman.h>
 
 #include "allscale/utils/assert.h"
+#include "allscale/utils/finalize.h"
 #include "allscale/utils/spinlock.h"
 #include "allscale/utils/optional.h"
 
@@ -436,6 +437,31 @@ namespace utils {
 			}
 
 		};
+
+		template<typename Op>
+		void runWithPriority(Priority p, Op&& op) {
+			// get current fiber
+			auto fiber = getCurrentFiber();
+
+			// if not in fiber context, just run operation
+			if (!fiber) {
+				op();
+				return;
+			}
+
+			// update priority
+			Priority old = fiber->priority;
+			fiber->priority = p;
+
+			// set up reset operation
+			auto f = allscale::utils::run_finally([&]{
+				fiber->priority = old;
+			});
+
+			// run the operation
+			op();
+
+		}
 
 	} // end namespace fiber
 

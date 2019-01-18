@@ -278,6 +278,34 @@ namespace work {
 		return res;
 	}
 
+	TaskStatisticEntry WorkerPool::getLocalStatistics() const {
+		TaskStatisticEntry res;
+		res.rank = node->getRank();
+		res.split_tasks = getNumSplitTasks();
+		res.processed_tasks = getNumProcessedTasks();
+		res.estimated_workload = getProcessedWork();
+		return res;
+	}
+
+	TaskStatistic WorkerPool::getStatistics() const {
+		TaskStatistic stats;
+		auto& network = com::Network::getNetwork();
+
+		// trigger remote calls
+		std::vector<com::RemoteCallResult<TaskStatisticEntry>> futures;
+		for(com::rank_t i=0; i<network.numNodes(); i++) {
+			futures.push_back(network.getRemoteProcedure(i,&WorkerPool::getLocalStatistics)());
+		}
+
+		// collect results
+		for(auto& cur : futures) {
+			stats.add(cur.get());
+		}
+
+		// done
+		return stats;
+	}
+
 } // end of namespace work
 } // end of namespace runtime
 } // end of namespace allscale

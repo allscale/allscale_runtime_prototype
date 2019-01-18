@@ -17,6 +17,7 @@
 #include "allscale/runtime/hw/model.h"
 
 #include "allscale/runtime/work/task.h"
+#include "allscale/runtime/work/task_statistic.h"
 #include "allscale/runtime/mon/task_stats.h"
 
 namespace allscale {
@@ -247,6 +248,16 @@ namespace work {
 		 * Obtains a summary of the task execution time processed by this worker.
 		 */
 		mon::TaskTimes getTaskTimeSummary() const;
+
+		/**
+		 * Obtains a summary of the task processing statistics of this node.
+		 */
+		TaskStatisticEntry getLocalStatistics() const;
+
+		/**
+		 * Obtains statistical data
+		 */
+		TaskStatistic getStatistics() const;
 
 		/**
 		 * A function to schedule.

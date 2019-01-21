@@ -144,6 +144,9 @@ namespace work {
 
 			using clock = std::chrono::high_resolution_clock;
 
+			// wait until task dependencies are satisfied
+			task->getDependencies().wait();
+
 			// in this case we process the task
 			auto reqs = task->getProcessRequirements();
 

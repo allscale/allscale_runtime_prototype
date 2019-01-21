@@ -50,12 +50,12 @@ namespace work {
 			// task is not owned, the parent task will be owned, which
 			// upon completion will signal the completion of child tasks
 			// as well.
-			return { id.getLeftChild(), owner };
+			return { id.getRightChild(), owner };		// < TODO: figure out why left and right is switched in generated code!
 		}
 
 		TaskRef getRightChild() const {
 			// see: getLeftChild()
-			return { id.getRightChild(), owner };
+			return { id.getLeftChild(), owner };		// < TODO: figure out why left and right is switched in generated code!
 		}
 
 		// -- observer --

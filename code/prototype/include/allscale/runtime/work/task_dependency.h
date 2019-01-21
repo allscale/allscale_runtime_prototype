@@ -47,16 +47,7 @@ namespace work {
 
 		// -- features --
 
-		void wait() const {
-			// if there is no reference, don't wait
-			if (!reference) return;
-
-			// wait for completion
-			assert_not_implemented();
-
-			// reset internal reference to not wait again
-			reference = allscale::utils::optional<TaskRef>();
-		}
+		void wait() const;
 
 		// -- serialization support --
 
@@ -68,6 +59,10 @@ namespace work {
 			return in.read<TaskRefOpt>();
 		}
 
+		// -- print support --
+
+		friend std::ostream& operator<<(std::ostream& out, const TaskDependency&);
+
 	};
 
 	/**
@@ -75,7 +70,7 @@ namespace work {
 	 */
 	class TaskDependencies {
 
-		mutable std::vector<TaskDependency> dependencies;
+		std::vector<TaskDependency> dependencies;
 
 	public:
 
@@ -96,8 +91,6 @@ namespace work {
 			for(auto& cur : dependencies) {
 				cur.wait();
 			}
-			// don't wait the next time (in case it is called again)
-			dependencies.clear();
 		}
 
 		// -- serialization support --
@@ -109,6 +102,10 @@ namespace work {
 		static TaskDependencies load(allscale::utils::ArchiveReader& in) {
 			return in.read<std::vector<TaskDependency>>();
 		}
+
+		// -- print support --
+
+		friend std::ostream& operator<<(std::ostream& out, const TaskDependencies&);
 
 	};
 

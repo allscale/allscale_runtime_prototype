@@ -19,6 +19,6 @@ namespace work {
 	}
 
 
-} // end of namespace com
+} // end of namespace work
 } // end of namespace runtime
 } // end of namespace allscale

@@ -264,13 +264,13 @@ namespace runtime {
 } // end of namespace runtime
 
 	template<typename WorkItemDesc, typename ... Args>
-	treeture<typename WorkItemDesc::result_type> spawn(const runtime::work::TaskID& id, Args&& ... args) {
+	treeture<typename WorkItemDesc::result_type> spawn(const runtime::dependencies& deps, const runtime::work::TaskID& id, Args&& ... args) {
 
 		// create task based on work item description
 		using task_type = runtime::work::WorkItemTask<WorkItemDesc,decltype(std::make_tuple(std::forward<Args>(args)...))>;
 
 		// create the task
-		auto task = runtime::work::make_task<task_type>(id,std::make_tuple(std::forward<Args>(args)...));
+		auto task = runtime::work::make_task<task_type>(id,runtime::dependencies(deps), std::make_tuple(std::forward<Args>(args)...));
 
 		// extract treeture
 		auto treeture = task->getTreeture();
@@ -282,25 +282,10 @@ namespace runtime {
 		return std::move(treeture);
 	}
 
+
 	template<typename WorkItemDesc, typename ... Args>
-	treeture<typename WorkItemDesc::result_type> spawn(const runtime::dependencies& deps, const runtime::work::TaskID& id, Args&& ... args) {
-
-		assert_not_implemented();
-
-		// create task based on work item description
-		using task_type = runtime::work::WorkItemTask<WorkItemDesc,decltype(std::make_tuple(std::forward<Args>(args)...))>;
-
-		// create the task
-		auto task = runtime::work::make_task<task_type>(id,std::make_tuple(std::forward<Args>(args)...));
-
-		// extract treeture
-		auto treeture = task->getTreeture();
-
-		// schedule task
-		runtime::work::schedule(std::move(task));
-
-		// return treeture
-		return std::move(treeture);
+	treeture<typename WorkItemDesc::result_type> spawn(const runtime::work::TaskID& id, Args&& ... args) {
+		return spawn(runtime::dependencies(),id,std::forward<Args>(args)...);
 	}
 
 

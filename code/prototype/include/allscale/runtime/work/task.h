@@ -20,6 +20,7 @@
 #include "allscale/runtime/data/data_item_requirement.h"
 
 #include "allscale/runtime/work/task_id.h"
+#include "allscale/runtime/work/task_dependency.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
 
@@ -45,6 +46,9 @@ namespace work {
 		// the id of this task
 		TaskRef ref;
 
+		// the list of tasks to be completed before starting processing this task
+		TaskDependencies dependencies;
+
 		// indicates the completion state of this task
 		std::atomic<State> state;
 
@@ -58,8 +62,9 @@ namespace work {
 
 	public:
 
-		// creates a new task, not completed yet
-		Task(TaskID id, com::rank_t owner) : ref(id,owner), state(Ready) {}
+		// creates a new task, based on the given ingredients
+		Task(TaskRef ref, TaskDependencies&& dependencies)
+			: ref(ref), dependencies(std::move(dependencies)), state(Ready) {}
 
 		// tasks are not copy nor moveable
 		Task(const Task&) = delete;
@@ -82,6 +87,10 @@ namespace work {
 
 		const TaskRef& getTaskRef() const {
 			return ref;
+		}
+
+		const TaskDependencies& getDependencies() const {
+			return dependencies;
 		}
 
 		bool isReady() const {
@@ -117,7 +126,6 @@ namespace work {
 		// processes this task (split variant)
 		void split();
 
-		// TODO: add get dependencies
 
 		// ----- utilities -----
 
@@ -136,20 +144,20 @@ namespace work {
 		// ----- serialization -----
 
 		// the type of the load function to be provided by implementations
-		using load_fun_t = std::unique_ptr<Task>(*)(const TaskID&,com::rank_t,allscale::utils::ArchiveReader&);
+		using load_fun_t = std::unique_ptr<Task>(*)(const TaskRef&,TaskDependencies&&,allscale::utils::ArchiveReader&);
 
 		void store(allscale::utils::ArchiveWriter& out) const {
-			out.write(getId());
-			out.write(getOwner());
+			out.write(getTaskRef());
+			out.write(getDependencies());
 			out.write(getLoadFunction());
 			storeInternal(out);
 		}
 
 		static std::unique_ptr<Task> load(allscale::utils::ArchiveReader& in) {
-			auto id = in.read<TaskID>();
-			auto owner = in.read<com::rank_t>();
+			auto ref = in.read<TaskRef>();
+			auto deps = in.read<TaskDependencies>();
 			load_fun_t load = in.read<load_fun_t>();
-			return load(id,owner,in);
+			return load(ref,std::move(deps),in);
 		}
 
 	protected:
@@ -232,11 +240,19 @@ namespace work {
 	};
 
 	/**
+	 * A factory function for task pointer including dependencies.
+	 */
+	template<typename T, typename ... Args>
+	std::unique_ptr<T> make_task(const TaskID& id, TaskDependencies&& deps, Args&& ... args) {
+		return std::make_unique<T>(TaskRef(id,com::Node::getLocalRank()),std::move(deps), std::forward<Args>(args)...);
+	}
+
+	/**
 	 * A factory function for task pointer.
 	 */
 	template<typename T, typename ... Args>
 	std::unique_ptr<T> make_task(const TaskID& id, Args&& ... args) {
-		return std::make_unique<T>(id,com::Node::getLocalRank(),std::forward<Args>(args)...);
+		return make_task<T,Args...>(id,TaskDependencies(),std::forward<Args>(args)...);
 	}
 
 	/**
@@ -250,9 +266,9 @@ namespace work {
 	public:
 
 		// the first flag indicates whether this task is created the first time or is the result of a copy/clone/serialization
-		ComputeTask(const TaskID& id, com::rank_t owner, bool first = false) : Task(id,owner) {
+		ComputeTask(const TaskRef& ref, TaskDependencies&& deps, bool first = false) : Task(ref, std::move(deps)) {
 			// register this task for the treeture service
-			if (first) TreetureStateService::getLocal().registerTask<R>(id);
+			if (first) TreetureStateService::getLocal().registerTask<R>(getId());
 		}
 
 		// obtains the treeture referencing the value produced by this task
@@ -274,9 +290,9 @@ namespace work {
 
 	public:
 
-		ComputeTask(const TaskID& id, com::rank_t owner, bool first = false) : Task(id,owner) {
+		ComputeTask(const TaskRef& ref, TaskDependencies&& deps, bool first = false) : Task(ref,std::move(deps)) {
 			// register this task for the treeture service
-			if (first) TreetureStateService::getLocal().registerTask<void>(id);
+			if (first) TreetureStateService::getLocal().registerTask<void>(getId());
 		}
 
 		// obtains the treeture referencing the value produced by this task
@@ -330,8 +346,8 @@ namespace work {
 
 	public:
 
-		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure, bool first = true)
-			: ComputeTask<result_type>(id,owner,first), closure(std::move(closure)) {}
+		WorkItemTask(const TaskRef& ref, TaskDependencies&& deps, closure_type&& closure, bool first = true)
+			: ComputeTask<result_type>(ref,std::move(deps),first), closure(std::move(closure)) {}
 
 		virtual bool isSplitable() const override {
 			return WorkItemDesc::can_spit_test::call(closure);
@@ -354,7 +370,7 @@ namespace work {
 			assert_fail() << "No serialization supported for this task.";
 		}
 
-		static std::unique_ptr<Task> load(const TaskID&, com::rank_t, allscale::utils::ArchiveReader&) {
+		static std::unique_ptr<Task> load(const TaskRef&, TaskDependencies&&, allscale::utils::ArchiveReader&) {
 			assert_fail() << "No serialization supported for this task.";
 			return {};
 		}
@@ -388,8 +404,8 @@ namespace work {
 
 	public:
 
-		WorkItemTask(const TaskID& id, com::rank_t owner, closure_type&& closure, bool first = true)
-			: ComputeTask<result_type>(id,owner,first), closure(std::move(closure)) {}
+		WorkItemTask(const TaskRef& ref, TaskDependencies&& deps, closure_type&& closure, bool first = true)
+			: ComputeTask<result_type>(ref,std::move(deps),first), closure(std::move(closure)) {}
 
 		virtual bool canBeDistributed() const override {
 			return true;
@@ -426,8 +442,8 @@ namespace work {
 			out.write<closure_type>(closure);
 		}
 
-		static std::unique_ptr<Task> load(const TaskID& id, com::rank_t owner, allscale::utils::ArchiveReader& in) {
-			return std::make_unique<WorkItemTask>(id,owner,in.read<closure_type>(),false);
+		static std::unique_ptr<Task> load(const TaskRef& ref, TaskDependencies&& deps, allscale::utils::ArchiveReader& in) {
+			return std::make_unique<WorkItemTask>(ref,std::move(deps),in.read<closure_type>(),false);
 		}
 
 		// retrieves the function capable of de-serializing a task instance
@@ -478,7 +494,7 @@ namespace work {
 			no_split
 		>;
 
-		return std::make_unique<WorkItemTask<desc,Op>>(id,com::Node::getLocalRank(),std::forward<Op>(op));
+		return std::make_unique<WorkItemTask<desc,Op>>(TaskRef(id,com::Node::getLocalRank()),TaskDependencies(),std::forward<Op>(op));
 	}
 
 	/**
@@ -522,9 +538,9 @@ namespace work {
 			no_split
 		>;
 
-		return std::make_unique<WorkItemTask<desc,Op>>(id,com::Node::getLocalRank(),std::forward<Op>(op));
+		return std::make_unique<WorkItemTask<desc,Op>>(TaskRef(id,com::Node::getLocalRank()),TaskDependencies(),std::forward<Op>(op));
 	}
 
-} // end of namespace com
+} // end of namespace work
 } // end of namespace runtime
 } // end of namespace allscale

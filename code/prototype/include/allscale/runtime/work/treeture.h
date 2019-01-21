@@ -636,23 +636,24 @@ namespace work {
 			retrieveValue();
 		}
 
-		const allscale::utils::optional<TaskRef>& getTaskReference() const {
+		allscale::utils::optional<TaskRef> getTaskReference() const {
+			assert_true(valid());
+			if (isDone()) return {};
 			return task;
 		}
 
 		// TODO: return task references
+		// Note: the runtime interfaces uses treeture<void> for the role of task references, this should be fixed
 		treeture<void> get_left_child() const {
-			// TODO: no way yet to determine owner of child
-			return *this;
-//			if (!valid()) return *this;
-//			return { (*id).getLeftChild(), done };
+			assert_true(valid());
+			if (isDone()) return { true };
+			return { (*task).getLeftChild(), done };
 		}
 
 		treeture<void> get_right_child() const {
-			// TODO: no way yet to determine owner of child
-			return *this;
-//			if (!valid()) return *this;
-//			return { (*id).getRightChild(), done };
+			assert_true(valid());
+			if (isDone()) return { true };
+			return { (*task).getRightChild(), done };
 		}
 
 		void store(allscale::utils::ArchiveWriter& out) const {

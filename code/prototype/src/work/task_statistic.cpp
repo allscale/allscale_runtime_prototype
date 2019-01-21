@@ -16,7 +16,7 @@ namespace work {
 		std::chrono::milliseconds idleTime {0};
 		std::chrono::milliseconds overheadTime {0};
 
-		out << "rank, split_tasks, processed_tasks, est_workload, processing[ms], idle[ms], overhead[ms]\n";
+		out << "rank, split_tasks, processed_tasks, est_workload, processing[ms],   idle[ms], overhead[ms]\n";
 		for(const auto& cur : stats.entries) {
 			auto& entry = cur.second;
 
@@ -28,7 +28,7 @@ namespace work {
 			out << std::setw(13) << entry.estimated_workload << ",";
 
 			out << std::setw(15) << entry.processingTime.count() << ",";
-			out << std::setw( 9) << entry.idleTime.count() << ",";
+			out << std::setw(11) << entry.idleTime.count() << ",";
 			out << std::setw(13) << overhead.count() << "\n";
 
 			// aggregate
@@ -46,7 +46,7 @@ namespace work {
 		out << std::setw(16) << total_processed << ",";
 		out << std::setw(13) << total_workload << ",";
 		out << std::setw(15) << processingTime.count() << ",";
-		out << std::setw( 9) << idleTime.count() << ",";
+		out << std::setw(11) << idleTime.count() << ",";
 		out << std::setw(13) << overheadTime.count() << "\n";
 
 		out << "------------------------------------------------------------------------------------------\n";

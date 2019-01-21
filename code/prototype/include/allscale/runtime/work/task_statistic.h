@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <iomanip>
 #include <map>
 
@@ -18,6 +19,9 @@ namespace work {
 		std::uint32_t split_tasks = 0;
 		std::uint32_t processed_tasks = 0;
 		double estimated_workload = 0;
+		std::chrono::milliseconds processingTime {0};
+		std::chrono::milliseconds idleTime {0};
+		std::chrono::milliseconds totalRuntime {0};
 	};
 
 	/**

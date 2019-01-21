@@ -392,9 +392,16 @@ namespace utils {
 
 			priority_queue_t runable;
 
-			spinlock runableLock;
+			mutable spinlock runableLock;
 
 			std::condition_variable_any con_var;
+
+			// -- idle time statistics --
+
+			using clock = std::chrono::high_resolution_clock;
+			using duration = clock::duration;
+
+			duration total_idle_time { 0 };
 
 		public:
 
@@ -432,7 +439,10 @@ namespace utils {
 					if (!blocking) return nullptr;
 
 					// wait for entry to show up ..
+					auto start = clock::now();
 					con_var.wait_for(runableLock, maxBlockingTime, [&]{ return !runable.empty(); });
+					auto end = clock::now();
+					total_idle_time += end - start;
 				}
 
 				// check if there is something to do
@@ -454,6 +464,11 @@ namespace utils {
 				runable.push(&fiber);
 				con_var.notify_one();
 				fiber.suspend(runableLock);
+			}
+
+			duration getTotalIdleTime() const {
+				guard g(runableLock);
+				return total_idle_time;
 			}
 
 		};
@@ -630,6 +645,10 @@ namespace utils {
 			swap(local,fiber->ucontext);
 
 			return true;
+		}
+
+		auto getTotalIdleTime() const {
+			return runable.getTotalIdleTime();
 		}
 
 	private:

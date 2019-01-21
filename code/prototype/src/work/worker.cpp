@@ -167,7 +167,7 @@ namespace work {
 			processedCounter++;
 
 			// keep task statistics up to date
-			{
+			if (task->getId().getRootID() != 0) {	// < exclude main task
 				guard g(statisticsLock);
 
 				// increment workload counter (by the fraction of work processed)
@@ -200,6 +200,7 @@ namespace work {
 	}
 
 	void WorkerPool::start() {
+		startTime = clock::now();
 		for(auto& cur : workers) {
 			cur->start();
 		}
@@ -277,11 +278,19 @@ namespace work {
 	}
 
 	TaskStatisticEntry WorkerPool::getLocalStatistics() const {
+
+		auto ms = [](auto time) {
+			return std::chrono::duration_cast<std::chrono::milliseconds>(time);
+		};
+
 		TaskStatisticEntry res;
 		res.rank = node->getRank();
 		res.split_tasks = getNumSplitTasks();
 		res.processed_tasks = getNumProcessedTasks();
 		res.estimated_workload = getProcessedWork();
+		res.processingTime = ms(getProcessTime());
+		res.idleTime = ms(fiberContext.getTotalIdleTime());
+		res.totalRuntime = ms((clock::now() - startTime) * getNumWorkers());
 		return res;
 	}
 

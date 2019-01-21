@@ -174,6 +174,9 @@ namespace work {
 	 */
 	class WorkerPool {
 
+		using clock = std::chrono::high_resolution_clock;
+		using time_point = clock::time_point;
+
 		friend class Worker;
 
 		// the underlying context for synchronization events
@@ -184,6 +187,9 @@ namespace work {
 
 		// the node this worker is working on (if there is one)
 		com::Node* node;
+
+		// the time this worker pool has been started
+		time_point startTime;
 
 		WorkerPool(allscale::utils::FiberContext& ctxt, com::Node* node);
 

@@ -178,12 +178,8 @@ namespace runtime {
 
 	// ---- dependencies ----
 
-	/**
-	 * A class to model task dependencies.
-	 */
-	struct dependencies {
-		/* not implemented yet */
-	};
+	using dependency   = allscale::runtime::work::TaskDependency;
+	using dependencies = allscale::runtime::work::TaskDependencies;
 
 	// creates empty dependencies
 	dependencies after() {
@@ -193,9 +189,9 @@ namespace runtime {
 	// creates dependencies from a list of dependencies
 	template<typename ... TaskRefs>
 	typename std::enable_if<(sizeof...(TaskRefs) > 0), dependencies>::type
-	after(TaskRefs&& ... /* task_refs */) {
-		assert_not_implemented() << "Dependencies not yet supported in prototype!";
-		return after();
+	after(TaskRefs&& ... task_refs) {
+		// create list of task references
+		return { dependency{ task_refs.getTaskReference() } ... };
 	}
 
 	// ---- a prec operation wrapper ----
@@ -234,13 +230,15 @@ namespace runtime {
 	}
 
 	// the parallel treeture connector
-	treeture<void> treeture_parallel(const dependencies& /* ignored */, treeture<void>&& a, treeture<void>&& b) {
+	treeture<void> treeture_parallel(const dependencies& deps, treeture<void>&& a, treeture<void>&& b) {
+		deps.wait();
 		return allscale::runtime::work::treeture_parallel(std::move(a),std::move(b));
 	}
 
 	// the parallel treeture connector
 	template<typename A, typename B, typename Comp>
-	treeture<std::result_of_t<Comp(A,B)>> treeture_combine(const dependencies& /* ignored */, treeture<A>&& a, treeture<B>&& b, const Comp& comp) {
+	treeture<std::result_of_t<Comp(A,B)>> treeture_combine(const dependencies& deps, treeture<A>&& a, treeture<B>&& b, const Comp& comp) {
+		deps.wait();
 		return allscale::runtime::work::treeture_combine(std::move(a),std::move(b),comp);
 	}
 
@@ -284,19 +282,40 @@ namespace runtime {
 		return std::move(treeture);
 	}
 
+	template<typename WorkItemDesc, typename ... Args>
+	treeture<typename WorkItemDesc::result_type> spawn(const runtime::dependencies& deps, const runtime::work::TaskID& id, Args&& ... args) {
+
+		assert_not_implemented();
+
+		// create task based on work item description
+		using task_type = runtime::work::WorkItemTask<WorkItemDesc,decltype(std::make_tuple(std::forward<Args>(args)...))>;
+
+		// create the task
+		auto task = runtime::work::make_task<task_type>(id,std::make_tuple(std::forward<Args>(args)...));
+
+		// extract treeture
+		auto treeture = task->getTreeture();
+
+		// schedule task
+		runtime::work::schedule(std::move(task));
+
+		// return treeture
+		return std::move(treeture);
+	}
+
 
 	template<typename WorkItemDesc, typename ... Args>
-	treeture<typename WorkItemDesc::result_type> spawn_first_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
+	treeture<typename WorkItemDesc::result_type> spawn_first_with_dependencies(const runtime::dependencies& deps, Args&& ... args) {
 		// get a fresh ID
 		runtime::work::TaskID newId = allscale::runtime::work::getFreshId();
-		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
+		return spawn<WorkItemDesc,Args...>(deps,newId,std::forward<Args>(args)...);
 	}
 
 	template<typename WorkItemDesc, typename ... Args>
-	treeture<typename WorkItemDesc::result_type> spawn_with_dependencies(const runtime::dependencies& /* ignored */, Args&& ... args) {
+	treeture<typename WorkItemDesc::result_type> spawn_with_dependencies(const runtime::dependencies& deps, Args&& ... args) {
 		// get the ID of the child
 		auto newId = runtime::work::getNewChildId();
-		return spawn<WorkItemDesc,Args...>(newId,std::forward<Args>(args)...);
+		return spawn<WorkItemDesc,Args...>(deps,newId,std::forward<Args>(args)...);
 
 	}
 

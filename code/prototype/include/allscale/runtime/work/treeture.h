@@ -21,9 +21,8 @@
 #include "allscale/utils/serializer/optionals.h"
 #include "allscale/utils/fibers.h"
 
-#include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
-#include "allscale/runtime/work/task_id.h"
+#include "allscale/runtime/work/task_reference.h"
 
 #include "allscale/utils/printer/vectors.h"
 
@@ -234,62 +233,6 @@ namespace work {
 		};
 
 	} // end namespace detail
-
-
-	/**
-	 * A reference to a task in the system, freely copy-, move-, and serializable.
-	 */
-	class TaskRef : public allscale::utils::trivially_serializable {
-
-		// the ID of the task this treeture is associated to
-		TaskID id;
-
-		// the rank the associated treeture state is maintained by
-		com::rank_t owner = 0;
-
-	public:
-
-		TaskRef() = default;
-
-		TaskRef(const TaskID& id, com::rank_t owner)
-			: id(id), owner(owner) {}
-
-		TaskRef(const TaskRef&) = default;
-		TaskRef(TaskRef&&) = default;
-
-		// -- operator --
-
-		TaskRef& operator=(const TaskRef&) = default;
-		TaskRef& operator=(TaskRef&&) = default;
-
-		// -- factories --
-
-		TaskRef getLeftChild() const {
-			// TODO: support mechanism to obtain owner of left child
-			return *this;
-		}
-
-		TaskRef getRightChild() const {
-			// TODO: support mechanism to obtain owner of left child
-			return *this;
-		}
-
-		// -- observer --
-
-		com::rank_t getOwner() const {
-			return owner;
-		}
-
-		const TaskID& getTaskID() const {
-			return id;
-		}
-
-		// add printer support
-		friend std::ostream& operator<<(std::ostream& out, const TaskRef& ref) {
-			return out << "TaskRef(" << ref.id << "@" << ref.owner << ")";
-		}
-
-	};
 
 
 	class TreetureStateService {
@@ -576,7 +519,7 @@ namespace work {
 			return bool(value);
 		}
 
-		const TaskRef& getTaskReference() const {
+		allscale::utils::optional<TaskRef> getTaskReference() const {
 			return task;
 		}
 
@@ -693,9 +636,8 @@ namespace work {
 			retrieveValue();
 		}
 
-		const TaskRef& getTaskReference() const {
-			assert_true(bool(task));
-			return *task;
+		const allscale::utils::optional<TaskRef>& getTaskReference() const {
+			return task;
 		}
 
 		// TODO: return task references

@@ -43,10 +43,7 @@ namespace work {
 		};
 
 		// the id of this task
-		TaskID id;
-
-		// the owner of this task, handling the synchronization
-		com::rank_t owner;
+		TaskRef ref;
 
 		// indicates the completion state of this task
 		std::atomic<State> state;
@@ -62,7 +59,7 @@ namespace work {
 	public:
 
 		// creates a new task, not completed yet
-		Task(TaskID id, com::rank_t owner) : id(id), owner(owner), state(Ready) {}
+		Task(TaskID id, com::rank_t owner) : ref(id,owner), state(Ready) {}
 
 		// tasks are not copy nor moveable
 		Task(const Task&) = delete;
@@ -70,17 +67,21 @@ namespace work {
 
 		virtual ~Task() {
 			// make sure all tasks are processed
-			assert_eq(state,Finished) << "Destroying incomplete task: " << id;
+			assert_eq(state,Finished) << "Destroying incomplete task: " << getId();
 		}
 
 		// ----- observer -----
 
 		const TaskID& getId() const {
-			return id;
+			return ref.getTaskID();
 		}
 
 		com::rank_t getOwner() const {
-			return owner;
+			return ref.getOwner();
+		}
+
+		const TaskRef& getTaskRef() const {
+			return ref;
 		}
 
 		bool isReady() const {
@@ -256,12 +257,12 @@ namespace work {
 
 		// obtains the treeture referencing the value produced by this task
 		treeture<R> getTreeture() const {
-			return { getOwner(), getId() };
+			return getTaskRef();
 		}
 
 		void setResult(R&& value) {
 			// mark this task as done
-			TreetureStateService::getLocal().setDone<R>(getOwner(),getId(),std::move(value));
+			TreetureStateService::getLocal().setDone<R>(getTaskRef(),std::move(value));
 		}
 	};
 
@@ -280,12 +281,12 @@ namespace work {
 
 		// obtains the treeture referencing the value produced by this task
 		treeture<void> getTreeture() const {
-			return { getOwner(), getId() };
+			return getTaskRef();
 		}
 
 		void setDone() {
 			// mark this task as done
-			TreetureStateService::getLocal().setDone(getOwner(),getId());
+			TreetureStateService::getLocal().setDone(getTaskRef());
 		}
 	};
 

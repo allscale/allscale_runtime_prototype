@@ -236,6 +236,62 @@ namespace work {
 	} // end namespace detail
 
 
+	/**
+	 * A reference to a task in the system, freely copy-, move-, and serializable.
+	 */
+	class TaskRef : public allscale::utils::trivially_serializable {
+
+		// the ID of the task this treeture is associated to
+		TaskID id;
+
+		// the rank the associated treeture state is maintained by
+		com::rank_t owner = 0;
+
+	public:
+
+		TaskRef() = default;
+
+		TaskRef(const TaskID& id, com::rank_t owner)
+			: id(id), owner(owner) {}
+
+		TaskRef(const TaskRef&) = default;
+		TaskRef(TaskRef&&) = default;
+
+		// -- operator --
+
+		TaskRef& operator=(const TaskRef&) = default;
+		TaskRef& operator=(TaskRef&&) = default;
+
+		// -- factories --
+
+		TaskRef getLeftChild() const {
+			// TODO: support mechanism to obtain owner of left child
+			return *this;
+		}
+
+		TaskRef getRightChild() const {
+			// TODO: support mechanism to obtain owner of left child
+			return *this;
+		}
+
+		// -- observer --
+
+		com::rank_t getOwner() const {
+			return owner;
+		}
+
+		const TaskID& getTaskID() const {
+			return id;
+		}
+
+		// add printer support
+		friend std::ostream& operator<<(std::ostream& out, const TaskRef& ref) {
+			return out << "TaskRef(" << ref.id << "@" << ref.owner << ")";
+		}
+
+	};
+
+
 	class TreetureStateService {
 
 		// the lock type to be utilized to protect internal state
@@ -272,14 +328,15 @@ namespace work {
 		// -- treeture side interface --
 
 		// tests non-blocking whether the referenced task is done
-		bool wait(com::rank_t owner, const TaskID& id) {
+		bool wait(const TaskRef& ref) {
 
 			// test whether this is the right one
-			if (myRank != owner) {
+			if (myRank != ref.getOwner()) {
 				// query remote
-				return network.getRemoteProcedure(owner,&TreetureStateService::wait)(owner,id).get();
+				return network.getRemoteProcedure(ref.getOwner(),&TreetureStateService::wait)(ref).get();
 			}
 
+			auto& id = ref.getTaskID();
 			allscale::utils::fiber::EventId syncEvent;
 			{
 				guard g(lock);
@@ -318,14 +375,15 @@ namespace work {
 
 		// obtains the result of the corresponding task, or nothing if not yet available
 		template<typename R>
-		R getResult(com::rank_t owner, const TaskID& id) {
+		R getResult(const TaskRef& task) {
 
 			// test whether this is the right one
-			if (myRank != owner) {
+			if (myRank != task.getOwner()) {
 				// query remote
-				return network.getRemoteProcedure(owner,&TreetureStateService::getResult<R>)(owner,id).get();
+				return network.getRemoteProcedure(task.getOwner(),&TreetureStateService::getResult<R>)(task).get();
 			}
 
+			auto& id = task.getTaskID();
 			detail::TreetureStateService<R>* service;
 
 			{
@@ -387,19 +445,19 @@ namespace work {
 		}
 
 		template<typename R>
-		void setDone(com::rank_t owner, const TaskID& id, R&& value) {
+		void setDone(const TaskRef& task, R&& value) {
 
 			// check whether this is the intended target
-			if (myRank != owner) {
+			if (myRank != task.getOwner()) {
 				// send result to remote
-				network.getRemoteProcedure(owner,&TreetureStateService::setDone<R>)(owner,id,std::move(value));
+				network.getRemoteProcedure(task.getOwner(),&TreetureStateService::setDone<R>)(task,std::move(value));
 				return;
 			}
 
 			guard g(lock);
 
 			// lookup state
-			auto pos = states.find(id.getRootID());
+			auto pos = states.find(task.getTaskID().getRootID());
 			assert_true(pos != states.end())
 				<< "Invalid state: task either not registered or already fully consumed.";
 
@@ -408,23 +466,23 @@ namespace work {
 
 			// update value
 			detail::TreetureStateService<R>& service = static_cast<detail::TreetureStateService<R>&>(*pos->second);
-			service.setResult(id.getPath(),std::move(value));
+			service.setResult(task.getTaskID().getPath(),std::move(value));
 		}
 
-		void setDone(com::rank_t owner, const TaskID& id) {
+		void setDone(const TaskRef& task) {
 
 			// check whether this is the intended target
-			if (myRank != owner) {
+			if (myRank != task.getOwner()) {
 				// send result to remote
-				void(TreetureStateService::* trg)(com::rank_t,const TaskID&) = &TreetureStateService::setDone;
-				network.getRemoteProcedure(owner,trg)(owner,id);
+				void(TreetureStateService::* trg)(const TaskRef&) = &TreetureStateService::setDone;
+				network.getRemoteProcedure(task.getOwner(),trg)(task);
 				return;
 			}
 
 			guard g(lock);
 
 			// lookup state
-			auto pos = states.find(id.getRootID());
+			auto pos = states.find(task.getTaskID().getRootID());
 			assert_true(pos != states.end())
 				<< "Invalid state: task either not registered or already fully consumed.";
 
@@ -433,7 +491,7 @@ namespace work {
 
 			// update value
 			detail::TreetureStateService<void>& service = static_cast<detail::TreetureStateService<void>&>(*pos->second);
-			service.setDone(id.getPath());
+			service.setDone(task.getTaskID().getPath());
 		}
 
 	};
@@ -447,11 +505,8 @@ namespace work {
 		// the type of the optional value stored internally
 		using value_opt_t = allscale::utils::optional<R>;
 
-		// the ID of the task this treeture is associated to
-		TaskID id;
-
-		// the rank the associated treeture state is maintained by
-		com::rank_t owner;
+		// the task referenced by this treeture
+		TaskRef task;
 
 		// the value produced produced by the source
 		mutable value_opt_t value;
@@ -464,25 +519,25 @@ namespace work {
 
 	public:
 
-		treeture() : owner(0), owning(false) {}
+		treeture() : owning(false) {}
 
-		treeture(R&& value) : owner(0), value(std::move(value)), owning(false) {}
+		treeture(R&& value) : value(std::move(value)), owning(false) {}
 
 		treeture(const treeture&) = delete;
 
-		treeture(treeture&& other) : id(other.id), owner(other.owner), value(std::move(other.value)), owning(other.owning) {
+		treeture(treeture&& other) : task(std::move(other.task)), value(std::move(other.value)), owning(other.owning) {
 			other.owning = false;
 		}
 
 	private:
 
-		treeture(com::rank_t owner, const TaskID& id, value_opt_t&& value)
-			: id(id), owner(owner), value(std::move(value)), owning(!bool(value)) {}
+		treeture(TaskRef&& task, value_opt_t&& value)
+			: task(std::move(task)), value(std::move(value)), owning(!bool(value)) {}
 
 	public:
 
 		// creates a treeture owning the result of the given task
-		treeture(com::rank_t owner, const TaskID& id) : id(id), owner(owner), owning(true) {}
+		treeture(const TaskRef& task) : task(task), owning(true) {}
 
 		~treeture() {
 			release();
@@ -497,11 +552,8 @@ namespace work {
 			// release this state
 			release();
 
-			// copy the id
-			id = other.id;
-
-			// copy the owner
-			owner = other.owner;
+			// copy the task reference
+			task = other.task;
 
 			// take the ownership of the other
 			owning = other.owning;
@@ -524,6 +576,10 @@ namespace work {
 			return bool(value);
 		}
 
+		const TaskRef& getTaskReference() const {
+			return task;
+		}
+
 		R&& get_result() const {
 			wait();
 			assert_true(bool(value));
@@ -543,8 +599,7 @@ namespace work {
 			if (!valid()) return;
 
 			// store the value and lose ownership
-			out.write(owner);
-			out.write(id);
+			out.write(task);
 			out.write(value);
 
 			// this is basically a move out ...
@@ -557,10 +612,9 @@ namespace work {
 			if (!valid) return {};
 
 			// restore a valid treeture
-			auto owner = in.read<com::rank_t>();
-			auto id = in.read<TaskID>();
+			auto task = in.read<TaskRef>();
 			auto value = in.read<allscale::utils::optional<R>>();
-			return { owner, id, std::move(value) };
+			return { std::move(task), std::move(value) };
 		}
 
 	private:
@@ -573,7 +627,7 @@ namespace work {
 			assert_true(owning);
 
 			// retrieve the value
-			value = getStateService().template getResult<R>(owner,id);
+			value = getStateService().template getResult<R>(task);
 
 			// if we got it, we implicitly lost ownership
 			if (bool(value)) owning = false;
@@ -581,7 +635,7 @@ namespace work {
 
 		void release() {
 			if (!owning) return;
-			getStateService().freeTaskState(id);
+			getStateService().freeTaskState(task.getTaskID());
 		}
 
 		TreetureStateService& getStateService() const {
@@ -597,11 +651,8 @@ namespace work {
 	template<>
 	class treeture<void> {
 
-		// the ID of the task this treeture is associated to
-		allscale::utils::optional<TaskID> id;
-
-		// the rank the associated treeture state is maintained by
-		com::rank_t owner;
+		// the task referenced by this treeture
+		allscale::utils::optional<TaskRef> task;
 
 		// flag indicating whether the task associated to this treeture is done or not
 		mutable bool done;
@@ -611,21 +662,27 @@ namespace work {
 
 	public:
 
-		treeture(bool done = false) : owner(0), done(done) {}
+		treeture(bool done = false) : done(done) {}
 
 		treeture(const treeture&) = default;
 
 		treeture(treeture&& other) = default;
 
+		treeture(const TaskRef& task) : task(task), done(false) {}
+
+	private:
+
 		// creates a treeture owning the result of the given task
-		treeture(com::rank_t owner, const TaskID& id, bool done = false) : id(id), owner(owner), done(done) {}
+		treeture(allscale::utils::optional<TaskRef>&& task, bool done = false) : task(std::move(task)), done(done) {}
+
+	public:
 
 		treeture& operator=(const treeture&) = default;
 
 		treeture& operator=(treeture&& other) = default;
 
 		bool valid() const {
-			return done || bool(id);
+			return done || bool(task);
 		}
 
 		bool isDone() const {
@@ -636,6 +693,12 @@ namespace work {
 			retrieveValue();
 		}
 
+		const TaskRef& getTaskReference() const {
+			assert_true(bool(task));
+			return *task;
+		}
+
+		// TODO: return task references
 		treeture<void> get_left_child() const {
 			// TODO: no way yet to determine owner of child
 			return *this;
@@ -659,8 +722,7 @@ namespace work {
 			if (!valid()) return;
 
 			// store the value and lose ownership
-			out.write(*id);
-			out.write(owner);
+			out.write(task);
 			out.write(done);
 		}
 
@@ -670,10 +732,9 @@ namespace work {
 			if (!valid) return {};
 
 			// restore a valid treeture
-			auto id = in.read<TaskID>();
-			auto owner = in.read<com::rank_t>();
+			auto task = in.read<allscale::utils::optional<TaskRef>>();
 			auto done = in.read<bool>();
-			return { owner, id, done };
+			return { std::move(task), done };
 		}
 
 	private:
@@ -685,7 +746,7 @@ namespace work {
 			if (done) return;
 
 			// retrieve the value
-			getStateService().wait(owner,*id);
+			getStateService().wait(*task);
 			done = true;
 		}
 

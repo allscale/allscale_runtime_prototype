@@ -49,12 +49,12 @@ namespace work {
 			TreetureStateService::getLocal().registerTask<int>(id);
 
 			// and the attempt to get the result
-			treeture<int> y(rank,id);
+			treeture<int> y(TaskRef(id,rank));
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 
 			// simulate completion of task
-			TreetureStateService::getLocal().setDone<int>(rank,id,14);
+			TreetureStateService::getLocal().setDone<int>(TaskRef(id,rank),14);
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
@@ -91,7 +91,7 @@ namespace work {
 			auto rank = com::Node::getLocalRank();
 
 			// and the attempt to get the result
-			treeture<int> x(rank,id);
+			treeture<int> x(TaskRef(id,rank));
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 
@@ -107,7 +107,7 @@ namespace work {
 
 
 			// simulate completion of treeture
-			TreetureStateService::getLocal().setDone<int>(rank,id,14);
+			TreetureStateService::getLocal().setDone<int>(TaskRef(id,rank),14);
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
@@ -129,12 +129,12 @@ namespace work {
 			auto rank = com::Node::getLocalRank();
 
 			// and the attempt to get the result
-			treeture<int> x(rank,id);
+			treeture<int> x(TaskRef(id,rank));
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 
 			// simulate completion of task
-			TreetureStateService::getLocal().setDone<int>(rank,id,14);
+			TreetureStateService::getLocal().setDone<int>(TaskRef(id,rank),14);
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 			EXPECT_TRUE(x.valid());
@@ -174,12 +174,12 @@ namespace work {
 			TreetureStateService::getLocal().registerTask<void>(id);
 
 			// and the attempt to get the result
-			treeture<void> y(rank,id);
+			treeture<void> y(TaskRef(id,rank));
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 
 			// simulate completion of task
-			TreetureStateService::getLocal().setDone(rank,id);
+			TreetureStateService::getLocal().setDone(TaskRef(id,rank));
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
@@ -211,7 +211,7 @@ namespace work {
 			auto rank = com::Node::getLocalRank();
 
 			// and the attempt to get the result
-			treeture<void> x(rank,id);
+			treeture<void> x(TaskRef(id,rank));
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 
@@ -228,7 +228,7 @@ namespace work {
 
 
 			// simulate completion of treeture
-			TreetureStateService::getLocal().setDone(rank,id);
+			TreetureStateService::getLocal().setDone(TaskRef(id,rank));
 			EXPECT_TRUE(y.valid());
 			EXPECT_FALSE(y.isDone());
 			EXPECT_TRUE(y.valid());
@@ -250,12 +250,12 @@ namespace work {
 			auto rank = com::Node::getLocalRank();
 
 			// and the attempt to get the result
-			treeture<void> x(rank,id);
+			treeture<void> x(TaskRef(id,rank));
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 
 			// simulate completion of task
-			TreetureStateService::getLocal().setDone(rank,id);
+			TreetureStateService::getLocal().setDone(TaskRef(id,rank));
 			EXPECT_TRUE(x.valid());
 			EXPECT_FALSE(x.isDone());
 			EXPECT_TRUE(x.valid());

@@ -14,10 +14,10 @@ namespace work {
 	 * A summary of the task processing statistics of one node.
 	 */
 	struct TaskStatisticEntry : public allscale::utils::trivially_serializable {
-		com::rank_t rank;
-		std::uint32_t split_tasks;
-		std::uint32_t processed_tasks;
-		double estimated_workload;
+		com::rank_t rank = 0;
+		std::uint32_t split_tasks = 0;
+		std::uint32_t processed_tasks = 0;
+		double estimated_workload = 0;
 	};
 
 	/**
@@ -33,17 +33,7 @@ namespace work {
 			entries[entry.rank] = entry;
 		}
 
-		friend std::ostream& operator<<(std::ostream& out, const TaskStatistic& stats) {
-			out << "rank, split_tasks, processed_tasks, est_workload\n";
-			for(const auto& cur : stats.entries) {
-				auto& entry = cur.second;
-				out << std::setw( 4) << entry.rank << ",";
-				out << std::setw(12) << entry.split_tasks << ",";
-				out << std::setw(16) << entry.processed_tasks << ",";
-				out << std::setw(13) << entry.estimated_workload << "\n";
-			}
-			return out;
-		}
+		friend std::ostream& operator<<(std::ostream& out, const TaskStatistic& stats);
 
 	};
 

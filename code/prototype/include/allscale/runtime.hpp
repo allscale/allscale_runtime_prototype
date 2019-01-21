@@ -94,22 +94,14 @@ namespace runtime {
 
 		// print statistics
 		std::cout << "\n";
-		std::cout << "------------------------------------------------------------------------------------------\n";
-		std::cout << "Task execution statistics:\n";
-		std::cout << "------------------------------------------------------------------------------------------\n";
 		rt.getNetwork().runOn(0,[](com::Node& node){
 			node.getFiberContext().process([&]{
 					std::cout << node.getLocalService<work::WorkerPool>().getStatistics();
 			});
 		});
-		std::cout << "------------------------------------------------------------------------------------------\n";
 
 		std::cout << "\n";
-		std::cout << "------------------------------------------------------------------------------------------\n";
-		std::cout << "Communication statistics:\n";
-		std::cout << "------------------------------------------------------------------------------------------\n";
 		std::cout << rt.getNetwork().getStatistics();
-		std::cout << "------------------------------------------------------------------------------------------\n";
 		std::cout << "\n";
 
 		// shutdown network

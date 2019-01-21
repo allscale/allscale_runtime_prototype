@@ -28,6 +28,8 @@ namespace com {
 
 		friend std::ostream& operator<<(std::ostream&,const NodeStatistics&);
 
+		NodeStatistics& operator+=(const NodeStatistics& other);
+
 	};
 
 

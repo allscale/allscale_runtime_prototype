@@ -78,7 +78,7 @@ namespace work {
 		// wait for the thread to finish its work
 		thread.join();
 
-		// mark as running
+		// mark as terminated
 		st = Shutdown;
 		success = state.compare_exchange_strong(st,Terminated);
 		assert_true(success) << "Invalid state " << st << ": cannot switch to terminated state.";
@@ -94,7 +94,7 @@ namespace work {
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &config.affinityMask);
 
 		// while running ..
-		while(state == Running) {
+		while(state < Shutdown) {
 
 			// contribute this worker to process fibers
 			pool.fiberContext.yield(true);

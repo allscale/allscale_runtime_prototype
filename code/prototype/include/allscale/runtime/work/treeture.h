@@ -238,7 +238,7 @@ namespace work {
 	class TreetureStateService {
 
 		// the lock type to be utilized to protect internal state
-		using lock_t = std::mutex;
+		using lock_t = allscale::utils::fiber::Mutex;
 
 		// a lock to sync concurrent accesses
 		mutable lock_t lock;

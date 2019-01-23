@@ -654,7 +654,7 @@ namespace utils {
 	private:
 
 		friend void fiber::suspend();
-		friend void fiber::suspend(Priority);
+		friend void fiber::suspend(fiber::Priority);
 
 		void suspend(fiber::Fiber& fiber) {
 			assert_eq(&fiber.ctxt,this) << "Wrong context for suspension!";

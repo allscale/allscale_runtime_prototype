@@ -1,0 +1,11 @@
+ART_CXXFLAGS = -I@PROJECT_SOURCE_DIR@/prototype/include \
+               -I@PROJECT_SOURCE_DIR@/../api/code/api/include \
+               -I@PROJECT_SOURCE_DIR@/../api/code/utils/include \
+               -pthread \
+               @ART_DEFINITIONS@
+
+ART_LDFLAGS = -Wl,-rpath,@PROJECT_BINARY_DIR@/prototype \
+              -L@PROJECT_BINARY_DIR@/prototype \
+
+ART_LDLIBS = -lallscale_runtime_prototype_prototype \
+             -lpthread -ldl

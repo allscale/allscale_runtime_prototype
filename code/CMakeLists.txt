@@ -34,3 +34,6 @@ include(nproc)
 
 # -- Project Modules
 add_subdirectory(prototype)
+
+# -- Config Files
+configure_file(../resources/art_flags.mk.in art_flags.mk @ONLY)

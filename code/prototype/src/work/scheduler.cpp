@@ -330,6 +330,11 @@ namespace work {
 
 			}
 
+			com::rank_t estimateLocation(const TaskID& task) {
+				guard g(policy_lock);
+				return policy.estimateTargetLocation(task.getPath());
+			}
+
 		};
 
 
@@ -763,6 +768,11 @@ namespace work {
 	// the main entry point for scheduling
 	void schedule(TaskPtr&& task) {
 		detail::schedule(std::move(task));
+	}
+
+	com::rank_t estimateLocationOf(const TaskID& task) {
+		auto& service = com::HierarchicalOverlayNetwork::getLocalService<detail::ScheduleService>();
+		return service.estimateLocation(task);
 	}
 
 

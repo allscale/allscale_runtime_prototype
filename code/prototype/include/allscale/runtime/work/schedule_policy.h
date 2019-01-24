@@ -77,6 +77,11 @@ namespace work {
 		 */
 		virtual bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const =0;
 
+		/**
+		 * Estimates the target location a task with the given task path should be located at.
+		 */
+		virtual com::rank_t estimateTargetLocation(const TaskPath& path) const =0;
+
 		// --- cloning ---
 
 		virtual std::unique_ptr<SchedulingPolicy> clone() const =0;
@@ -178,6 +183,10 @@ namespace work {
 			return policy->checkTarget(addr,path);
 		}
 
+		com::rank_t estimateTargetLocation(const TaskPath& path) const override {
+			return policy->estimateTargetLocation(path);
+		}
+
 
 		// --- cloning ---
 
@@ -265,6 +274,12 @@ namespace work {
 		bool checkTarget(const com::HierarchyAddress&, const TaskPath&) const override {
 			return true; // every target is ok
 		}
+
+		/**
+		 * Estimates the target location a task with the given task path should be located at.
+		 */
+		com::rank_t estimateTargetLocation(const TaskPath& path) const;
+
 
 		// --- cloning ---
 
@@ -464,6 +479,13 @@ namespace work {
 		 */
 		bool checkTarget(const com::HierarchyAddress& addr, const TaskPath& path) const override {
 			return addr == getTarget(path);
+		}
+
+		/**
+		 * Estimates the target location a task with the given task path should be located at.
+		 */
+		com::rank_t estimateTargetLocation(const TaskPath& path) const override {
+			return getTarget(path).getRank();
 		}
 
 		/**

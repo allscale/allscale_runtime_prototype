@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <limits>
 #include <allscale/utils/serializer.h>
 
 #include "allscale/runtime/com/node.h"
@@ -29,6 +30,9 @@ namespace work {
 
 	public:
 
+		// the owner assigned if the owner is unknown
+		constexpr static com::rank_t UNKNOWN_OWNER = std::numeric_limits<com::rank_t>::max();
+
 		TaskRef() = default;
 
 		TaskRef(const TaskID& id, com::rank_t owner)
@@ -45,17 +49,13 @@ namespace work {
 		// -- factories --
 
 		TaskRef getLeftChild() const {
-			// we can safely assume that the task is owned by
-			// the same node, which is usually the case. In case the
-			// task is not owned, the parent task will be owned, which
-			// upon completion will signal the completion of child tasks
-			// as well.
-			return { id.getRightChild(), owner };		// < TODO: figure out why left and right is switched in generated code!
+			// we don't know for certain the owner of the child task
+			return { id.getLeftChild(), UNKNOWN_OWNER };
 		}
 
 		TaskRef getRightChild() const {
 			// see: getLeftChild()
-			return { id.getLeftChild(), owner };		// < TODO: figure out why left and right is switched in generated code!
+			return { id.getRightChild(), UNKNOWN_OWNER };
 		}
 
 		// -- observer --
@@ -70,7 +70,13 @@ namespace work {
 
 		// add printer support
 		friend std::ostream& operator<<(std::ostream& out, const TaskRef& ref) {
-			return out << "TaskRef(" << ref.id << "@" << ref.owner << ")";
+			out << "TaskRef(" << ref.id << "@";
+			if (ref.owner == UNKNOWN_OWNER) {
+				out << "?";
+			} else {
+				out << ref.owner;
+			}
+			return out << ")";
 		}
 
 	};

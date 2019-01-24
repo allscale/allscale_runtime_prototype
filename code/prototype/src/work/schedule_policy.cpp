@@ -67,6 +67,11 @@ namespace work {
 		return (r < 0.5) ? Decision::Left : Decision::Right;
 	}
 
+	com::rank_t RandomSchedulingPolicy::estimateTargetLocation(const TaskPath&) const {
+		// the local node is an as good estimate as any other location
+		return com::Node::getLocalRank();
+	}
+
 
 	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::clone() const {
 		return std::make_unique<RandomSchedulingPolicy>(root,cutOffLevel);

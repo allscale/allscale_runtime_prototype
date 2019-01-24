@@ -62,6 +62,15 @@ namespace work {
 	 */
 	bool shouldSplit(const TaskPtr&);
 
+	/**
+	 * Requests the scheduler to estimate the location of the given task. This
+	 * is a local operation, not including remote operations. However, the result
+	 * might be wrong if e.g. random scheduling is used, or scheduling policies
+	 * have changed. Its main purpose is to get an estimate for task dependency
+	 * resolution.
+	 */
+	com::rank_t estimateLocationOf(const TaskID& task);
+
 	// -- setup --
 
 	// start up scheduler service within the provided network

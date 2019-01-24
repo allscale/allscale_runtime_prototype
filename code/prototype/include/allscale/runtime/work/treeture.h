@@ -64,10 +64,11 @@ namespace work {
 
 
 		class TreetureStateServiceBase {
-
 		public:
+
 			virtual ~TreetureStateServiceBase() {}
 
+			virtual void taskFinished() = 0;
 		};
 
 		template<typename R>
@@ -133,6 +134,15 @@ namespace work {
 				R res = std::move(pos->second);
 				results.erase(pos);
 				return std::move(res);
+			}
+
+			void taskFinished() override {
+				guard g(lock);
+				// trigger all remaining events
+				for(auto& cur : events) {
+					eventRegister.trigger(cur.second);
+				}
+				events.clear();
 			}
 
 		private:
@@ -205,6 +215,19 @@ namespace work {
 				return events[path] = eventRegister.create();
 			}
 
+			void taskFinished() override {
+				guard g(lock);
+
+				// mark all task as done
+				markAllDone();
+
+				// trigger all remaining events
+				for(auto& cur : events) {
+					eventRegister.trigger(cur.second);
+				}
+				events.clear();
+			}
+
 		private:
 
 			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
@@ -230,6 +253,11 @@ namespace work {
 				completedTasks.push_back(path);
 			}
 
+			void markAllDone() {
+				completedTasks.clear();
+				completedTasks.push_back(TaskPath::root());
+			}
+
 		};
 
 	} // end namespace detail
@@ -238,7 +266,7 @@ namespace work {
 	class TreetureStateService {
 
 		// the lock type to be utilized to protect internal state
-		using lock_t = allscale::utils::fiber::Mutex;
+		using lock_t = allscale::utils::spinlock;
 
 		// a lock to sync concurrent accesses
 		mutable lock_t lock;
@@ -258,6 +286,9 @@ namespace work {
 		// the context to be utilized for synchronization operations
 		allscale::utils::fiber::EventRegister& eventRegister;
 
+		// a condition variable fired whenever a new task is registered
+		allscale::utils::fiber::ConditionalVariable taskRegisterConVar;
+
 	public:
 
 		// the service constructor
@@ -270,51 +301,8 @@ namespace work {
 
 		// -- treeture side interface --
 
-		// tests non-blocking whether the referenced task is done
-		bool wait(const TaskRef& ref) {
-
-			// test whether this is the right one
-			if (myRank != ref.getOwner()) {
-				// query remote
-				return network.getRemoteProcedure(ref.getOwner(),&TreetureStateService::wait)(ref).get();
-			}
-
-			auto& id = ref.getTaskID();
-			allscale::utils::fiber::EventId syncEvent;
-			{
-				guard g(lock);
-				auto pos = states.find(id.getRootID());
-				if (pos == states.end()) return true;
-				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-				syncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
-			}
-
-			// see that processed fiber is on same event register as this treeture state service
-			assert_eq(
-				&allscale::utils::fiber::getCurrentFiber()->ctxt.getEventRegister(),
-				&eventRegister
-			);
-
-			// suspend fiber
-			allscale::utils::fiber::suspend(syncEvent);
-
-			// make sure task is done now
-			assert_decl({
-				guard g(lock);
-				auto pos = states.find(id.getRootID());
-				assert_false(pos == states.end());
-				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-				auto newSyncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
-				assert_eq(newSyncEvent, allscale::utils::fiber::EVENT_IGNORE)
-					<< "Task: " << id << "\n"
-					<< "Events: " << syncEvent << " vs " << newSyncEvent << "\n";
-			});
-
-			// free resources
-			guard g(lock);
-			freeTaskStateInternal(id);
-			return true;
-		}
+		// blocks the current thread until the given task is done
+		bool wait(const TaskRef& ref);
 
 		// obtains the result of the corresponding task, or nothing if not yet available
 		template<typename R>
@@ -375,17 +363,25 @@ namespace work {
 
 		template<typename R>
 		void registerTask(const TaskID& id) {
-			guard g(lock);
+			{
+				guard g(lock);
 
-			// obtain the corresponding state manager
-			auto& state = states[id.getRootID()];
+				// obtain the corresponding state manager
+				auto& state = states[id.getRootID()];
 
-			// see whether it has been regisered before
-			if (state) return;
+				// see whether it has been regisered before
+				if (state) return;
 
-			// if not, create a new state manager
-			state = std::make_unique<detail::TreetureStateService<R>>(eventRegister);
+				// if not, create a new state manager
+				state = std::make_unique<detail::TreetureStateService<R>>(eventRegister);
+			}
+
+			// signal that a new task has been registered
+			taskRegisterConVar.notifyAll();
 		}
+
+		// signals that the given task is globally finished
+		void taskFinished(const TaskID& id);
 
 		template<typename R>
 		void setDone(const TaskRef& task, R&& value) {
@@ -397,19 +393,29 @@ namespace work {
 				return;
 			}
 
-			guard g(lock);
+			// update local state
+			{
+				guard g(lock);
 
-			// lookup state
-			auto pos = states.find(task.getTaskID().getRootID());
-			assert_true(pos != states.end())
-				<< "Invalid state: task either not registered or already fully consumed.";
+				// lookup state
+				auto pos = states.find(task.getTaskID().getRootID());
+				assert_true(pos != states.end())
+					<< "Invalid state: task either not registered or already fully consumed.";
 
-			// check that types are used consistently
-			assert_true(dynamic_cast<detail::TreetureStateService<R>*>(pos->second.get()));
+				// check that types are used consistently
+				assert_true(dynamic_cast<detail::TreetureStateService<R>*>(pos->second.get()));
 
-			// update value
-			detail::TreetureStateService<R>& service = static_cast<detail::TreetureStateService<R>&>(*pos->second);
-			service.setResult(task.getTaskID().getPath(),std::move(value));
+				// update value
+				detail::TreetureStateService<R>& service = static_cast<detail::TreetureStateService<R>&>(*pos->second);
+				service.setResult(task.getTaskID().getPath(),std::move(value));
+			}
+
+			// if this is the root task ...
+			if (task.getTaskID().getRootID() != 0 && task.getTaskID().getPath().isRoot()) {
+				// signal that this task is fully completed
+				network.broadcast(&TreetureStateService::taskFinished)(task.getTaskID());
+			}
+
 		}
 
 		void setDone(const TaskRef& task) {
@@ -422,19 +428,28 @@ namespace work {
 				return;
 			}
 
-			guard g(lock);
+			// update local state
+			{
+				guard g(lock);
 
-			// lookup state
-			auto pos = states.find(task.getTaskID().getRootID());
-			assert_true(pos != states.end())
-				<< "Invalid state: task either not registered or already fully consumed.";
+				// lookup state
+				auto pos = states.find(task.getTaskID().getRootID());
+				assert_true(pos != states.end())
+					<< "Invalid state: task either not registered or already fully consumed.";
 
-			// check that types are used consistently
-			assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
+				// check that types are used consistently
+				assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
 
-			// update value
-			detail::TreetureStateService<void>& service = static_cast<detail::TreetureStateService<void>&>(*pos->second);
-			service.setDone(task.getTaskID().getPath());
+				// update value
+				detail::TreetureStateService<void>& service = static_cast<detail::TreetureStateService<void>&>(*pos->second);
+				service.setDone(task.getTaskID().getPath());
+			}
+
+			// if this is the root task ...
+			if (task.getTaskID().getRootID() != 0 && task.getTaskID().getPath().isRoot()) {
+				// signal that this task is fully completed
+				network.broadcast(&TreetureStateService::taskFinished)(task.getTaskID());
+			}
 		}
 
 	};

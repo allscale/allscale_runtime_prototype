@@ -109,6 +109,8 @@ namespace utils {
 			DEFAULT = MEDIUM
 		};
 
+		std::ostream& operator<<(std::ostream& , const Priority&);
+
 
 		class Fiber {
 		public:

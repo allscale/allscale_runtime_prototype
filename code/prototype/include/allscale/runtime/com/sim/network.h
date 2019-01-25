@@ -240,11 +240,11 @@ namespace sim {
 						result = remoteOp(node);
 						// signal back completion
 						eventReg.trigger(doneEvent);
-					});
+					}, allscale::utils::fiber::Priority::HIGH);
 
 				});
 
-				suspend(doneEvent);
+				suspend(doneEvent, allscale::utils::fiber::Priority::HIGH);
 				return result;
 			}
 
@@ -403,11 +403,11 @@ namespace sim {
 						result = remoteOp(node);
 						// signal back completion
 						eventReg.trigger(doneEvent);
-					});
+					}, allscale::utils::fiber::Priority::HIGH);
 
 				});
 
-				suspend(doneEvent);
+				suspend(doneEvent, allscale::utils::fiber::Priority::HIGH);
 				return result;
 
 			}
@@ -610,7 +610,7 @@ namespace sim {
 								remoteOp(node,trgStats);
 								// signal back completion
 								eventReg.trigger(doneEvent);
-							});
+							}, allscale::utils::fiber::Priority::HIGH);
 
 						});
 
@@ -618,7 +618,7 @@ namespace sim {
 
 					// wait for completion of all remote calls
 					for(const auto& cur : events) {
-						suspend(cur);
+						suspend(cur, allscale::utils::fiber::Priority::HIGH);
 					}
 
 				}

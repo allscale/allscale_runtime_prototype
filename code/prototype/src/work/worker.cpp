@@ -147,6 +147,9 @@ namespace work {
 			// wait until task dependencies are satisfied
 			task->getDependencies().wait();
 
+			// suspend, and rate as medium priority
+			allscale::utils::fiber::suspend(allscale::utils::fiber::Priority::MEDIUM);
+
 			// in this case we process the task
 			auto reqs = task->getProcessRequirements();
 

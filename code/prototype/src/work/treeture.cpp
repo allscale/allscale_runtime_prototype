@@ -60,7 +60,7 @@ namespace work {
 		);
 
 		// suspend fiber
-		allscale::utils::fiber::suspend(syncEvent);
+		allscale::utils::fiber::suspend(syncEvent, allscale::utils::fiber::Priority::HIGH);
 
 		// make sure task is done now
 		assert_decl({

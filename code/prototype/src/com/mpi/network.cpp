@@ -385,7 +385,7 @@ namespace mpi {
 			});
 			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": processing of request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " complete.\n";
 
-		});
+		}, allscale::utils::fiber::Priority::HIGH);
 
 		// done
 		return true;

@@ -1326,7 +1326,6 @@ int32_t IMP_ipic3d_colon__colon_processUniverse(IMP_ipic3d_colon__colon_Universe
     if (var_4) {
         IMP_ipic3d_colon__colon_outputParticlePositions(var_0.cells, std::__cxx11::basic_string<char, std::char_traits<char >, std::allocator<char > >{"t_begin.txt", std::allocator<char >{}});
     };
-    var_2 = 50;
     IMP_allscale_colon__colon_utils_colon__colon__operator_lshift_(std::cout << "Running simulation on ", var_0.properties.size) << " grid ..." << &std::endl;
     std::cout << "Warming up for " << var_3 << " timesteps ..." << &std::endl;
     IMP_ipic3d_colon__colon_simulateSteps_struct_space_ipic3d_colon__colon_detail_colon__colon_default_particle_to_field_projector_struct_space_ipic3d_colon__colon_detail_colon__colon_default_field_solver_struct_space_ipic3d_colon__colon_detail_colon__colon_default_particle_mover_returns_struct_space_ipic3d_colon__colon_DurationMeasurement(var_3, var_0);

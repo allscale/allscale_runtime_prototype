@@ -49,42 +49,45 @@ int main() {
 
 	// measure round-trip time between all nodes
 	for(com::rank_t i=0; i<net.numNodes(); i++) {
-		net.runOn(i,[&](Node&){
+		net.runOn(i,[&](Node& node){
 
-			auto& net = Network::getNetwork();
+			node.getFiberContext().process([&]{
 
-			for(com::rank_t j=0; j<net.numNodes(); j++) {
+				auto& net = Network::getNetwork();
 
-				// get the remote procedure
-				auto ping = net.getRemoteProcedure(j,&MeasureService::ping);
+				for(com::rank_t j=0; j<net.numNodes(); j++) {
 
-				std::vector<RemoteCallResult<int>> res;
-				res.reserve(NUM_REPETITONS);
+					// get the remote procedure
+					auto ping = net.getRemoteProcedure(j,&MeasureService::ping);
 
-				// measure round trip time 10 times
-				auto begin = clock::now();
-				for(int i=0; i<NUM_REPETITONS; i++) {
-					res.push_back(ping(i));
-				}
+					std::vector<RemoteCallResult<int>> res;
+					res.reserve(NUM_REPETITONS);
 
-				// wait for all to finish
-				for(int i=0; i<NUM_REPETITONS; i++) {
-					if (res[i].get() != i+1) {
-						std::cout << "Corrupted communication by sending ping from " << i << " to " << j << " ...\n";
+					// measure round trip time 10 times
+					auto begin = clock::now();
+					for(int i=0; i<NUM_REPETITONS; i++) {
+						res.push_back(ping(i));
 					}
+
+					// wait for all to finish
+					for(int i=0; i<NUM_REPETITONS; i++) {
+						if (res[i].get() != i+1) {
+							std::cout << "Corrupted communication by sending ping from " << i << " to " << j << " ...\n";
+						}
+					}
+					auto end = clock::now();
+
+					// compute average time
+					auto time = std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / NUM_REPETITONS;
+
+					// print result
+					std::cout << "Time " << i << " => " << j << " : " << time << "us\n";
+
+					// save result
+					net.getRemoteProcedure(0,&MeasureService::registerResult)(i,j,time);
 				}
-				auto end = clock::now();
 
-				// compute average time
-				auto time = std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / NUM_REPETITONS;
-
-				// print result
-				std::cout << "Time " << i << " => " << j << " : " << time << "us\n";
-
-				// save result
-				net.getRemoteProcedure(0,&MeasureService::registerResult)(i,j,time);
-			}
-
+			});
 		});
 
 		net.sync();

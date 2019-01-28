@@ -26,7 +26,7 @@ namespace work {
 		TaskID id;
 
 		// the rank the associated treeture state is maintained by
-		com::rank_t owner = 0;
+		com::rank_t owner;
 
 	public:
 

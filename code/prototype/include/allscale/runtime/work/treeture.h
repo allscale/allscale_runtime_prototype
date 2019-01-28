@@ -302,11 +302,11 @@ namespace work {
 		// -- treeture side interface --
 
 		// blocks the current thread until the given task is done
-		bool wait(const TaskRef& ref);
+		bool wait(const TaskRef ref);
 
 		// obtains the result of the corresponding task, or nothing if not yet available
 		template<typename R>
-		R getResult(const TaskRef& task) {
+		R getResult(const TaskRef task) {
 
 			// test whether this is the right one
 			if (myRank != task.getOwner()) {

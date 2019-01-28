@@ -19,7 +19,7 @@ namespace work {
 		return treeture<void>(true);
 	}
 
-	bool TreetureStateService::wait(const TaskRef& ref) {
+	bool TreetureStateService::wait(const TaskRef ref) {
 
 		// get owner
 		auto owner = ref.getOwner();

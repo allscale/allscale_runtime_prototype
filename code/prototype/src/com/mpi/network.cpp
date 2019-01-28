@@ -13,6 +13,9 @@ namespace runtime {
 namespace com {
 namespace mpi {
 
+	// the tag to be used for the local request server kill message
+	static constexpr int KILL_TAG = std::numeric_limits<int>::max();
+
 	int getFreshRequestTag() {
 		static std::atomic<int> counter(1);
 		auto tag = counter.fetch_add(2,std::memory_order_relaxed);
@@ -119,10 +122,10 @@ namespace mpi {
 
 
 	// the communicator used for point-to-point operations
-	MPI_Comm point2point;
+	static MPI_Comm point2point;
 
-	// the mutex for synchronizing MPI accesses
-	utils::spinlock G_MPI_MUTEX;
+	// the mutex for synchronizing MPI receive accesses - between probe and receive calls
+	static utils::spinlock G_MPI_RECV_MUTEX;
 
 	// the singleton network instance
 	Network Network::instance;
@@ -131,8 +134,8 @@ namespace mpi {
 	Network::Network() : num_nodes(1), alive(true) {
 		// start up MPI environment
 		int available;
-		MPI_Init_thread(nullptr,nullptr,MPI_THREAD_SERIALIZED,&available);
-		assert_le(MPI_THREAD_SERIALIZED,available);
+		MPI_Init_thread(nullptr,nullptr,MPI_THREAD_MULTIPLE,&available);
+		assert_le(MPI_THREAD_MULTIPLE,available);
 
 		// get the number of nodes
 		int size;
@@ -178,6 +181,9 @@ namespace mpi {
 		// kill request server
 		alive = false;
 
+		// send message to local MPI
+		MPI_Send(nullptr,0,MPI_CHAR,localNode->getRank(),KILL_TAG,point2point);
+
 		// wait for completion
 		com_server.join();
 
@@ -208,15 +214,12 @@ namespace mpi {
 
 	void Network::send(const std::vector<char>& msg, com::rank_t trg, int tag) {
 		MPI_Request request;
-		{
-			std::lock_guard<utils::spinlock> g(G_MPI_MUTEX);
-			getLocalStats().sent_bytes += msg.size();
-			MPI_Isend(&msg[0],msg.size(),MPI_CHAR,trg,tag,point2point,&request);
-		}
+
+		getLocalStats().sent_bytes += msg.size();
+		MPI_Isend(&msg[0],msg.size(),MPI_CHAR,trg,tag,point2point,&request);
 
 		// a utility to test that the message has been send
 		auto done = [&]()->bool{
-			std::lock_guard<utils::spinlock> g(G_MPI_MUTEX);
 			int done;
 			MPI_Test(&request,&done,MPI_STATUS_IGNORE);
 			return done == true;
@@ -255,11 +258,9 @@ namespace mpi {
 
 
 
-	std::vector<char> Network::sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag) {
+	std::vector<char> Network::sendRequestAndWaitForResponse(const std::vector<char>& msg, int request_tag, com::rank_t trg, int response_tag) {
 
 		// check validity of parameters
-		assert_eq(src,localNode->getRank());
-		assert_ne(src,trg);
 		assert_true(isRequestTag(request_tag));
 		assert_true(isResponseTag(response_tag));
 
@@ -293,82 +294,133 @@ namespace mpi {
 
 	}
 
-	bool Network::processMessage() {
+	void Network::processMessageBlocking() {
+
+		auto& node = *localNode;
+		MPI_Status status;
+
+		// lock reveiving mutex
+		G_MPI_RECV_MUTEX.lock();
+
+		// wait for new message (this one is granteed to be thread safe)
+		MPI_Probe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&status);
+
+		// test whether it is the kill message
+		if (com::rank_t(status.MPI_SOURCE) == node.getRank()) {
+			assert_eq(status.MPI_TAG,KILL_TAG);
+
+			// get message size
+			int count = 0;
+			MPI_Get_count(&status,MPI_CHAR,&count);
+			assert_eq(0,count);
+
+			// retrieve message
+			MPI_Recv(nullptr,count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+
+			G_MPI_RECV_MUTEX.unlock();
+			return;
+		}
+
+		// process the received message
+		processPendingMessage(status);
+	}
+
+	void Network::processMessageNonBlocking() {
 
 		auto& node = *localNode;
 		int flag;
 		MPI_Status status;
 
+		// lock reveiving mutex
+		if (!G_MPI_RECV_MUTEX.try_lock()) return;
+
+		// check for new message, non-blocking (this one is thread safe)
+		MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
+
+		// if there is nothing, do nothing
+		if (!flag) {
+			G_MPI_RECV_MUTEX.unlock();
+			return;
+		}
+
+		// test whether it is the kill message
+		if (com::rank_t(status.MPI_SOURCE) == node.getRank()) {
+			assert_eq(status.MPI_TAG,KILL_TAG);
+			G_MPI_RECV_MUTEX.unlock();
+			return;	// ignore in non-blocking mode
+		}
+
+		// process the pending message
+		processPendingMessage(status);
+	}
+
+	void Network::processPendingMessage(MPI_Status& status) {
+
+		// make sure that lock is acquired
+		assert_false(G_MPI_RECV_MUTEX.try_lock());
+
+		auto& node = *localNode;
+
 		// probe for some incoming message
 		std::vector<char> buffer;
-		{
-			G_MPI_MUTEX.lock();
-			MPI_Iprobe(MPI_ANY_SOURCE,MPI_ANY_TAG,point2point,&flag,&status);
 
-			// if there is nothing, do nothing
-			if (!flag) {
-				G_MPI_MUTEX.unlock();
-				return false;
+		// handle responses
+		if (isResponseTag(status.MPI_TAG)) {
+			response_id id(status.MPI_SOURCE,status.MPI_TAG);
+
+			// locate response handler
+			ResponseHandler handler;
+
+			{
+				std::lock_guard<utils::spinlock> g(responde_handler_lock);
+				auto pos = responde_handler.find(id);
+				assert_true(pos != responde_handler.end());
+				handler = pos->second;
+				responde_handler.erase(pos);
 			}
 
-			// handle responses
-			if (isResponseTag(status.MPI_TAG)) {
-				response_id id(status.MPI_SOURCE,status.MPI_TAG);
-
-				// locate response handler
-				ResponseHandler handler;
-
-				{
-					std::lock_guard<utils::spinlock> g(responde_handler_lock);
-					auto pos = responde_handler.find(id);
-					assert_true(pos != responde_handler.end());
-					handler = pos->second;
-					responde_handler.erase(pos);
-				}
-
-				// get response message buffer
-				auto& response = *handler.message;
-
-				// retrieve message
-				int count = 0;
-				MPI_Get_count(&status,MPI_CHAR,&count);
-
-				// allocate memory
-				response.resize(count);
-
-				// receive message
-				DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving response " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
-				Network::getLocalStats().received_bytes += count;
-				MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
-
-				// free MPI access
-				G_MPI_MUTEX.unlock();
-
-				// signal readiness of response
-				localNode->getFiberContext().getEventRegister().trigger(handler.event);
-
-				// done
-				return true;
-			}
-
-			// otherwise, handle requests
-			assert_pred1(isRequestTag,status.MPI_TAG);
+			// get response message buffer
+			auto& response = *handler.message;
 
 			// retrieve message
 			int count = 0;
 			MPI_Get_count(&status,MPI_CHAR,&count);
 
 			// allocate memory
-			buffer.resize(count);
+			response.resize(count);
 
 			// receive message
-			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
+			DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving response " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
 			Network::getLocalStats().received_bytes += count;
-			MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+			MPI_Recv(&response[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
 
-			// free global MPI access lock
-			G_MPI_MUTEX.unlock();
+			// free MPI access
+			G_MPI_RECV_MUTEX.unlock();
+
+			// signal readiness of response
+			localNode->getFiberContext().getEventRegister().trigger(handler.event);
+
+			// done
+			return;
 		}
+
+		// otherwise, handle requests
+		assert_pred1(isRequestTag,status.MPI_TAG);
+
+		// retrieve message
+		int count = 0;
+		MPI_Get_count(&status,MPI_CHAR,&count);
+
+		// allocate memory
+		buffer.resize(count);
+
+		// receive message
+		DEBUG_MPI_NETWORK << "Node " << node.getRank() << ": Receiving request " << status.MPI_TAG << " from " << status.MPI_SOURCE << " of size " << count << " bytes ...\n";
+		Network::getLocalStats().received_bytes += count;
+		MPI_Recv(&buffer[0],count,MPI_CHAR,status.MPI_SOURCE,status.MPI_TAG,point2point,&status);
+
+		// free global MPI access lock
+		G_MPI_RECV_MUTEX.unlock();
 
 		// process request handler in a fiber context (to allow interrupts)
 		localNode->getFiberContext().start([&]{
@@ -387,14 +439,6 @@ namespace mpi {
 
 		}, allscale::utils::fiber::Priority::HIGH);
 
-		// done
-		return true;
-	}
-
-	void Network::processMessageNonBlocking() {
-		localNode->getFiberContext().start([&]{
-			processMessage();
-		});
 	}
 
 	void Network::runRequestServer() {
@@ -405,10 +449,7 @@ namespace mpi {
 
 		while(alive) {
 			// try processing some request
-			if (!processMessage()) {
-				// be nice if no message is present
-				std::this_thread::sleep_for(1us);
-			}
+			processMessageBlocking();
 		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";

@@ -17,6 +17,8 @@
 #include <thread>
 #include <vector>
 
+#include <mpi.h>
+
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/functions.h"
@@ -27,6 +29,7 @@
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/statistics.h"
+
 
 namespace allscale {
 namespace runtime {
@@ -216,7 +219,7 @@ namespace mpi {
 				}
 
 				// send message and wait for response
-				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,src,request_tag,trg,response_tag);
+				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,request_tag,trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for request " << request_tag << " received from " << trg << "\n";
 
@@ -414,7 +417,7 @@ namespace mpi {
 				}
 
 				// wait for response
-				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,src,request_tag,trg,response_tag);
+				std::vector<char> buffer = network.sendRequestAndWaitForResponse(request,request_tag,trg,response_tag);
 
 				DEBUG_MPI_NETWORK << "Node " << src << ": Response " << response_tag << " for " << request_tag << " received\n";
 
@@ -766,9 +769,11 @@ namespace mpi {
 
 		void runRequestServer();
 
-		bool processMessage();
+		void processMessageBlocking();
 
 		void processMessageNonBlocking();
+
+		void processPendingMessage(MPI_Status& status);
 
 		void sendRequest(const std::vector<char>& msg, com::rank_t trg, int request_tag);
 
@@ -776,7 +781,7 @@ namespace mpi {
 
 		void send(const std::vector<char>& msg, com::rank_t trg, int tag);
 
-		std::vector<char> sendRequestAndWaitForResponse(const std::vector<char>& msg, com::rank_t src, int request_tag, com::rank_t trg, int response_tag);
+		std::vector<char> sendRequestAndWaitForResponse(const std::vector<char>& msg, int request_tag, com::rank_t trg, int response_tag);
 
 	public:
 

@@ -9,20 +9,6 @@ namespace data {
 
 	constexpr bool DEBUG = false;
 
-	namespace {
-
-		/**
-		 * A utility to test whether a lock is locked.
-		 */
-		template<typename Lock>
-		bool isLocked(Lock& lock) {
-			auto res = lock.try_lock();
-			if (res) lock.unlock();
-			return !res;
-		}
-
-	}
-
 
 	// tests whether the given requirements are covered by this node
 	bool DataItemIndexService::covers(const DataItemRegions& region) const {
@@ -40,12 +26,12 @@ namespace data {
 		if (myAddress.isLeaf() || region.empty()) return {};
 
 		// protect and forward to internal
-		guard g(lock);
+		read_guard g(lock);
 		return getManagedUnallocatedRegionInternal(region);
 	}
 
 	DataItemRegions DataItemIndexService::getManagedUnallocatedRegionInternal(const DataItemRegions& region) const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		// a leaf has no managed regions
 		if (myAddress.isLeaf()) return {};
@@ -64,12 +50,12 @@ namespace data {
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
-		guard g(lock);
+		read_guard g(lock);
 		return getMissingRegionsInternal(needed);
 	}
 
 	DataItemRegions DataItemIndexService::getMissingRegionsInternal(const DataItemRegions& needed) const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
@@ -86,12 +72,12 @@ namespace data {
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
-		guard g(lock);
+		read_guard g(lock);
 		return getMissingRegionsLeftInternal(needed);
 	}
 
 	DataItemRegions DataItemIndexService::getMissingRegionsLeftInternal(const DataItemRegions& needed) const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
@@ -105,17 +91,15 @@ namespace data {
 
 	// computes the set of required regions to schedule in the right sub-tree
 	DataItemRegions DataItemIndexService::getMissingRegionsRight(const DataItemRegions& needed) const {
-		assert_true(isLocked(lock));
-
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
 
-		guard g(lock);
+		read_guard g(lock);
 		return getMissingRegionsRightInternal(needed);
 	}
 
 	DataItemRegions DataItemIndexService::getMissingRegionsRightInternal(const DataItemRegions& needed) const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		// if nothing is needed => we are done
 		if (needed.empty()) return {};
@@ -134,12 +118,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		guard g(lock);
+		write_guard g(lock);
 		addRegionsInternal(regions);
 	}
 
 	void DataItemIndexService::addRegionsInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -156,12 +140,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		guard g(lock);
+		write_guard g(lock);
 		addRegionsLeftInternal(regions);
 	}
 
 	void DataItemIndexService::addRegionsLeftInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -178,12 +162,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		guard g(lock);
+		write_guard g(lock);
 		addRegionsRightInternal(regions);
 	}
 
 	void DataItemIndexService::addRegionsRightInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -201,12 +185,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// remove regions
-		guard g(lock);
+		write_guard g(lock);
 		removeRegionsInternal(regions);
 	}
 
 	void DataItemIndexService::removeRegionsInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -223,12 +207,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// remove regions
-		guard g(lock);
+		write_guard g(lock);
 		removeRegionsLeftInternal(regions);
 	}
 
 	void DataItemIndexService::removeRegionsLeftInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -245,12 +229,12 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		guard g(lock);
+		write_guard g(lock);
 		removeRegionsRightInternal(regions);
 	}
 
 	void DataItemIndexService::removeRegionsRightInternal(const DataItemRegions& regions) {
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// if empty => all done
 		if (regions.empty()) return;
@@ -264,12 +248,12 @@ namespace data {
 
 	// computes the data regions available on this node
 	DataItemRegions DataItemIndexService::getAvailableData() const {
-		guard g(lock);
+		read_guard g(lock);
 		return getAvailableDataInternal();
 	}
 
 	DataItemRegions DataItemIndexService::getAvailableDataInternal() const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		DataItemRegions res;
 		for(const auto& cur : indices) {
@@ -280,12 +264,12 @@ namespace data {
 
 	// computes the data regions available in the left sub tree
 	DataItemRegions DataItemIndexService::getAvailableDataLeft() const {
-		guard g(lock);
+		read_guard g(lock);
 		return getAvailableDataLeftInternal();
 	}
 
 	DataItemRegions DataItemIndexService::getAvailableDataLeftInternal() const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		DataItemRegions res;
 		for(const auto& cur : indices) {
@@ -296,12 +280,12 @@ namespace data {
 
 	// computes the data regions available in the right sub tree
 	DataItemRegions DataItemIndexService::getAvailableDataRight() const {
-		guard g(lock);
+		read_guard g(lock);
 		return getAvailableDataRightInternal();
 	}
 
 	DataItemRegions DataItemIndexService::getAvailableDataRightInternal() const {
-		assert_true(isLocked(lock));
+		assert_true(lock.isReadLocked() || lock.isWriteLocked());
 
 		DataItemRegions res;
 		for(const auto& cur : indices) {
@@ -317,7 +301,7 @@ namespace data {
 		if (regions.empty()) return;
 
 		// just add to full region info
-		guard g(lock);
+		write_guard g(lock);
 		addRegionsInternal(regions);
 	}
 
@@ -329,7 +313,7 @@ namespace data {
 		if (full.empty() && required.empty()) return {};
 
 		// lock the local state
-		guard g(lock);
+		write_guard g(lock);
 
 		// extend the local ownership
 		addRegionsInternal(full);
@@ -358,7 +342,7 @@ namespace data {
 		if (full.empty() && required.empty()) return {};
 
 		// lock the local state
-		guard g(lock);
+		write_guard g(lock);
 
 		// extend the local ownership
 		addRegionsInternal(full);
@@ -388,9 +372,9 @@ namespace data {
 
 		if (id < 0) {
 			id = counter++;
-			if (DEBUG) std::cout << myAddress << ": start locating procedure " << id << " - lock state: " << isLocked(lock) << " ..\n";
+			if (DEBUG) std::cout << myAddress << ": start locating procedure " << id << " - lock state: " << lock.isReadLocked() << " / " << lock.isWriteLocked() << " ..\n";
 		} else {
-			if (DEBUG) std::cout << myAddress << ": processing locating procedure " << id << " - lock state: " << isLocked(lock) << " ..\n";
+			if (DEBUG) std::cout << myAddress << ": processing locating procedure " << id << " - lock state: " << lock.isReadLocked() << " / " << lock.isWriteLocked() << " ..\n";
 		}
 
 
@@ -401,7 +385,7 @@ namespace data {
 
 		if (!isRoot && !isSubRegion(regions,getAvailableData())) {
 
-			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - forward to " << myAddress.getParent() << " - " << isLocked(lock) << "\n";
+			if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - forward to " << myAddress.getParent() << " - " << lock.isReadLocked() << " / " << lock.isWriteLocked() << "\n";
 
 			// forward call to parent
 			auto res = network.getRemoteProcedure(myAddress.getParent(),&DataItemIndexService::locate)(regions,id).get();
@@ -416,10 +400,10 @@ namespace data {
 
 	DataItemLocationInfos DataItemIndexService::resolveLocations(const DataItemRegions& regions, int id) {
 
-		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - start - " << isLocked(lock) << "\n";
+		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - start - " << lock.isReadLocked() << " / " << lock.isWriteLocked() << "\n";
 
 		// lock this node (to avoid concurrent modifications)
-		guard g(lock);
+		read_guard g(lock);
 
 		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - locked\n";
 
@@ -551,7 +535,7 @@ namespace data {
 		auto res = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(missing,myAddress).get();
 
 		// this node should be locked now
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// make sure the requested data is complete
 //		assert_eq(regions,res.getCoveredRegions());
@@ -563,7 +547,7 @@ namespace data {
 		com::Node::getLocalService<DataItemManagerService>().takeOwnership(res);
 
 		// free the local lock
-		lock.unlock();
+		lock.endWrite();
 
 	}
 
@@ -581,17 +565,17 @@ namespace data {
 			<< "Node " << child << " is not a child of " << myAddress;
 
 		// Phase 1: walk toward node covering all required regions
-		lock.lock();	// lock this node for the next test
+		lock.startWrite();	// lock this node for the next test
 		if (!isRoot && !isSubRegion(regions,getAvailableDataInternal())) {
 
-			// to avoid dead locks, abandon local lock while descending in tree; decent will aquire it again
-			lock.unlock();
+			// to avoid dead locks, abandon local lock while descending in tree; decent will acquire it again
+			lock.endWrite();
 
 			// forward to parent
 			auto data = network.getRemoteProcedure(myAddress.getParent(), &DataItemIndexService::acquireOwnershipFor)(regions,myAddress).get();
 
 			// the parent should have requested the lock
-			assert_true(isLocked(lock));
+			assert_true(lock.isWriteLocked());
 
 //			// this should cover all requested data
 //			assert_eq(regions,data.getCoveredRegions());
@@ -613,7 +597,7 @@ namespace data {
 			network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)().get();
 
 			// free the local lock
-			lock.unlock();
+			lock.endWrite();
 
 			// forward data and ownership
 			return data;
@@ -651,7 +635,7 @@ namespace data {
 		network.getRemoteProcedure(child, &DataItemIndexService::lockForOwnershipTransfer)().get();
 
 		// give up the local lock
-		lock.unlock();
+		lock.endWrite();
 
 		// return data migration information, thereby abandoning the local lock
 		return res;
@@ -662,7 +646,7 @@ namespace data {
 	 */
 	bool DataItemIndexService::lockForOwnershipTransfer() {
 		// simply take the lock
-		lock.lock();
+		lock.startWrite();
 		return true;	// the return value is needed to not make this a fire-and-forget remote procedure call
 	}
 
@@ -673,7 +657,7 @@ namespace data {
 	DataItemMigrationData DataItemIndexService::abandonOwnership(const DataItemRegions& requested) {
 
 		// lock this node (save since we are walking top-down)
-		guard g(lock);
+		write_guard g(lock);
 
 		auto regions = intersect(requested,getAvailableDataInternal());
 
@@ -720,7 +704,7 @@ namespace data {
 	DataItemMigrationData DataItemIndexService::collectOwnershipFromChildren(const DataItemRegions& regions) {
 
 		// make sure there accesses is exclusive
-		assert_true(isLocked(lock));
+		assert_true(lock.isWriteLocked());
 
 		// make sure the requested region is owned by this node
 		assert_pred2(isSubRegion,regions,getAvailableDataInternal());
@@ -799,7 +783,7 @@ namespace data {
 
 
 	void DataItemIndexService::dumpState(const std::string& prefix) const {
-		std::cout << prefix << "DataItemIndexService@" << myAddress << " - lock state: " << isLocked(lock) << "\n";
+		std::cout << prefix << "DataItemIndexService@" << myAddress << " - lock state: " << lock.isReadLocked() << " / " << lock.isWriteLocked() << "\n";
 	}
 
 } // end of namespace data

@@ -60,7 +60,7 @@ namespace fiber {
 		 */
 
 		// a lock protecting the internal state
-		spinlock syncLock;
+		mutable spinlock syncLock;
 
 		// a guard for the internal state synchronization
 		using guard = std::lock_guard<spinlock>;
@@ -105,6 +105,11 @@ namespace fiber {
 			if ((lck >> 2) == 0) writers.notifyAll();
 		}
 
+		bool isReadLocked() const {
+			guard g(syncLock);
+			return lck > 3;
+		}
+
 		void startWrite() {
 			guard g(syncLock);
 
@@ -143,6 +148,10 @@ namespace fiber {
 			readers.notifyAll();
 		}
 
+		bool isWriteLocked() const {
+			guard g(syncLock);
+			return lck & 0x1;
+		}
 	};
 
 	/**

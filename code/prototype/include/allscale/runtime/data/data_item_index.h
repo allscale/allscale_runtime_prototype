@@ -13,6 +13,7 @@
 #include <mutex>
 
 #include "allscale/utils/fibers.h"
+#include "allscale/utils/fiber/read_write_lock.h"
 
 #include "allscale/api/core/data.h"
 
@@ -381,10 +382,11 @@ namespace data {
 		mutable DataItemLocationCache locationCache;
 
 		// a lock to synchronize transfers on this instance
-		mutable allscale::utils::fiber::Mutex lock;
+		mutable allscale::utils::fiber::ReadWriteLock lock;
 
 		// the guard type to utilize
-		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
+		using read_guard = allscale::utils::fiber::ReadGuard;
+		using write_guard = allscale::utils::fiber::WriteGuard;
 
 	public:
 
@@ -405,7 +407,7 @@ namespace data {
 		// tests whether the given regions are covered by this node
 		bool covers(const DataItemRegions&) const;
 
-		// tests whether the gvien region contains data managed by this node, yet not allocated to left or right
+		// tests whether the given region contains data managed by this node, yet not allocated to left or right
 		DataItemRegions getManagedUnallocatedRegion(const DataItemRegions&) const;
 
 		// computes the data regions available on this node (according to the ownership)

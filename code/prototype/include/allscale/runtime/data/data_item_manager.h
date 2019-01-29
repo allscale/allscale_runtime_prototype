@@ -15,6 +15,7 @@
 #include <typeindex>
 
 #include "allscale/utils/assert.h"
+#include "allscale/utils/fiber/read_write_lock.h"
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/com/network.h"
@@ -79,10 +80,11 @@ namespace data {
 		region_type reserved;
 
 		// a lock for operation synchronization
-		mutable allscale::utils::fiber::Mutex lock;
+		mutable allscale::utils::fiber::ReadWriteLock lock;
 
-		// the kind of guard used for synchronization
-		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
+		// the kind of guards used for synchronization
+		using read_guard = allscale::utils::fiber::ReadGuard;
+		using write_guard = allscale::utils::fiber::ReadGuard;
 
 	public:
 
@@ -130,7 +132,7 @@ namespace data {
 			reserve(newSize);
 
 			// update the ownership
-			guard g(lock);
+			write_guard g(lock);
 			exclusive = newSize;
 		}
 
@@ -140,7 +142,7 @@ namespace data {
 
 		void reserve(const region_type& area) {
 			// lock down this fragment
-			guard g(lock);
+			write_guard g(lock);
 
 			// test whether a change is necessary
 			if (allscale::api::core::isSubRegion(area,reserved)) return;
@@ -156,7 +158,7 @@ namespace data {
 			allscale::utils::ArchiveWriter out;
 			{
 				// lock down this fragment
-				guard g(lock);
+				read_guard g(lock);
 				if (!allscale::api::core::isSubRegion(region,exclusive)) return {};	// do not extract non-eclusive content!
 				fragment.extract(out,region_type::intersect(region,getDataItemSize()));
 			}
@@ -166,7 +168,7 @@ namespace data {
 
 		void insert(allscale::utils::Archive& data) {
 			// lock down this fragment
-			guard g(lock);
+			write_guard g(lock);
 			allscale::utils::ArchiveReader in(data);
 			fragment.insert(in);
 		}

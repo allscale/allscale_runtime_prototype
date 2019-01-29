@@ -79,10 +79,10 @@ namespace data {
 		region_type reserved;
 
 		// a lock for operation synchronization
-		mutable std::mutex lock;
+		mutable allscale::utils::fiber::Mutex lock;
 
-		// the kind of gurad used for synchronization
-		using guard = std::lock_guard<std::mutex>;
+		// the kind of guard used for synchronization
+		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
 
 	public:
 

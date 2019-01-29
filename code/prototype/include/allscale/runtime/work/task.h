@@ -115,13 +115,13 @@ namespace work {
 		virtual bool isSplitable() const =0;
 
 		// obtain the process dependencies of this task
-		virtual data::DataItemRequirements getProcessRequirements() const;
+		virtual const data::DataItemRequirements& getProcessRequirements() const;
 
 		// processes this task (non-split variant)
 		void process();
 
 		// obtain the split dependencies of this task
-		virtual data::DataItemRequirements getSplitRequirements() const;
+		virtual const data::DataItemRequirements& getSplitRequirements() const;
 
 		// processes this task (split variant)
 		void split();
@@ -402,10 +402,22 @@ namespace work {
 		// the closure parameterizing this work item task
 		closure_type closure;
 
+		data::DataItemRequirements splitRequirements;
+		data::DataItemRequirements processRequirements;
+
 	public:
 
 		WorkItemTask(const TaskRef& ref, TaskDependencies&& deps, closure_type&& closure, bool first = true)
-			: ComputeTask<result_type>(ref,std::move(deps),first), closure(std::move(closure)) {}
+			: ComputeTask<result_type>(ref,std::move(deps),first)
+			, closure(std::move(closure))
+			, splitRequirements(data::DataItemRequirements::fromTuple(SplitVariant::get_requirements(closure)))
+			, processRequirements(data::DataItemRequirements::fromTuple(ProcessVariant::get_requirements(closure))) {}
+
+		WorkItemTask(const TaskRef& ref, TaskDependencies&& deps, closure_type&& closure, data::DataItemRequirements&& splitReq, data::DataItemRequirements&& processReq)
+			: ComputeTask<result_type>(ref,std::move(deps),false)
+			, closure(std::move(closure))
+			, splitRequirements(std::move(splitReq))
+			, processRequirements(std::move(processReq)) {}
 
 		virtual bool canBeDistributed() const override {
 			return true;
@@ -415,8 +427,8 @@ namespace work {
 			return CanSplitTest::call(closure);
 		}
 
-		virtual data::DataItemRequirements getProcessRequirements() const override {
-			return data::DataItemRequirements::fromTuple(ProcessVariant::get_requirements(closure));
+		virtual const data::DataItemRequirements& getProcessRequirements() const override {
+			return processRequirements;
 		}
 
 		virtual void processInternal() override {
@@ -426,8 +438,8 @@ namespace work {
 			DLOG << "Task " << this->getId() << " processing completed!\n";
 		}
 
-		virtual data::DataItemRequirements getSplitRequirements() const override {
-			return data::DataItemRequirements::fromTuple(SplitVariant::get_requirements(closure));
+		virtual const data::DataItemRequirements& getSplitRequirements() const override {
+			return splitRequirements;
 		}
 
 		virtual void splitInternal() override {
@@ -440,10 +452,15 @@ namespace work {
 		// saves a copy of the task to the given stream
 		virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
 			out.write<closure_type>(closure);
+			out.write<data::DataItemRequirements>(splitRequirements);
+			out.write<data::DataItemRequirements>(processRequirements);
 		}
 
 		static std::unique_ptr<Task> load(const TaskRef& ref, TaskDependencies&& deps, allscale::utils::ArchiveReader& in) {
-			return std::make_unique<WorkItemTask>(ref,std::move(deps),in.read<closure_type>(),false);
+			auto closure = in.read<closure_type>();
+			auto split = in.read<data::DataItemRequirements>();
+			auto process = in.read<data::DataItemRequirements>();
+			return std::make_unique<WorkItemTask>(ref,std::move(deps),std::move(closure),std::move(split),std::move(process));
 		}
 
 		// retrieves the function capable of de-serializing a task instance

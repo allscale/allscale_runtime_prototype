@@ -114,6 +114,11 @@ namespace data {
 
 	public:
 
+		DataItemRequirements() = default;
+
+		DataItemRequirements(DataItemRegions&& read, DataItemRegions&& write)
+			: readRequirements(std::move(read)), writeRequirements(std::move(write)) {}
+
 		/**
 		 * Tests whether the requirements are empty.
 		 */
@@ -157,6 +162,12 @@ namespace data {
 			// done
 			return res;
 		}
+
+		// -- serialization --
+
+		void store(allscale::utils::ArchiveWriter& out) const;
+
+		static DataItemRequirements load(allscale::utils::ArchiveReader& in);
 
 		// supports printing requirements
 		friend std::ostream& operator<<(std::ostream&, const DataItemRequirements&);

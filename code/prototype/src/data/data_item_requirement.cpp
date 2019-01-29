@@ -22,6 +22,18 @@ namespace data {
 		return readRequirements.empty() && writeRequirements.empty();
 	}
 
+	void DataItemRequirements::store(allscale::utils::ArchiveWriter& out) const {
+		out.write(readRequirements);
+		out.write(writeRequirements);
+	}
+
+	DataItemRequirements DataItemRequirements::load(allscale::utils::ArchiveReader& in) {
+		auto read = in.read<DataItemRegions>();
+		auto write = in.read<DataItemRegions>();
+		return DataItemRequirements{ std::move(read),std::move(write) };
+	}
+
+
 	std::ostream& operator<<(std::ostream& out, const DataItemRequirements& reqs) {
 		// other requirements get listed
 		return out << "Requirements( RO: " << reqs.readRequirements << ", RW: " << reqs.writeRequirements << ")";

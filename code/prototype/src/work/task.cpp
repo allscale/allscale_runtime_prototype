@@ -13,8 +13,9 @@ namespace work {
 		return current_task;
 	}
 
-	data::DataItemRequirements Task::getProcessRequirements() const {
-		return {};
+	const data::DataItemRequirements& Task::getProcessRequirements() const {
+		static const data::DataItemRequirements empty;
+		return empty;
 	}
 
 	void Task::process() {
@@ -37,8 +38,9 @@ namespace work {
 
 	}
 
-	data::DataItemRequirements Task::getSplitRequirements() const {
-		return {};
+	const data::DataItemRequirements& Task::getSplitRequirements() const {
+		static const data::DataItemRequirements empty;
+		return empty;
 	}
 
 	void Task::split() {

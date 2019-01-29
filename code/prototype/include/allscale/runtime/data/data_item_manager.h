@@ -41,8 +41,6 @@ namespace data {
 
 	class DataItemIndexService;
 
-	template<typename DataItem>
-	void notifyIndexOnCreation(const DataItemReference<DataItem>&);
 
 	// -----------------------------------------------------
 
@@ -190,7 +188,11 @@ namespace data {
 			virtual void import(const DataItemMigrationData&) =0;
 			virtual void extract(const DataItemRegions&, DataItemMigrationData&) =0;
 			virtual void takeOwnership(const DataItemMigrationData&) =0;
-			virtual void addExclusiveRegions(DataItemRegions&) const =0;
+
+			virtual void collectExclusiveRegions(DataItemRegions&) const =0;
+
+			virtual void addExclusiveRegions(const DataItemRegions&) =0;
+			virtual void removeExclusiveRegions(const DataItemRegions&) =0;
 		};
 
 		/**
@@ -234,9 +236,7 @@ namespace data {
 			}
 
 			void extract(const DataItemRegions& regions, DataItemMigrationData& res) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& cur){
-					auto& ref = cur.getDataItemReference();
-					auto& region = cur.getRegion();
+				regions.forAll<DataItem>([&](const reference_type& ref, const region_type& region){
 					auto pos = items.find(ref);
 					// one can not extract what one does not have
 					if (pos == items.end()) return;
@@ -273,12 +273,28 @@ namespace data {
 				});
 			}
 
-			void addExclusiveRegions(DataItemRegions& res) const override {
+			void collectExclusiveRegions(DataItemRegions& res) const override {
 				for(const auto& cur : items) {
 					auto region = region_type::intersect(cur.second->getExclusiveRegion(),cur.second->getDataItemSize());
 					if (region.empty()) continue;
 					res.add(cur.first,region);
 				}
+			}
+
+			void addExclusiveRegions(const DataItemRegions& regions) override {
+				regions.forAll<DataItem>([&](reference_type ref, const region_type& region){
+					if (region.empty()) return;
+					auto& fragment = get(ref);
+					fragment.resizeExclusive(region_type::merge(fragment.getExclusiveRegion(),region));
+				});
+			}
+
+			void removeExclusiveRegions(const DataItemRegions& regions) override {
+				regions.forAll<DataItem>([&](reference_type ref, const region_type& region){
+					if (region.empty()) return;
+					auto& fragment = get(ref);
+					fragment.resizeExclusive(region_type::difference(fragment.getExclusiveRegion(),region));
+				});
 			}
 
 			// obtains access to a selected fragment handler
@@ -306,6 +322,12 @@ namespace data {
 
 		// the list of all regions registered in the system
 		DataItemRegions fullRegions;
+
+		// the lock to protect the exclusive region information
+		mutable allscale::utils::fiber::ReadWriteLock exclusiveRegionsLock;
+
+		// the list of exclusively owned regions
+		DataItemRegions exclusiveRegions;
 
 		// a cache for resolved data locations
 		mutable DataItemLocationCache locationCache;
@@ -401,9 +423,6 @@ namespace data {
 
 			// add new data item to full regions
 			fullRegions.add(ref,reg.getDataItemSize(ref));
-
-			// also inform index services
-			notifyIndexOnCreation(ref);
 		}
 
 		/**
@@ -429,10 +448,10 @@ namespace data {
 
 		// --- local interface ---
 
-		template<typename DataItem>
-		void resizeExclusive(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
-			getRegister<DataItem>().get(ref).resizeExclusive(region);
-		}
+		void addExclusive(const DataItemRegions& regions);
+
+		void removeExclusive(const DataItemRegions& regions);
+
 
 		template<typename DataItem>
 		void acquire(const DataItemReference<DataItem>& ref, const typename DataItem::region_type& region) {
@@ -473,6 +492,8 @@ namespace data {
 
 
 	private:
+
+		const DataItemRegions& getExclusiveRegionsInternal() const;
 
 		// obtains the register for a given data item type
 		template<typename DataItem>

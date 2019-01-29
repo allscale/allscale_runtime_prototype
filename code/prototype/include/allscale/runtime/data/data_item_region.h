@@ -397,7 +397,7 @@ namespace data {
 			auto pos = regions.find(typeid(DataItem));
 			if (pos == regions.end()) return;
 			for(const auto& cur : static_cast<const Regions<DataItem>&>(*pos->second).getRegions()) {
-				op(DataItemRegion<DataItem>(cur.first,cur.second));
+				op(cur.first,cur.second);
 			}
 		}
 

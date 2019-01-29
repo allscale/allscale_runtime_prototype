@@ -165,7 +165,7 @@ namespace data {
 				if (cur.first == rank) {
 
 					// check that expected data is present
-					if (!isSubRegion(cur.second,getExclusiveRegions())) {
+					if (!isSubRegion(cur.second,getExclusiveRegionsInternal())) {
 						// invalidate cache and restart
 						invalidateCache();
 						break;
@@ -246,6 +246,27 @@ namespace data {
 		return res;
 	}
 
+	void DataItemManagerService::addExclusive(const DataItemRegions& regions) {
+		// resize to fit actual regions
+		for(const auto& cur : registers) {
+			cur.second->addExclusiveRegions(regions);
+		}
+
+		allscale::utils::fiber::WriteGuard g(exclusiveRegionsLock);
+		exclusiveRegions.add(regions);
+	}
+
+	void DataItemManagerService::removeExclusive(const DataItemRegions& regions) {
+		// resize to fit actual regions
+		for(const auto& cur : registers) {
+			cur.second->removeExclusiveRegions(regions);
+		}
+
+		allscale::utils::fiber::WriteGuard g(exclusiveRegionsLock);
+		exclusiveRegions = difference(exclusiveRegions, regions);
+	}
+
+
 	void DataItemManagerService::takeOwnership(const DataItemMigrationData& data) {
 		// import data into actual data fragment managers ...
 		for(const auto& cur : registers) {
@@ -253,12 +274,15 @@ namespace data {
 		}
 	}
 
+
 	DataItemRegions DataItemManagerService::getExclusiveRegions() const {
-		DataItemRegions res;
-		for(const auto& cur : registers) {
-			cur.second->addExclusiveRegions(res);
-		}
-		return res;
+		allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+		return exclusiveRegions;
+	}
+
+	const DataItemRegions& DataItemManagerService::getExclusiveRegionsInternal() const {
+		allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+		return exclusiveRegions;
 	}
 
 

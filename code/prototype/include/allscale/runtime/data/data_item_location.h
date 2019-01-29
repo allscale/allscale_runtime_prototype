@@ -89,6 +89,8 @@ namespace data {
 			entries[loc].add(ref,region);
 		}
 
+		void add(const DataItemRegions& regions, com::rank_t loc);
+
 		// --- operators ---
 
 		bool operator==(const DataItemLocationInfos& other) const {

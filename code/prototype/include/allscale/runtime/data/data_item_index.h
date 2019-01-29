@@ -32,339 +32,11 @@ namespace allscale {
 namespace runtime {
 namespace data {
 
-	/**
-	 * The entity managing the distribution of a single data item
-	 * on a virtual node in the hierarchical overlay network.
-	 */
-	template<typename DataItem>
-	class DataItemIndexEntry {
-
-		// Test that the passed data item type is valid.
-		static_assert(allscale::api::core::is_data_item<DataItem>::value, "Can only be instantiated for data items!");
-
-		// ------ some type definitions ------
-
-		using shared_data_type = typename DataItem::shared_data_type;
-		using region_type      = typename DataItem::region_type;
-		using fragment_type    = typename DataItem::fragment_type;
-		using facade_type      = typename DataItem::facade_type;
-
-
-		// -- hierarchical network management information --
-
-		// the area managed by this node on the corresponding level
-		region_type full;
-
-		// the area managed by the left child
-		region_type left;
-
-		// the area managed by the right child
-		region_type right;
-
-		// the network being a part of
-		com::HierarchicalOverlayNetwork network;
-
-		// the address this index entry is assigned to
-		com::HierarchyAddress myAddr;
-
-		// true if this is the root entry of the index, false otherwise
-		bool isRoot;
-
-		// the data item managing
-		data::DataItemReference<DataItem> ref;
-
-		// locks
-		mutable std::mutex full_lock;
-		mutable std::mutex left_lock;
-		mutable std::mutex right_lock;
-
-		using guard = std::lock_guard<std::mutex>;
-
-	public:
-
-		// create a new index entry
-		DataItemIndexEntry(com::Network& net, const com::HierarchyAddress& addr, const data::DataItemReference<DataItem>& ref)
-			: network(net), myAddr(addr), isRoot(myAddr == network.getRootAddress()), ref(ref) {}
-
-		DataItemIndexEntry(const DataItemIndexEntry&) = delete;
-		DataItemIndexEntry(DataItemIndexEntry&& other) = delete;
-
-		// test whether the given requirement is covered by the current region of influence
-		bool isCovered(const DataItemRequirement<DataItem>& req) const {
-			assert_eq(ReadWrite, req.getMode());
-			guard g(full_lock);
-			return allscale::api::core::isSubRegion(req.getRegion(),full);
-		}
-
-		bool isCoveredByLeft(const DataItemRequirement<DataItem>& req) const {
-			assert_eq(ReadWrite, req.getMode());
-			guard g(left_lock);
-			return allscale::api::core::isSubRegion(req.getRegion(),left);
-		}
-
-		bool isCoveredByRight(const DataItemRequirement<DataItem>& req) const {
-			assert_eq(ReadWrite, req.getMode());
-			guard g(right_lock);
-			return allscale::api::core::isSubRegion(req.getRegion(),right);
-		}
-
-		void add(const DataItemRegion<DataItem>& a) {
-			guard g(full_lock);
-			full = allscale::api::core::merge(full,a.getRegion());
-
-			// if this is not a leaf we are done
-			if (!myAddr.isLeaf()) return;
-
-			// grow corresponding fragment (keep them equally sized)
-			com::Node::getLocalService<DataItemManagerService>().resizeExclusive(ref,full);
-		}
-
-		void addLeft(const DataItemRegion<DataItem>& a) {
-			guard g(left_lock);
-			left = allscale::api::core::merge(left,a.getRegion());
-			check();
-		}
-
-		void addRight(const DataItemRegion<DataItem>& a) {
-			guard g(right_lock);
-			right = allscale::api::core::merge(right,a.getRegion());
-			check();
-		}
-
-
-		void remove(const DataItemRegion<DataItem>& a) {
-			guard g(full_lock);
-			full = region_type::difference(full,a.getRegion());
-
-			// if this is not a leaf we are done
-			if (!myAddr.isLeaf()) return;
-
-			// shrink corresponding fragment (keep them equally sized)
-			com::Node::getLocalService<DataItemManagerService>().resizeExclusive(ref,full);
-		}
-
-		void removeLeft(const DataItemRegion<DataItem>& a) {
-			guard g(left_lock);
-			left = region_type::difference(left,a.getRegion());
-			check();
-		}
-
-		void removeRight(const DataItemRegion<DataItem>& a) {
-			guard g(right_lock);
-			right = region_type::difference(right,a.getRegion());
-			check();
-		}
-
-
-		void addTo(DataItemRegions& a) const {
-			guard g(full_lock);
-			a.add(DataItemRegion<DataItem>(ref,full));
-		}
-
-		void addLeftTo(DataItemRegions& a) const {
-			guard g(left_lock);
-			a.add(DataItemRegion<DataItem>(ref,left));
-		}
-
-		void addRightTo(DataItemRegions& a) const {
-			guard g(right_lock);
-			a.add(DataItemRegion<DataItem>(ref,right));
-		}
-
-		void addLocationInfo(const region_type& needed, DataItemLocationInfos& res) const {
-
-			// this must only be called for leaf nodes
-			assert_true(myAddr.isLeaf());
-
-			// fill in local state ..
-
-			// lock local state
-			guard g(full_lock);
-
-			// see whether there is something within the domain of this node
-			auto match = region_type::intersect(needed,full);
-			if (match.empty()) return; // does not seem so
-
-			// we found something
-			res.add(ref,match,myAddr.getRank());
-
-		}
-
-		void abandonOwnership(const region_type& needed, DataItemMigrationData& res) {
-
-			// this must only be called for leaf nodes
-			assert_true(myAddr.isLeaf());
-
-			// fill in local data
-
-			// lock local state
-			guard g(full_lock);
-
-			// see whether there is something within the domain of this node
-			auto match = region_type::intersect(needed,full);
-			if (match.empty()) return; // does not seem so
-
-			// get the local data item manager
-			auto& dim = com::Node::getLocalService<DataItemManagerService>();
-
-			// we found something => extract it
-			auto data = dim.extract(ref,match);
-			assert_true(bool(data));
-			res.add(ref,match,std::move(*data));
-
-			// remove ownership
-			full = region_type::difference(full,match);
-
-			// resize local data fragment (deletes local data)
-			dim.resizeExclusive(ref,full);
-		}
-
-	private:
-
-		// checks this entry for consistency
-		void check() const {
-			// check all invariants
-			assert_pred2(allscale::api::core::isSubRegion,left,full);
-			assert_pred2(allscale::api::core::isSubRegion,right,full);
-
-			assert_decl(auto disjoint = [](const auto& a, const auto& b) {
-				return region_type::intersect(a,b).empty();
-			});
-			assert_pred2(disjoint,left,right) << "Overlap: " << region_type::intersect(left,right);
-		}
-
-	};
-
 
 	/**
 	 * The hierarchical data item index service running on all virtual nodes.
 	 */
 	class DataItemIndexService {
-
-		// the base of type-specific index entries
-		class IndexBase {
-		public:
-			virtual ~IndexBase() {}
-
-			virtual void addAvailable(DataItemRegions& res) const =0;
-
-			virtual void addAvailableLeft(DataItemRegions& res) const =0;
-
-			virtual void addAvailableRight(DataItemRegions& res) const =0;
-
-			virtual void add(const DataItemRegions& regions) =0;
-
-			virtual void addLeft(const DataItemRegions& regions) =0;
-
-			virtual void addRight(const DataItemRegions& regions) =0;
-
-			virtual void remove(const DataItemRegions& regions) =0;
-
-			virtual void removeLeft(const DataItemRegions& regions) =0;
-
-			virtual void removeRight(const DataItemRegions& regions) =0;
-
-			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const =0;
-
-			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) =0;
-		};
-
-		// a type specific index entry
-		template<typename DataItem>
-		class Index : public IndexBase {
-
-			// the network being a part of
-			com::Network& net;
-
-			// the index of the maintained data item entries
-			std::map<DataItemReference<DataItem>,std::unique_ptr<DataItemIndexEntry<DataItem>>> indices;
-
-			// the address of the node this index is installed on
-			com::HierarchyAddress myAddress;
-
-		public:
-
-			Index(com::Network& net, const com::HierarchyAddress& addr) : net(net), myAddress(addr) {}
-
-			DataItemIndexEntry<DataItem>& get(const DataItemReference<DataItem>& ref) {
-				auto pos = indices.find(ref);
-				if (pos != indices.end()) return *pos->second;
-				return *indices.emplace(ref,std::make_unique<DataItemIndexEntry<DataItem>>(net,myAddress,ref)).first->second;
-			}
-
-			void addAvailable(DataItemRegions& res) const override {
-				for(const auto& cur : indices) {
-					cur.second->addTo(res);
-				}
-			}
-
-			void addAvailableLeft(DataItemRegions& res) const override {
-				for(const auto& cur : indices) {
-					cur.second->addLeftTo(res);
-				}
-			}
-
-			void addAvailableRight(DataItemRegions& res) const override {
-				for(const auto& cur : indices) {
-					cur.second->addRightTo(res);
-				}
-			}
-
-			void add(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).add(r);
-				});
-			}
-
-			void addLeft(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).addLeft(r);
-				});
-			}
-
-			void addRight(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).addRight(r);
-				});
-			}
-
-			void remove(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).remove(r);
-				});
-			}
-
-			void removeLeft(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).removeLeft(r);
-				});
-			}
-
-			void removeRight(const DataItemRegions& regions) override {
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					get(r.getDataItemReference()).removeRight(r);
-				});
-			}
-
-			virtual void addLocationInfo(const DataItemRegions& regions, DataItemLocationInfos& res) const override {
-				assert_true(myAddress.isLeaf());
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r){
-					auto pos = indices.find(r.getDataItemReference());
-					if (pos == indices.end()) return;
-					pos->second->addLocationInfo(r.getRegion(),res);
-				});
-			}
-
-			virtual void abandonOwnership(const DataItemRegions& regions, DataItemMigrationData& res) override {
-				assert_true(myAddress.isLeaf());
-				regions.forAll<DataItem>([&](const DataItemRegion<DataItem>& r) {
-					auto pos = indices.find(r.getDataItemReference());
-					if (pos == indices.end()) return;
-					pos->second->abandonOwnership(r.getRegion(),res);
-				});
-			}
-
-		};
 
 		// the network being based on
 		com::HierarchicalOverlayNetwork network;
@@ -375,8 +47,14 @@ namespace data {
 		// flag to indicate that this is the root service
 		bool isRoot;
 
-		// the set of all maintained indices
-		std::map<std::type_index,std::unique_ptr<IndexBase>> indices;
+		// a summary of the regions managed by this hierarchical node
+		DataItemRegions managedRegions;
+
+		// a summary of the regions managed by the nodes left child
+		DataItemRegions managedRegionsLeft;
+
+		// a summary of the regions managed by the nodes right child
+		DataItemRegions managedRegionsRight;
 
 		// a cache for location information
 		mutable DataItemLocationCache locationCache;
@@ -393,16 +71,6 @@ namespace data {
 		// creates a new instance of this service running on the given address
 		DataItemIndexService(com::Network& net, const com::HierarchyAddress& address)
 			: network(net), myAddress(address), isRoot(myAddress == network.getRootAddress()) {}
-
-		template<typename DataItem>
-		void registerDataItem(const DataItemReference<DataItem>& ref) {
-			get(ref); // the index structure is created as a side-effect
-		}
-
-		template<typename DataItem>
-		DataItemIndexEntry<DataItem>& get(const DataItemReference<DataItem>& ref) {
-			return getIndex<DataItem>().get(ref);
-		}
 
 		// tests whether the given regions are covered by this node
 		bool covers(const DataItemRegions&) const;
@@ -534,25 +202,17 @@ namespace data {
 		// a internal utility function implementing common functionality of acquireOwnershipFor and abandonOwnership
 		DataItemMigrationData collectOwnershipFromChildren(const DataItemRegions&);
 
-		// retrieves a type specific index maintained in this service
-		template<typename DataItem>
-		Index<DataItem>& getIndex() {
-			auto& ptr = indices[typeid(DataItem)];
-			if (!ptr) ptr = std::make_unique<Index<DataItem>>(network.getNetwork(),myAddress);
-			return static_cast<Index<DataItem>&>(*ptr);
-		}
-
 		// -- internal, non-lock protected members --
 
 		bool coversInternal(const DataItemRegions&) const;
 
 		DataItemRegions getManagedUnallocatedRegionInternal(const DataItemRegions&) const;
 
-		DataItemRegions getAvailableDataInternal() const;
+		const DataItemRegions& getAvailableDataInternal() const;
 
-		DataItemRegions getAvailableDataLeftInternal() const;
+		const DataItemRegions& getAvailableDataLeftInternal() const;
 
-		DataItemRegions getAvailableDataRightInternal() const;
+		const DataItemRegions& getAvailableDataRightInternal() const;
 
 		DataItemRegions getMissingRegionsInternal(const DataItemRegions&) const;
 
@@ -577,13 +237,6 @@ namespace data {
 		void dumpState(const std::string& prefix) const;
 
 	};
-
-	template<typename DataItem>
-	void notifyIndexOnCreation(const DataItemReference<DataItem>& ref) {
-		com::HierarchicalOverlayNetwork::forAllLocal<DataItemIndexService>([&](DataItemIndexService& s){
-			s.registerDataItem(ref);
-		});
-	}
 
 
 } // end of namespace com

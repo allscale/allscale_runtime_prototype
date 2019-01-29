@@ -16,6 +16,15 @@ namespace data {
 		return res;
 	}
 
+	void DataItemLocationInfos::add(const DataItemRegions& regions, com::rank_t loc) {
+		auto& entry = entries[loc];
+		if (entry.empty()) {
+			entry = regions;
+		} else {
+			entry = merge(entry,regions);
+		}
+	}
+
 	// --- set operations ---
 
 	DataItemLocationInfos& DataItemLocationInfos::addAll(const DataItemLocationInfos& other) {

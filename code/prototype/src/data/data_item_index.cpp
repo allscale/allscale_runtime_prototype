@@ -129,9 +129,15 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		for(const auto& cur : indices) {
-			cur.second->add(regions);
+		managedRegions.add(regions);
+
+		// if this is the leaf level ..
+		if (myAddress.isLeaf()) {
+			// .. update DIM to reflect ownership
+			auto& dim = com::Node::getLocalService<DataItemManagerService>();
+			dim.addExclusive(regions);
 		}
+
 	}
 
 	// adds the provided regions to the coverage of the left sub tree
@@ -151,9 +157,7 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		for(const auto& cur : indices) {
-			cur.second->addLeft(regions);
-		}
+		managedRegionsLeft.add(regions);
 	}
 
 	// adds the provided regions to the coverage of the right sub tree
@@ -173,9 +177,7 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		for(const auto& cur : indices) {
-			cur.second->addRight(regions);
-		}
+		managedRegionsRight.add(regions);
 	}
 
 
@@ -196,9 +198,15 @@ namespace data {
 		if (regions.empty()) return;
 
 		// remove regions
-		for(const auto& cur : indices) {
-			cur.second->remove(regions);
+		managedRegions = difference(managedRegions,regions);
+
+		// if this is the leaf level ..
+		if (myAddress.isLeaf()) {
+			// .. update DIM to reflect ownership
+			auto& dim = com::Node::getLocalService<DataItemManagerService>();
+			dim.removeExclusive(regions);
 		}
+
 	}
 
 	// removes the provided regions to the coverage of the left sub tree
@@ -218,9 +226,7 @@ namespace data {
 		if (regions.empty()) return;
 
 		// remove regions
-		for(const auto& cur : indices) {
-			cur.second->removeLeft(regions);
-		}
+		managedRegionsLeft = difference(managedRegionsLeft,regions);
 	}
 
 	// removes the provided regions to the coverage of the right sub tree
@@ -240,9 +246,7 @@ namespace data {
 		if (regions.empty()) return;
 
 		// adding regions
-		for(const auto& cur : indices) {
-			cur.second->removeRight(regions);
-		}
+		managedRegionsRight = difference(managedRegionsRight,regions);
 	}
 
 
@@ -252,14 +256,9 @@ namespace data {
 		return getAvailableDataInternal();
 	}
 
-	DataItemRegions DataItemIndexService::getAvailableDataInternal() const {
+	const DataItemRegions& DataItemIndexService::getAvailableDataInternal() const {
 		assert_true(lock.isReadLocked() || lock.isWriteLocked());
-
-		DataItemRegions res;
-		for(const auto& cur : indices) {
-			cur.second->addAvailable(res);
-		}
-		return res;
+		return managedRegions;
 	}
 
 	// computes the data regions available in the left sub tree
@@ -268,14 +267,9 @@ namespace data {
 		return getAvailableDataLeftInternal();
 	}
 
-	DataItemRegions DataItemIndexService::getAvailableDataLeftInternal() const {
+	const DataItemRegions& DataItemIndexService::getAvailableDataLeftInternal() const {
 		assert_true(lock.isReadLocked() || lock.isWriteLocked());
-
-		DataItemRegions res;
-		for(const auto& cur : indices) {
-			cur.second->addAvailableLeft(res);
-		}
-		return res;
+		return managedRegionsLeft;
 	}
 
 	// computes the data regions available in the right sub tree
@@ -284,14 +278,9 @@ namespace data {
 		return getAvailableDataRightInternal();
 	}
 
-	DataItemRegions DataItemIndexService::getAvailableDataRightInternal() const {
+	const DataItemRegions& DataItemIndexService::getAvailableDataRightInternal() const {
 		assert_true(lock.isReadLocked() || lock.isWriteLocked());
-
-		DataItemRegions res;
-		for(const auto& cur : indices) {
-			cur.second->addAvailableRight(res);
-		}
-		return res;
+		return managedRegionsRight;
 	}
 
 
@@ -419,9 +408,7 @@ namespace data {
 		if (myAddress.isLeaf()) {
 
 			// add local information
-			for(const auto& cur : indices) {
-				cur.second->addLocationInfo(regions,res);
-			}
+			res.add(intersect(regions,getAvailableDataInternal()),myAddress.getRank());
 
 			// make sure everything has been located - unless this is also the root node (single node)
 			if (!isRoot) {
@@ -670,22 +657,22 @@ namespace data {
 
 		if (myAddress.isLeaf()) {
 
-			// initialize results
-			DataItemMigrationData res;
+			// get the local data item manager
+			auto& dim = com::Node::getLocalService<DataItemManagerService>();
 
-			// add local information
-			for(const auto& cur : indices) {
-				cur.second->abandonOwnership(regions,res);
-			}
+			// retrieve data
+			auto res = dim.extractRegions(regions);
 
 			// test that retrieved data is complete
 			assert_eq(regions,res.getCoveredRegions());
+
+			// abandon ownership
+			removeRegionsInternal(regions);
 
 			// ownership should be reduced impicitly
 			assert_pred2(isDisjoint,regions,getAvailableDataInternal())
 				<< "Extracted: " << res.getCoveredRegions() << "\n"
 				<< "Remaining: " << getAvailableDataInternal() << "\n";
-
 
 			// done
 			return res;

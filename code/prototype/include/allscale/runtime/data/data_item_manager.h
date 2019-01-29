@@ -84,7 +84,7 @@ namespace data {
 
 		// the kind of guards used for synchronization
 		using read_guard = allscale::utils::fiber::ReadGuard;
-		using write_guard = allscale::utils::fiber::ReadGuard;
+		using write_guard = allscale::utils::fiber::WriteGuard;
 
 	public:
 
@@ -159,7 +159,7 @@ namespace data {
 			{
 				// lock down this fragment
 				read_guard g(lock);
-				if (!allscale::api::core::isSubRegion(region,exclusive)) return {};	// do not extract non-eclusive content!
+				if (!allscale::api::core::isSubRegion(region,exclusive)) return {};	// do not extract non-exclusive content!
 				fragment.extract(out,region_type::intersect(region,getDataItemSize()));
 			}
 			return std::move(out).toArchive();

@@ -17,6 +17,7 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer/functions.h"
+#include "allscale/utils/fibers.h"
 
 #include "allscale/runtime/com/node.h"
 
@@ -129,14 +130,14 @@ namespace data {
 		std::deque<Entry> cache;
 
 		// a lock for synchronization
-		std::unique_ptr<std::mutex> lock;
+		std::unique_ptr<allscale::utils::fiber::Mutex> lock;
 
 		// the guard type
-		using guard = std::lock_guard<std::mutex>;
+		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
 
 	public:
 
-		DataItemLocationCache() : lock(std::make_unique<std::mutex>()) {}
+		DataItemLocationCache() : lock(std::make_unique<allscale::utils::fiber::Mutex>()) {}
 
 		// clears the cache content
 		void clear();

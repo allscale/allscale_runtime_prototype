@@ -16,9 +16,15 @@ namespace data {
 		network.installServiceOnNodes<DataItemManagerService>();
 	}
 
-
 	DataItemManagerService::DataItemManagerService(com::Node& node)
-		: network(com::Network::getNetwork()), rank(node.getRank()) {}
+		: network(com::Network::getNetwork()),
+		  rank(node.getRank()),
+		  allocate_call_count(0),
+		  release_call_count(0),
+		  locate_call_count(0),
+		  retrieve_call_count(0),
+		  acquire_call_count(0)
+	{}
 
 	// a function to retrieve the local instance of this service
 	DataItemManagerService& DataItemManagerService::getLocalService() {
@@ -27,6 +33,9 @@ namespace data {
 
 
 	void DataItemManagerService::allocate(const DataItemRequirements& reqs) {
+
+		// increment counter
+		allocate_call_count.fetch_add(1,std::memory_order_relaxed);
 
 		// do not wait for empty requirements
 		if (reqs.empty()) return;
@@ -63,6 +72,9 @@ namespace data {
 
 	void DataItemManagerService::release(const DataItemRequirements& reqs) {
 
+		// increment counter
+		release_call_count.fetch_add(1,std::memory_order_relaxed);
+
 		// no work required for empty requirements
 		if (reqs.empty()) return;
 
@@ -88,6 +100,9 @@ namespace data {
 	 */
 	void DataItemManagerService::retrieve(const DataItemRegions& requestedRegions) {
 
+		// increment counter
+		retrieve_call_count.fetch_add(1,std::memory_order_relaxed);
+
 		// if there is nothing to cover, there is nothing to do
 		if (requestedRegions.empty()) return;
 
@@ -108,6 +123,9 @@ namespace data {
 
 				// get access to the local data item index service
 				auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+
+				// count locate call
+				locate_call_count.fetch_add(1,std::memory_order_relaxed);
 
 				// update locations in cache
 				auto locations = diis.locate(regions);
@@ -200,6 +218,9 @@ namespace data {
 
 	void DataItemManagerService::acquire(const DataItemRegions& regions) {
 
+		// increment counter
+		acquire_call_count.fetch_add(1,std::memory_order_relaxed);
+
 		// if there is nothing to get, be done
 		if (regions.empty()) return;
 
@@ -236,6 +257,34 @@ namespace data {
 		DataItemRegions res;
 		for(const auto& cur : registers) {
 			cur.second->addExclusiveRegions(res);
+		}
+		return res;
+	}
+
+
+	DataItemManagerStatisticEntry DataItemManagerService::getLocalStatistic() const {
+		DataItemManagerStatisticEntry res;
+
+		res.locate_calls   = locate_call_count.load(std::memory_order_relaxed);
+		res.retrieve_calls = retrieve_call_count.load(std::memory_order_relaxed);
+		res.acquire_calls  = acquire_call_count.load(std::memory_order_relaxed);
+		res.allocate_calls = allocate_call_count.load(std::memory_order_relaxed);
+		res.release_calls  = release_call_count.load(std::memory_order_relaxed);
+
+		return res;
+	}
+
+
+	DataItemManagerStatistic DataItemManagerService::getStatistics() const {
+		// collect handles for remote calls
+		std::vector<com::RemoteCallResult<DataItemManagerStatisticEntry>> calls;
+		for(com::rank_t i = 0; i<network.numNodes(); i++) {
+			calls.push_back(network.getRemoteProcedure(i,&DataItemManagerService::getLocalStatistic)());
+		}
+		// aggregate results
+		DataItemManagerStatistic res;
+		for(com::rank_t i = 0; i<network.numNodes(); i++) {
+			res.add(i,calls[i].get());
 		}
 		return res;
 	}

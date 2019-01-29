@@ -101,6 +101,13 @@ namespace runtime {
 		});
 
 		std::cout << "\n";
+		rt.getNetwork().runOn(0,[](com::Node& node){
+			node.getFiberContext().process([&]{
+					std::cout << node.getLocalService<data::DataItemManagerService>().getStatistics();
+			});
+		});
+
+		std::cout << "\n";
 		std::cout << rt.getNetwork().getStatistics();
 		std::cout << "\n";
 

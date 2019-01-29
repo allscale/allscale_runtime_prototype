@@ -24,6 +24,7 @@
 #include "allscale/runtime/data/data_item_requirement.h"
 #include "allscale/runtime/data/data_item_location.h"
 #include "allscale/runtime/data/data_item_migration.h"
+#include "allscale/runtime/data/data_item_statistic.h"
 
 namespace allscale {
 namespace runtime {
@@ -307,6 +308,14 @@ namespace data {
 		// a cache for resolved data locations
 		mutable DataItemLocationCache locationCache;
 
+		// -- statistics --
+
+		std::atomic<uint64_t> allocate_call_count;
+		std::atomic<uint64_t> release_call_count;
+		std::atomic<uint64_t> locate_call_count;
+		std::atomic<uint64_t> retrieve_call_count;
+		std::atomic<uint64_t> acquire_call_count;
+
 	public:
 
 		DataItemManagerService(com::Node&);
@@ -449,6 +458,17 @@ namespace data {
 		 * Obtains the exclusive regions maintained locally.
 		 */
 		DataItemRegions getExclusiveRegions() const;
+
+		/**
+		 * Obtains a summary of the accesses statistics to this service instance.
+		 */
+		DataItemManagerStatisticEntry getLocalStatistic() const;
+
+		/**
+		 * Obtains a system wide summary of the access statistics of the data item manager service.
+		 */
+		DataItemManagerStatistic getStatistics() const;
+
 
 	private:
 

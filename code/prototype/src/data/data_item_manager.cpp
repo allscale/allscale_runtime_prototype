@@ -165,7 +165,14 @@ namespace data {
 				if (cur.first == rank) {
 
 					// check that expected data is present
-					if (!isSubRegion(cur.second,getExclusiveRegionsInternal())) {
+					bool ok = true;
+					{
+						// get a read permission for the exclusive region
+						allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+						ok = isSubRegion(cur.second,getExclusiveRegionsInternal());
+					}
+
+					if (!ok) {
 						// invalidate cache and restart
 						invalidateCache();
 						break;

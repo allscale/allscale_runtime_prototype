@@ -1,3 +1,5 @@
+#include <iomanip>
+
 #include "allscale/runtime/work/task_statistic.h"
 
 namespace allscale {

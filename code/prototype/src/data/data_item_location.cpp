@@ -51,12 +51,12 @@ namespace data {
 
 
 	void DataItemLocationCache::clear() {
-		guard g(*lock);
+		write_guard g(*lock);
 		cache.clear();
 	}
 
 	void DataItemLocationCache::clear(const DataItemRegions& regions) {
-		guard g(*lock);
+		write_guard g(*lock);
 		for(auto& cur : cache) {
 			if (cur.target == regions) {
 				cur.valid = false;
@@ -66,7 +66,7 @@ namespace data {
 	}
 
 	const DataItemLocationInfos* DataItemLocationCache::lookup(const DataItemRegions& regions) const {
-		guard g(*lock);
+		read_guard g(*lock);
 		for(const auto& cur : cache) {
 			if (cur.target == regions) {
 				if (cur.valid) {
@@ -80,7 +80,7 @@ namespace data {
 	}
 
 	const DataItemLocationInfos& DataItemLocationCache::update(const DataItemRegions& regions, const DataItemLocationInfos& infos, bool valid) {
-		guard g(*lock);
+		write_guard g(*lock);
 		for(auto& cur : cache) {
 			if (cur.target == regions) {
 				cur.info = infos;

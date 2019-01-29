@@ -18,6 +18,7 @@
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer/functions.h"
 #include "allscale/utils/fibers.h"
+#include "allscale/utils/fiber/read_write_lock.h"
 
 #include "allscale/runtime/com/node.h"
 
@@ -130,14 +131,15 @@ namespace data {
 		std::deque<Entry> cache;
 
 		// a lock for synchronization
-		std::unique_ptr<allscale::utils::fiber::Mutex> lock;
+		std::unique_ptr<allscale::utils::fiber::ReadWriteLock> lock;
 
 		// the guard type
-		using guard = std::lock_guard<allscale::utils::fiber::Mutex>;
+		using read_guard = allscale::utils::fiber::ReadGuard;
+		using write_guard = allscale::utils::fiber::WriteGuard;
 
 	public:
 
-		DataItemLocationCache() : lock(std::make_unique<allscale::utils::fiber::Mutex>()) {}
+		DataItemLocationCache() : lock(std::make_unique<allscale::utils::fiber::ReadWriteLock>()) {}
 
 		// clears the cache content
 		void clear();

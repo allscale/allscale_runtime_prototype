@@ -76,6 +76,13 @@ namespace fiber {
 
 	public:
 
+		/**
+		 * Requests a read permission. Careful: requesting a read permission while
+		 * already owning a write permission will lead to a deadlock. Also, requesting
+		 * a read permission while owning a read permission can lead to a deadlock
+		 * if in the meanwhile another thread has starting its request for a write
+		 * permission.
+		 */
 		void startRead() {
 			guard g(syncLock);
 

@@ -169,7 +169,7 @@ namespace data {
 					{
 						// get a read permission for the exclusive region
 						allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
-						ok = isSubRegion(cur.second,getExclusiveRegionsInternal());
+						ok = isSubRegion(cur.second,exclusiveRegions);
 					}
 
 					if (!ok) {
@@ -286,12 +286,6 @@ namespace data {
 		allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
 		return exclusiveRegions;
 	}
-
-	const DataItemRegions& DataItemManagerService::getExclusiveRegionsInternal() const {
-		allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
-		return exclusiveRegions;
-	}
-
 
 	DataItemManagerStatisticEntry DataItemManagerService::getLocalStatistic() const {
 		DataItemManagerStatisticEntry res;

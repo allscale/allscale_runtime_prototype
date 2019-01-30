@@ -493,8 +493,6 @@ namespace data {
 
 	private:
 
-		const DataItemRegions& getExclusiveRegionsInternal() const;
-
 		// obtains the register for a given data item type
 		template<typename DataItem>
 		DataItemRegister<DataItem>& getRegister() {

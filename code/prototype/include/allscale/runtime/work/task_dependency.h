@@ -26,6 +26,8 @@ namespace work {
 	 */
 	class TaskDependency {
 
+		friend class TaskDependencies;
+
 		using TaskRefOpt = allscale::utils::optional<TaskRef>;
 
 		// the task depending on, none if not depending
@@ -83,15 +85,7 @@ namespace work {
 
 		// -- features --
 
-		void wait() const {
-			// quick check
-			if (dependencies.empty()) return;
-
-			// just wait for all dependencies
-			for(auto& cur : dependencies) {
-				cur.wait();
-			}
-		}
+		void wait() const;
 
 		// -- serialization support --
 

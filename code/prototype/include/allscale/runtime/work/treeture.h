@@ -20,6 +20,7 @@
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/optionals.h"
 #include "allscale/utils/fibers.h"
+#include "allscale/utils/fiber/future.h"
 
 #include "allscale/runtime/com/network.h"
 #include "allscale/runtime/work/task_reference.h"
@@ -283,6 +284,9 @@ namespace work {
 		// the rank of the node this service is running on
 		com::rank_t myRank;
 
+		// the fiber context running on the local node
+		allscale::utils::FiberContext& fiberContext;
+
 		// the context to be utilized for synchronization operations
 		allscale::utils::fiber::EventRegister& eventRegister;
 
@@ -293,7 +297,10 @@ namespace work {
 
 		// the service constructor
 		TreetureStateService(com::Node& node)
-			: network(com::Network::getNetwork()), myRank(node.getRank()), eventRegister(node.getFiberContext().getEventRegister()) {}
+			: network(com::Network::getNetwork())
+			, myRank(node.getRank())
+			, fiberContext(node.getFiberContext())
+			, eventRegister(node.getFiberContext().getEventRegister()) {}
 
 		static TreetureStateService& getLocal() {
 			return com::Node::getLocalService<TreetureStateService>();
@@ -303,6 +310,10 @@ namespace work {
 
 		// blocks the current thread until the given task is done
 		bool wait(const TaskRef ref);
+
+		// obtains a call handle to wait for the given remote task
+		// TODO: once void futures are supported, change to void futures
+		allscale::utils::fiber::Future<bool> getWaitHandle(const TaskRef ref);
 
 		// obtains the result of the corresponding task, or nothing if not yet available
 		template<typename R>

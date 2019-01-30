@@ -80,6 +80,16 @@ namespace work {
 		return true;
 	}
 
+	allscale::utils::fiber::Future<bool> TreetureStateService::getWaitHandle(const TaskRef ref) {
+		allscale::utils::fiber::Future<bool> res;
+		fiberContext.start([&]{
+			allscale::utils::fiber::Promise<bool> promise(fiberContext);
+			res = promise.get_future();
+			promise.set_value(wait(ref)); // < this may block
+		});
+		return std::move(res);
+	}
+
 	void TreetureStateService::taskFinished(const TaskID& id) {
 		assert_true(id.getPath().isRoot());
 

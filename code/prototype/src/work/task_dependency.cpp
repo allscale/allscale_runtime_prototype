@@ -28,6 +28,38 @@ namespace work {
 	}
 
 
+	void TaskDependencies::wait() const {
+
+		using handle = allscale::utils::fiber::Future<bool>;
+
+		// quick check
+		if (dependencies.empty()) return;
+
+		// get treeture service
+		auto& treetureService = work::TreetureStateService::getLocal();
+
+		// wait for all dependencies (in parallel)
+		int numDeps = dependencies.size();
+		handle handles[numDeps];
+
+		// collect wait handles
+		for(int i=0; i<numDeps; i++) {
+			auto& dep = dependencies[i];
+			if (!dep.reference) {
+				handles[i] = true;
+			} else {
+				handles[i] = treetureService.getWaitHandle(*dep.reference);
+			}
+		}
+
+		// wait for all to complete
+		for(int i=0; i<numDeps; i++) {
+			handles[i].get();
+		}
+
+	}
+
+
 	std::ostream& operator<<(std::ostream& out, const TaskDependency& dep) {
 		if (!bool(dep.reference)) {
 			return out << "none";

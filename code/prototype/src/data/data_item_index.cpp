@@ -427,62 +427,29 @@ namespace data {
 
 		// -- process inner nodes --
 
-		auto remaining = regions;
 
-		// for inner nodes, query sub-trees
-		{
-			// start with left
-			auto part = intersect(remaining,getAvailableDataLeftInternal());
-			if (!part.empty()) {
+		// for inner nodes, query sub-trees concurrently
 
-				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking left ..\n";
+		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking left and right ..\n";
 
-				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(part,id).get();
+		auto partLeft = intersect(regions,getAvailableDataLeftInternal());
+		auto partRight = intersect(regions,getAvailableDataRightInternal());
 
-				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - left done\n";
+		auto leftCall =
+				(partLeft.empty()) ? com::RemoteCallResult<DataItemLocationInfos>(res) :
+				network.getRemoteProcedure(myAddress.getLeftChild(),&DataItemIndexService::resolveLocations)(partLeft,id);
 
-				// consistency check
-				assert_eq(part,subInfo.getCoveredRegions());
+		auto rightCall =
+				(partRight.empty()) ? com::RemoteCallResult<DataItemLocationInfos>(res) :
+				network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(partRight,id);
 
-				// add to result
-				res.addAll(subInfo);
+		res.addAll(leftCall.get());
+		res.addAll(rightCall.get());
 
-				// reduce remaining
-				remaining = difference(remaining,part);
-
-			}
-
-		}
-
-		// and if necessary also the right sub-tree
-		if (!remaining.empty()) {
-
-			auto part = intersect(remaining,getAvailableDataRightInternal());
-			if (!part.empty()) {
-
-				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - asking right ..\n";
-
-				// query sub-tree
-				auto subInfo = network.getRemoteProcedure(myAddress.getRightChild(),&DataItemIndexService::resolveLocations)(part,id).get();
-
-				if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - right done\n";
-
-				// consistency check
-				assert_eq(part,subInfo.getCoveredRegions());
-
-				// add to result
-				res.addAll(subInfo);
-
-				// reduce remaining
-				remaining = difference(remaining,part);
-
-			}
-		}
+		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - left and right done\n";
 
 		// check that all data could be retrieved
 		if (!isRoot) {
-			assert_true(remaining.empty());
 			assert_eq(regions,res.getCoveredRegions());
 		}
 

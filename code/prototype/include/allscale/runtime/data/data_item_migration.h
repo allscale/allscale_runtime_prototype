@@ -18,6 +18,7 @@
 
 #include "allscale/utils/optional.h"
 #include "allscale/utils/serializer/optionals.h"
+#include "allscale/utils/serializer/unordered_maps.h"
 
 #include "allscale/runtime/com/node.h"
 
@@ -101,7 +102,7 @@ namespace data {
 				}
 			};
 
-			using location_map = std::map<ref_type,std::vector<Part>>;
+			using location_map = std::unordered_map<ref_type,std::vector<Part>>;
 
 			location_map elements;
 

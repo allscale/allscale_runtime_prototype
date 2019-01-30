@@ -8,14 +8,14 @@
 #pragma once
 
 #include <ostream>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <typeinfo>
 #include <typeindex>
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
-#include "allscale/utils/serializer/maps.h"
+#include "allscale/utils/serializer/unordered_maps.h"
 #include "allscale/utils/serializer/functions.h"
 #include "allscale/utils/printer/join.h"
 
@@ -169,7 +169,7 @@ namespace data {
 
 			using reference_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
-			using regions_map_type = std::map<reference_type,region_type>;
+			using regions_map_type = std::unordered_map<reference_type,region_type>;
 
 			regions_map_type regions;
 
@@ -178,13 +178,13 @@ namespace data {
 			Regions() : RegionsBase(&load) {};
 			Regions(const Regions&) = default;
 
-			Regions(std::map<reference_type,region_type>&& map) : RegionsBase(&load), regions(std::move(map)) {}
+			Regions(std::unordered_map<reference_type,region_type>&& map) : RegionsBase(&load), regions(std::move(map)) {}
 
 			bool empty() const override {
 				return regions.empty();
 			}
 
-			const std::map<reference_type,region_type>& getRegions() const {
+			const std::unordered_map<reference_type,region_type>& getRegions() const {
 				return regions;
 			}
 
@@ -259,7 +259,7 @@ namespace data {
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute intersection of sets
-				std::map<reference_type,region_type> res;
+				std::unordered_map<reference_type,region_type> res;
 				for(const auto& cur : regions) {
 					auto pos = other.regions.find(cur.first);
 					if (pos == other.regions.end()) {
@@ -288,7 +288,7 @@ namespace data {
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute differences of sets
-				std::map<reference_type,region_type> res;
+				std::unordered_map<reference_type,region_type> res;
 				for(const auto& cur : regions) {
 					auto pos = other.regions.find(cur.first);
 					if (pos == other.regions.end()) {
@@ -316,7 +316,7 @@ namespace data {
 		};
 
 		// the index of all regions represented by collection
-		std::map<std::type_index,std::unique_ptr<RegionsBase>> regions;
+		std::unordered_map<std::type_index,std::unique_ptr<RegionsBase>> regions;
 
 	public:
 

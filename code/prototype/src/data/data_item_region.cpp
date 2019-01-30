@@ -92,11 +92,33 @@ namespace data {
 	}
 
 	bool DataItemRegions::operator==(const DataItemRegions& other) const {
+		// shortcut -- for object identity
+		if (this == &other) return true;
+
+		// check number of contained regions
+		if (regions.size() != other.regions.size()) return false;
+
+		// get list of pairs, while checking keys
+		int size = regions.size();
+		RegionsBase* left[size];
+		RegionsBase* right[size];
+
+		// check keys first (and collect values at the same time)
+		int i = 0;
 		for(const auto& cur : regions) {
 			auto pos = other.regions.find(cur.first);
 			if (pos == other.regions.end()) return false;
-			if (*cur.second != *pos->second) return false;
+			left[i]  = cur.second.get();
+			right[i] = pos->second.get();
+			i++;
 		}
+
+		// compare actual regions
+		for(int i=0; i<size; i++) {
+			if (*left[i] != *right[i]) return false;
+		}
+
+		// they are really equal
 		return true;
 	}
 

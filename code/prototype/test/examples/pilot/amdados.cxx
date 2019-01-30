@@ -11,6 +11,7 @@
 #include <allscale/runtime.hpp>
 #include <allscale/utils/serializer.h>
 #include <allscale/utils/serializer/pairs.h>
+#include <allscale/utils/serializer/maps.h>
 #include <allscale/utils/vector.h>
 #include <assert.h>
 #include <chrono>

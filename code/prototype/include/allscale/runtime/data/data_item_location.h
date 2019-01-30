@@ -9,7 +9,7 @@
 
 #include <algorithm>
 #include <deque>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <mutex>
 #include <typeinfo>
@@ -17,6 +17,7 @@
 
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer/functions.h"
+#include "allscale/utils/serializer/unordered_maps.h"
 #include "allscale/utils/fibers.h"
 #include "allscale/utils/fiber/read_write_lock.h"
 
@@ -34,7 +35,7 @@ namespace data {
 	class DataItemLocationInfos {
 
 		// the type of the internally maintained index
-		using entries_t = std::map<com::rank_t,DataItemRegions>;
+		using entries_t = std::unordered_map<com::rank_t,DataItemRegions>;
 
 		// the list of located data regions
 		entries_t entries;

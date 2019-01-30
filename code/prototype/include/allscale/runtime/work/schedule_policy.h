@@ -13,6 +13,7 @@
 
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/functions.h"
+#include "allscale/utils/optional.h"
 
 #include "allscale/runtime/com/hierarchy.h"
 #include "allscale/runtime/work/node_mask.h"
@@ -81,6 +82,13 @@ namespace work {
 		 * Estimates the target location a task with the given task path should be located at.
 		 */
 		virtual com::rank_t estimateTargetLocation(const TaskPath& path) const =0;
+
+		/**
+		 * Obtains a decision whether a task with the given task path should be split
+		 * or not. If possible -- thus if the task is indeed splitable -- workers will
+		 * follow this recommendation.
+		 */
+		virtual bool shouldSplit(const TaskPath& path) const =0;
 
 		// --- cloning ---
 
@@ -187,6 +195,10 @@ namespace work {
 			return policy->estimateTargetLocation(path);
 		}
 
+		bool shouldSplit(const TaskPath& path) const override {
+			return policy->shouldSplit(path);
+		}
+
 
 		// --- cloning ---
 
@@ -280,6 +292,10 @@ namespace work {
 		 */
 		com::rank_t estimateTargetLocation(const TaskPath& path) const;
 
+		/**
+		 * Decides whether the given task should be split or not.
+		 */
+		bool shouldSplit(const TaskPath& path) const override;
 
 		// --- cloning ---
 
@@ -489,6 +505,12 @@ namespace work {
 		}
 
 		/**
+		 * Determines whether a task with the given path should be split or not according
+		 * to the underling decision tree.
+		 */
+		bool shouldSplit(const TaskPath& path) const override;
+
+		/**
 		 * Computes the target address a task with the given path should be forwarded to.
 		 */
 		com::HierarchyAddress getTarget(const TaskPath& path) const;
@@ -518,6 +540,12 @@ namespace work {
 		static std::unique_ptr<SchedulingPolicy> loadAsUniquePtr(allscale::utils::ArchiveReader&);
 
 		void storeInternal(allscale::utils::ArchiveWriter&) const override;
+
+	private:
+
+		// determines the level at which this task has reached at leaf node, or
+		// nothing in case the node level has not been reached so far
+		allscale::utils::optional<uint32_t> getLevelReachingNode(const TaskPath& path) const;
 
 	};
 

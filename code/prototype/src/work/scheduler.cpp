@@ -57,34 +57,23 @@ namespace work {
 		/**
 		 * Determines the cut-off level for task splitting for a network of the given size.
 		 */
-		int getCutOffLevel(int numNodes, int numWorkers) {
+		int getDefaultCutOffLevel(int numNodes, int numWorkers) {
 			// the cut-off level for "forced" distribution
-			return ceilLog2(numNodes) * 2 + ceilLog2(numWorkers) + 3;
+			return ceilLog2(numNodes) + ceilLog2(numWorkers) + 3;
 		}
 
 		/**
-		 * Determines the cut-off level for task splitting
+		 * Determines the default cut-off level for task splitting. This may be overruled
+		 * by scheduling policies.
 		 */
-		int getCutOffLevel() {
+		int getDefaultCutOffLevel() {
 			static auto numNodes = com::Network::getNetwork().numNodes();
 			static auto numWorkers = hw::getWorkerPoolConfig(com::Node::getLocalRank()).size();
 
 			// use its size
-			return getCutOffLevel(numNodes, numWorkers);
+			return getDefaultCutOffLevel(numNodes, numWorkers);
 		}
 
-	}
-
-	/**
-	 * Determines whether the given task should be split.
-	 */
-	bool shouldSplit(const TaskPtr& t) {
-
-		// should only be called for tasks that are actually splitable
-		assert_true(t->isSplitable());
-
-		// decide on the cut-off level
-		return t->getId().getDepth() < getCutOffLevel();
 	}
 
 
@@ -587,7 +576,7 @@ namespace work {
 				// enforce policy
 				switch(newType) {
 				case SchedulerType::Random : {
-					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getCutOffLevel());
+					RandomSchedulingPolicy random(com::HierarchicalOverlayNetwork(network).getRootAddress(), getDefaultCutOffLevel());
 					activeConfig.nodes = NodeMask(numNodes);
 					updatePolicyInternal(random,activeConfig);
 					break;
@@ -763,6 +752,18 @@ namespace work {
 	} // end namespace detail
 
 
+	/**
+	 * Determines whether the given task should be split.
+	 */
+	bool shouldSplit(const TaskPtr& t) {
+
+		// should only be called for tasks that are actually splitable
+		assert_true(t->isSplitable());
+
+		// let the scheduling policy decide
+		auto& service = com::HierarchicalOverlayNetwork::getLocalService<detail::ScheduleService>();
+		return service.getPolicy().shouldSplit(t->getId().getPath());
+	}
 
 
 	// the main entry point for scheduling

@@ -9,6 +9,7 @@
 
 #include "allscale/runtime/com/node.h"
 #include "allscale/runtime/work/schedule_policy.h"
+#include "allscale/runtime/hw/model.h"
 
 namespace allscale {
 namespace runtime {
@@ -70,6 +71,11 @@ namespace work {
 	com::rank_t RandomSchedulingPolicy::estimateTargetLocation(const TaskPath&) const {
 		// the local node is an as good estimate as any other location
 		return com::Node::getLocalRank();
+	}
+
+	bool RandomSchedulingPolicy::shouldSplit(const TaskPath& path) const {
+		// if the path is bellow the cut-off level, keep splitting
+		return path.getLength() < cutOffLevel;
 	}
 
 
@@ -581,6 +587,22 @@ namespace work {
 		}
 	}
 
+	bool DecisionTreeSchedulingPolicy::shouldSplit(const TaskPath& path) const {
+		static uint32_t workerSlack = ceilLog2(hw::getWorkerPoolConfig(com::Node::getLocalRank()).size());
+
+		// should stop splitting once within node and enough local tasks for all workers
+		auto nodeLevel = getLevelReachingNode(path);
+
+		// if the task is not even at node level => instruct to split
+		if (!bool(nodeLevel)) return true;
+
+		// give some extra slackiness for inter-node balancing (stealing)
+		uint32_t limit = *nodeLevel + workerSlack + 3;
+
+		// split, if limit is not yet reached
+		return path.getLength() < limit;
+	}
+
 	com::HierarchyAddress DecisionTreeSchedulingPolicy::getTarget(const TaskPath& path) const {
 
 		// special case: root path
@@ -607,6 +629,46 @@ namespace work {
 		}
 		assert_fail();
 		return res;
+	}
+
+	namespace {
+
+		std::pair<com::HierarchyAddress,int32_t> obtainLevelReachingNode(const DecisionTreeSchedulingPolicy& policy, const TaskPath& path) {
+
+			auto buildResult = [&](com::HierarchyAddress&& trg) {
+				int level = trg.isLeaf()?path.getLength():-1;
+				return std::make_pair<com::HierarchyAddress,int32_t>(std::move(trg),std::move(level));
+			};
+
+			// handle root case
+			if (path.isRoot()) {
+				return buildResult(policy.getTarget(path));
+			}
+
+			// step case
+			auto res = obtainLevelReachingNode(policy,path.getParentPath());
+			if (res.first.isLeaf()) return res;
+
+			// simulate one scheduling step
+			switch(policy.decide(res.first,path)) {
+			case Decision::Done  : assert_fail() << "Should not be done, not reached a node yet!"; return res;
+			case Decision::Stay  : return res;
+			case Decision::Left  : return buildResult(res.first.getLeftChild());
+			case Decision::Right : return buildResult(res.first.getRightChild());
+			}
+			assert_fail();
+			return res;
+
+		}
+
+	}
+
+
+	allscale::utils::optional<uint32_t> DecisionTreeSchedulingPolicy::getLevelReachingNode(const TaskPath& path) const {
+		// TODO: improve this if it gets to costly (e.g. by materializing it in a table or caching it)
+		int32_t level = obtainLevelReachingNode(*this,path).second;
+		if (level < 0) return {};
+		return level;
 	}
 
 	std::unique_ptr<SchedulingPolicy> DecisionTreeSchedulingPolicy::clone() const {

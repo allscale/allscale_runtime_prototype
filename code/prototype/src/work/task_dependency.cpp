@@ -18,12 +18,7 @@ namespace work {
 		if (!reference) return;
 
 		// wait for completion
-		//std::cout << "Waiting for " << *reference << " ..\n";
 		work::TreetureStateService::getLocal().wait(*reference);
-		//std::cout << "Dependency to " << *reference << " completed!\n";
-
-		// reset internal reference to not wait again
-		//reference = allscale::utils::optional<TaskRef>();
 
 	}
 

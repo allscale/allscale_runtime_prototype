@@ -197,7 +197,35 @@ namespace data {
 			bool operator==(const RegionsBase& otherBase) const override {
 				assert_true(dynamic_cast<const Regions*>(&otherBase));
 				const auto& other = static_cast<const Regions&>(otherBase);
-				return regions == other.regions;
+
+				// check identity
+				if (this == &other) return true;
+
+				// start with size
+				if (regions.size() != other.regions.size()) return false;
+
+				// get list of pairs, while checking keys
+				int size = regions.size();
+				const region_type* left[size];
+				const region_type* right[size];
+
+				// check keys first (and collect values at the same time)
+				int i = 0;
+				for(const auto& cur : regions) {
+					auto pos = other.regions.find(cur.first);
+					if (pos == other.regions.end()) return false;
+					left[i]  = &cur.second;
+					right[i] = &pos->second;
+					i++;
+				}
+
+				// compare actual regions
+				for(int i=0; i<size; i++) {
+					if (*left[i] != *right[i]) return false;
+				}
+
+				// they are indeed identical
+				return true;
 			}
 
 			void print(std::ostream& out) const override {

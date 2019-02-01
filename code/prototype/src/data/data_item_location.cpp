@@ -77,11 +77,9 @@ namespace data {
 	const DataItemLocationInfos* DataItemLocationCache::lookup(const DataItemRegions& regions) const {
 		read_guard g(*lock);
 		for(const auto& cur : cache) {
-			if (cur.target == regions) {
-				if (cur.valid) {
+			if (cur.valid) {
+				if (cur.target == regions) {
 					return &cur.info;
-				} else {
-					return nullptr;
 				}
 			}
 		}

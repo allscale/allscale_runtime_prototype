@@ -900,7 +900,7 @@ IMP_allscale_colon__colon_api_colon__colon_user_colon__colon_algorithm_colon__co
 int32_t IMP_main(int32_t var_0, char** var_1) {
     if (var_0 != 4) {
         std::cout << "usage: " << var_1[0] << " <SIZE> <ITERATIONS> U:<LOAD>\n" << "       " << var_1[0] << " <SIZE> <ITERATIONS> S:<LOAD>\n" << "       " << var_1[0] << " <SIZE> <ITERATIONS> R:<LOAD>:<STDEV>\n" << "       " << var_1[0] << " <SIZE> <ITERATIONS> N:<LOAD>:<STDEV>\n";
-        return 1;
+        return 0;
     };
     const int32_t var_2 = atoi(var_1[1]);
     const int32_t var_3 = atoi(var_1[2]);

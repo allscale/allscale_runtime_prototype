@@ -16,6 +16,8 @@
 #include "allscale/utils/assert.h"
 #include "allscale/utils/serializer.h"
 #include "allscale/utils/serializer/unordered_maps.h"
+#include "allscale/utils/serializer/pairs.h"
+#include "allscale/utils/serializer/vectors.h"
 #include "allscale/utils/serializer/functions.h"
 #include "allscale/utils/printer/join.h"
 
@@ -169,29 +171,54 @@ namespace data {
 
 			using reference_type = DataItemReference<DataItem>;
 			using region_type = typename DataItem::region_type;
-			using regions_map_type = std::unordered_map<reference_type,region_type>;
+			using regions_list_type = std::vector<std::pair<reference_type,region_type>>;
 
-			regions_map_type regions;
+			regions_list_type regions;
 
 		public:
 
 			Regions() : RegionsBase(&load) {};
 			Regions(const Regions&) = default;
 
-			Regions(std::unordered_map<reference_type,region_type>&& map) : RegionsBase(&load), regions(std::move(map)) {}
+			Regions(regions_list_type&& list) : RegionsBase(&load), regions(std::move(list)) {}
 
 			bool empty() const override {
 				return regions.empty();
 			}
 
-			const std::unordered_map<reference_type,region_type>& getRegions() const {
+			const regions_list_type& getRegions() const {
 				return regions;
+			}
+
+			const region_type* getRegion(const reference_type& ref) const {
+				auto pos = std::lower_bound(regions.begin(),regions.end(),ref,[](const auto& cur, const reference_type& ref){
+					return cur.first < ref;
+				});
+				return (pos == regions.end() || pos->first != ref) ? nullptr : &(pos->second);
 			}
 
 			void add(const reference_type& ref, const region_type& region) {
 				assert_false(region.empty());
-				auto& cur = regions[ref];
-				cur = region_type::merge(cur,region);
+
+				// locate insertion position
+				auto pos = std::lower_bound(regions.begin(), regions.end(), ref, [](const auto& cur, const reference_type& ref){
+					return cur.first < ref;
+				});
+
+				// if element is not yet present => add it
+				if (pos == regions.end()) {
+					regions.emplace_back(ref,region);
+					return;
+				}
+
+				// if referenced data item is present => merge regions
+				if (pos->first == ref) {
+					pos->second = region_type::merge(pos->second,region);
+					return;
+				}
+
+				// insert new element at located position
+				regions.emplace(pos,ref,region);
 			}
 
 			bool operator==(const RegionsBase& otherBase) const override {
@@ -204,27 +231,18 @@ namespace data {
 				// start with size
 				if (regions.size() != other.regions.size()) return false;
 
-				// get list of pairs, while checking keys
+				// first compare data item ids
 				int size = regions.size();
-				const region_type* left[size];
-				const region_type* right[size];
-
-				// check keys first (and collect values at the same time)
-				int i = 0;
-				for(const auto& cur : regions) {
-					auto pos = other.regions.find(cur.first);
-					if (pos == other.regions.end()) return false;
-					left[i]  = &cur.second;
-					right[i] = &pos->second;
-					i++;
-				}
-
-				// compare actual regions
 				for(int i=0; i<size; i++) {
-					if (*left[i] != *right[i]) return false;
+					if (regions[i].first != other.regions[i].first) return false;
 				}
 
-				// they are indeed identical
+				// in a second run, check the regions
+				for(int i=0; i<size; i++) {
+					if (regions[i].second != other.regions[i].second) return false;
+				}
+
+				// all checks out, they are the same
 				return true;
 			}
 
@@ -262,13 +280,13 @@ namespace data {
 			}
 
 			virtual void storeInternal(allscale::utils::ArchiveWriter& out) const override {
-				out.write<regions_map_type>(regions);
+				out.write<regions_list_type>(regions);
 			}
 
 			static load_res_t load(allscale::utils::ArchiveReader& in) {
 				return std::make_pair(
 					std::type_index(typeid(DataItem)),
-					std::make_unique<Regions>(in.read<regions_map_type>())
+					std::make_unique<Regions>(in.read<regions_list_type>())
 				);
 			}
 
@@ -287,21 +305,40 @@ namespace data {
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute intersection of sets
-				std::unordered_map<reference_type,region_type> res;
-				for(const auto& cur : regions) {
-					auto pos = other.regions.find(cur.first);
-					if (pos == other.regions.end()) {
-						continue;
+				regions_list_type res;
+
+				// get pointer on involved regions
+				auto ap = regions.begin();
+				auto ae = regions.end();
+				auto bp = other.regions.begin();
+				auto be = other.regions.end();
+
+				while(true) {
+
+					// move a while key is less than b's
+					while(ap != ae && ap->first < bp->first) {
+						++ap;
 					}
 
-					// compute intersection
-					auto rest = region_type::intersect(cur.second,pos->second);
+					if (ap == ae) break;
 
-					// if nothing => stop
-					if (rest.empty()) continue;
+					// move b while key is less than a's
+					while(bp != be && bp->first < ap->first) {
+						++bp;
+					}
 
-					// record rest
-					res[cur.first] = rest;
+					if (bp == be) break;
+
+					if (ap->first == bp->first) {
+						// compute region intersection
+						auto rest = region_type::intersect(ap->second,bp->second);
+						// add to result if not empty
+						if (!rest.empty()) res.emplace_back(ap->first,std::move(rest));
+
+						++ap;
+						++bp;
+					}
+
 				}
 
 				// if empty => skip result
@@ -316,22 +353,28 @@ namespace data {
 				const auto& other = static_cast<const Regions&>(otherBase);
 
 				// compute differences of sets
-				std::unordered_map<reference_type,region_type> res;
+				regions_list_type res;
+
+				// get pointer on b
+				auto bp = other.regions.begin();
+				auto be = other.regions.end();
+
 				for(const auto& cur : regions) {
-					auto pos = other.regions.find(cur.first);
-					if (pos == other.regions.end()) {
-						res[cur.first] = cur.second;
-						continue;
+
+					// move on b-pointer
+					while(bp != be && bp->first < cur.first) {
+						++bp;
 					}
 
-					// compute rest
-					auto rest = region_type::difference(cur.second,pos->second);
-
-					// if nothing => stop
-					if (rest.empty()) continue;
-
-					// record rest
-					res[cur.first] = rest;
+					// compute intersection
+					if (bp != be && bp->first == cur.first) {
+						// compute difference
+						auto rest = region_type::difference(cur.second,bp->second);
+						// integrate it if not empty
+						if (!rest.empty()) res.emplace_back(cur.first,std::move(rest));
+					} else {
+						res.emplace_back(cur.first,cur.second);
+					}
 				}
 
 				// if empty => skip result
@@ -377,10 +420,7 @@ namespace data {
 		const typename DataItem::region_type* getRegion(const DataItemReference<DataItem>& ref) const {
 			auto pos = regions.find(typeid(DataItem));
 			if (pos == regions.end()) return nullptr;
-			auto& regions = static_cast<const Regions<DataItem>&>(*pos->second).getRegions();
-			auto pos2 = regions.find(ref);
-			if (pos2 == regions.end()) return nullptr;
-			return &pos2->second;
+			return static_cast<const Regions<DataItem>&>(*pos->second).getRegion(ref);
 		}
 
 

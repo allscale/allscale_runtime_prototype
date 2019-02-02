@@ -597,7 +597,7 @@ namespace work {
 		if (!bool(nodeLevel)) return true;
 
 		// give some extra slackiness for inter-node balancing (stealing)
-		uint32_t limit = *nodeLevel + workerSlack + 3;
+		uint32_t limit = *nodeLevel + workerSlack + 5;
 
 		// split, if limit is not yet reached
 		return path.getLength() < limit;

@@ -118,8 +118,8 @@ namespace data {
 			// -- locate data - if possible through the cache --
 
 			// locate all read requirements
-			auto entry = locationCache.lookup(regions);
-			if (!entry || entry->empty()) {
+			auto locations = locationCache.lookup(regions);
+			if (regions != locations.getCoveredRegions()) {
 
 				// get access to the local data item index service
 				auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
@@ -128,15 +128,11 @@ namespace data {
 				locate_call_count.fetch_add(1,std::memory_order_relaxed);
 
 				// update locations in cache
-				auto locations = diis.locate(regions);
+				locations = diis.locate(regions);
 
 				// add resolved data to the location cache
-				bool valid = regions == locations.getCoveredRegions();
-				entry = &locationCache.update(regions,locations,valid);
+				locationCache.update(locations);
 			}
-
-			assert_true(entry);
-			auto& locations = *entry;
 
 
 			// -- retrieve the data, if not available, restart --

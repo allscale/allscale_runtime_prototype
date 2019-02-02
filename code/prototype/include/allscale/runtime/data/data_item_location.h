@@ -124,14 +124,8 @@ namespace data {
 	 */
 	class DataItemLocationCache {
 
-		struct Entry {
-			DataItemRegions target;
-			DataItemLocationInfos info;
-			bool valid;
-		};
-
-		// most naive version - todo: improve
-		std::deque<Entry> cache;
+		// the cached knowledge on the data distribution
+		std::unordered_map<com::rank_t,DataItemRegions> cache;
 
 		// a lock for synchronization
 		std::unique_ptr<allscale::utils::fiber::ReadWriteLock> lock;
@@ -151,10 +145,11 @@ namespace data {
 		void clear(const DataItemRegions& regions);
 
 		// performs a lookup in the cache, fills what is known
-		const DataItemLocationInfos* lookup(const DataItemRegions& regions) const;
+		DataItemLocationInfos lookup(const DataItemRegions& regions) const;
 
 		// updates the cached information
-		const DataItemLocationInfos& update(const DataItemRegions& regions, const DataItemLocationInfos& infos, bool valid = true);
+		void update(const DataItemLocationInfos& infos);
+
 	};
 
 

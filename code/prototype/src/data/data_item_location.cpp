@@ -66,39 +66,32 @@ namespace data {
 
 	void DataItemLocationCache::clear(const DataItemRegions& regions) {
 		write_guard g(*lock);
+		// remove knowledge of the given region
 		for(auto& cur : cache) {
-			if (cur.target == regions) {
-				cur.valid = false;
-				return;
-			}
+			cur.second = difference(cur.second,regions);
 		}
 	}
 
-	const DataItemLocationInfos* DataItemLocationCache::lookup(const DataItemRegions& regions) const {
+	DataItemLocationInfos DataItemLocationCache::lookup(const DataItemRegions& regions) const {
 		read_guard g(*lock);
+
+		// collect data to be returned
+		DataItemLocationInfos res;
 		for(const auto& cur : cache) {
-			if (cur.valid) {
-				if (cur.target == regions) {
-					return &cur.info;
-				}
-			}
+			auto part = intersect(cur.second,regions);
+			if (part.empty()) continue;
+			res.add(part,cur.first);
 		}
-		return nullptr;
+		return res;
 	}
 
-	const DataItemLocationInfos& DataItemLocationCache::update(const DataItemRegions& regions, const DataItemLocationInfos& infos, bool valid) {
+	void DataItemLocationCache::update(const DataItemLocationInfos& infos) {
 		write_guard g(*lock);
-		for(auto& cur : cache) {
-			if (cur.target == regions) {
-				cur.info = infos;
-				cur.valid = valid;
-				return cur.info;
-			}
+		for(const auto& cur : infos.getLocationInfo()) {
+			auto& known = cache[cur.first];
+			known = merge(cur.second,known);
 		}
-		cache.emplace_back(Entry{regions,infos,true});
-		return cache.back().info;
 	}
-
 
 } // end of namespace data
 } // end of namespace runtime

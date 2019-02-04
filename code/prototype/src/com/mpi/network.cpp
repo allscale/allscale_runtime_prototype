@@ -14,7 +14,7 @@ namespace com {
 namespace mpi {
 
 	// the tag to be used for the local request server kill message
-	static constexpr int KILL_TAG = std::numeric_limits<int>::max();
+	static constexpr int KILL_TAG = 32767;
 
 	int getFreshRequestTag() {
 		static std::atomic<int> counter(1);

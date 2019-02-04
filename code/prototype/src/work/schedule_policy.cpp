@@ -78,6 +78,10 @@ namespace work {
 		return path.getLength() < cutOffLevel;
 	}
 
+	bool RandomSchedulingPolicy::shouldAcquireData(const TaskPath&) const {
+		// for random scheduling, let only processed tasks acquire their data
+		return false;
+	}
 
 	std::unique_ptr<SchedulingPolicy> RandomSchedulingPolicy::clone() const {
 		return std::make_unique<RandomSchedulingPolicy>(root,cutOffLevel);
@@ -597,10 +601,22 @@ namespace work {
 		if (!bool(nodeLevel)) return true;
 
 		// give some extra slackiness for inter-node balancing (stealing)
-		uint32_t limit = *nodeLevel + workerSlack + 3;
+		uint32_t limit = *nodeLevel + workerSlack + 5;
 
 		// split, if limit is not yet reached
 		return path.getLength() < limit;
+	}
+
+	bool DecisionTreeSchedulingPolicy::shouldAcquireData(const TaskPath& path) const {
+
+		// should stop splitting once within node and enough local tasks for all workers
+		auto nodeLevel = getLevelReachingNode(path);
+
+		// if the task is not even at node level => do not acquire data
+		if (!bool(nodeLevel)) return false;
+
+		// acquire data as soon as a task in on the node level
+		return true;
 	}
 
 	com::HierarchyAddress DecisionTreeSchedulingPolicy::getTarget(const TaskPath& path) const {

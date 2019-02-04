@@ -85,6 +85,10 @@ namespace work {
 
 		// -- features --
 
+		bool empty() const {
+			return dependencies.empty();
+		}
+
 		void wait() const;
 
 		// -- serialization support --

@@ -63,6 +63,19 @@ namespace work {
 	bool shouldSplit(const TaskPtr&);
 
 	/**
+	 * Determines whether the given task going to be split
+	 * should acquire the data for all its sub-tasks. By default,
+	 * all processed tasks will acquire their data. However, if one
+	 * of their parent tasks, which got split, has acquired the data,
+	 * it will utilize those.
+	 *
+	 * This mechanism is intended to aggregate data retrieval calls
+	 * for multiple tasks derived from common parent tasks. This
+	 * ultimately reduced the number of RPC calls to be made.
+	 */
+	bool shouldAcquireData(const TaskPtr& t);
+
+	/**
 	 * Requests the scheduler to estimate the location of the given task. This
 	 * is a local operation, not including remote operations. However, the result
 	 * might be wrong if e.g. random scheduling is used, or scheduling policies

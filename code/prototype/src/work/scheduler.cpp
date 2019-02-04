@@ -332,6 +332,12 @@ namespace work {
 
 			auto& service = com::HierarchicalOverlayNetwork::getLocalService<ScheduleService>();
 
+			// if the given task is already bound to local resource acquisition, schedule local
+			if (task->getRequirementCollector()) {
+				service.scheduleLocal(std::move(task));
+				return;
+			}
+
 			// special case: non-distributable task
 			if (!task->canBeDistributed()) {
 				service.scheduleLocal(std::move(task));
@@ -763,6 +769,27 @@ namespace work {
 		// let the scheduling policy decide
 		auto& service = com::HierarchicalOverlayNetwork::getLocalService<detail::ScheduleService>();
 		return service.getPolicy().shouldSplit(t->getId().getPath());
+	}
+
+	/**
+	 * Determines whether the given task going to be split
+	 * should acquire the data for all its sub-tasks. By default,
+	 * all processed tasks will acquire their data. However, if one
+	 * of their parent tasks, which got split, has acquired the data,
+	 * it will utilize those.
+	 *
+	 * This mechanism is intended to aggregate data retrieval calls
+	 * for multiple tasks derived from common parent tasks. This
+	 * ultimately reduced the number of RPC calls to be made.
+	 */
+	bool shouldAcquireData(const TaskPtr& t) {
+
+		// should only be called for tasks that are actually splitable
+		assert_true(t->isSplitable());
+
+		// let the scheduling policy decide
+		auto& service = com::HierarchicalOverlayNetwork::getLocalService<detail::ScheduleService>();
+		return service.getPolicy().shouldAcquireData(t->getId().getPath());
 	}
 
 

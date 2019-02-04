@@ -452,7 +452,7 @@ void kill_cycles(long iterations)
     {
         bool zero = true;
 
-        for (int i = 0; i < sizeof(hash); i++) {
+        for (int i = 0; i < int(sizeof(hash)); i++) {
             if (hash[i] != 0) {
                 zero = false;
             }

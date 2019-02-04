@@ -120,6 +120,20 @@ namespace work {
 		// ask the scheduler what to do
 		if (task->isSplitable() && shouldSplit(task)) {
 
+			// test whether this task should handle the data acquisition for its child-tasks
+			TaskRequirementsCollector collector(*pool.node, *dim);
+			if (dim && !task->getRequirementCollector() && shouldAcquireData(task)) {
+
+				// instruct requirements collector to retrieve required data
+				collector.acquire(
+					task->getDependencies(),
+					task->getProcessRequirements()
+				);
+
+				// link the collector with this task and its sub-tasks
+				task->setRequirementCollector(&collector);
+			}
+
 			// the decision was to split the task, so do so
 			auto reqs = task->getSplitRequirements();
 
@@ -144,30 +158,45 @@ namespace work {
 
 			using clock = std::chrono::high_resolution_clock;
 
-			// wait until task dependencies are satisfied
-			task->getDependencies().wait();
-
-			// suspend, and rate as medium priority
-			allscale::utils::fiber::suspend(allscale::utils::fiber::Priority::MEDIUM);
-
 			// in this case we process the task
 			auto reqs = task->getProcessRequirements();
 
+			// check whether there is already a requirement collector for this task
+			auto collector = task->getRequirementCollector();
+			if (collector) {
+
+				// wait for required data
+				collector->waitFor(reqs);
+
+			} else {
+
+				// wait until task dependencies are satisfied
+				task->getDependencies().wait();
+
+				// allocate requirements (blocks till ready)
+				if (dim) dim->allocate(reqs);
+
+				// suspend, and rate as medium priority
+				allscale::utils::fiber::suspend(allscale::utils::fiber::Priority::MEDIUM);
+
+			}
+
 			// log this action
 			DLOG << "Processing " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " with requirements " << reqs << "\n";
-
-			// allocate requirements (blocks till ready)
-			if (dim) dim->allocate(reqs);
 
 			// process this task
 			auto begin = clock::now();
 			task->process();
 			auto end = clock::now();
 
-			// free requirements
-			if (dim) dim->release(reqs);
-
 			DLOG << "Processing " << task->getId() << " on node " << (pool.node?pool.node->getRank():0) << " completed\n";
+
+			if (!collector) {
+
+				// free requirements
+				if (dim) dim->release(reqs);
+
+			}
 
 			// increment processed counter
 			processedCounter++;

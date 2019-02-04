@@ -42,21 +42,27 @@ namespace data {
 
 		// todo: record access locks
 
-		// get access to the local data item index service
-		auto& diis = com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>();
+		// compute missing data
+		DataItemRegions missing;
+		{
+			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+			missing = difference(reqs.getWriteRequirements(),exclusiveRegions);
+		}
 
 		// retrieve ownership of missing data
-		auto missing = difference(reqs.getWriteRequirements(),diis.getAvailableData());
 		if (!missing.empty()) {
 			acquire(missing);
 		}
 
 		// now all write-requirements should be satisfied
-		assert_pred2(
-			data::isSubRegion,
-			reqs.getWriteRequirements(),
-			diis.getAvailableData()
-		);
+		assert_decl({
+			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+			assert_pred2(
+				data::isSubRegion,
+				reqs.getWriteRequirements(),
+				exclusiveRegions
+			);
+		});
 
 		// import all read requirements
 		retrieve(reqs.getReadRequirements());
@@ -81,11 +87,14 @@ namespace data {
 		// todo: release access locks
 
 		// for now: check that data is still owned
-		assert_pred2(
-			data::isSubRegion,
-			reqs.getWriteRequirements(),
-			com::HierarchicalOverlayNetwork::getLocalService<DataItemIndexService>().getAvailableData()
-		);
+		assert_decl({
+			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+			assert_pred2(
+				data::isSubRegion,
+				reqs.getWriteRequirements(),
+				exclusiveRegions
+			);
+		});
 
 		// also check read requirements
 //		assert_pred2(
@@ -111,6 +120,12 @@ namespace data {
 
 		// if there is now nothing to do, be done
 		if (regions.empty()) return;
+
+		// test if data is all local
+		{
+			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+			if (isSubRegion(regions,exclusiveRegions)) return;
+		}
 
 		// while the retievel was not successful ...
 		while(true) {
@@ -233,6 +248,11 @@ namespace data {
 		// forward this call to the index server
 		diis.acquire(regions);
 
+	}
+
+	bool DataItemManagerService::isCoveredLocally(const DataItemRequirements& reqs) {
+		allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+		return isSubRegion(reqs.getReadRequirements(), exclusiveRegions) && isSubRegion(reqs.getWriteRequirements(), exclusiveRegions);
 	}
 
 	DataItemMigrationData DataItemManagerService::extractRegions(const DataItemRegions& regions) const {

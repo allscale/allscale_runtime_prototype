@@ -90,6 +90,12 @@ namespace work {
 		 */
 		virtual bool shouldSplit(const TaskPath& path) const =0;
 
+		/**
+		 * Determines whether a task with the given path should be acquire needed data
+		 * for all its sub-tasks.
+		 */
+		virtual bool shouldAcquireData(const TaskPath& path) const =0;
+
 		// --- cloning ---
 
 		virtual std::unique_ptr<SchedulingPolicy> clone() const =0;
@@ -199,6 +205,10 @@ namespace work {
 			return policy->shouldSplit(path);
 		}
 
+		bool shouldAcquireData(const TaskPath& path) const override {
+			return policy->shouldAcquireData(path);
+		}
+
 
 		// --- cloning ---
 
@@ -296,6 +306,12 @@ namespace work {
 		 * Decides whether the given task should be split or not.
 		 */
 		bool shouldSplit(const TaskPath& path) const override;
+
+		/**
+		 * Determines whether a task with the given path should be acquire needed data
+		 * for all its sub-tasks.
+		 */
+		bool shouldAcquireData(const TaskPath& path) const override;
 
 		// --- cloning ---
 
@@ -509,6 +525,12 @@ namespace work {
 		 * to the underling decision tree.
 		 */
 		bool shouldSplit(const TaskPath& path) const override;
+
+		/**
+		 * Determines whether a task with the given path should be acquire needed data
+		 * for all its sub-tasks.
+		 */
+		bool shouldAcquireData(const TaskPath& path) const override;
 
 		/**
 		 * Computes the target address a task with the given path should be forwarded to.

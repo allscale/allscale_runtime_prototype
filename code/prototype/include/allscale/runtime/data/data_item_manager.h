@@ -413,6 +413,11 @@ namespace data {
 		 */
 		void acquire(const DataItemRegions& regions);
 
+		/**
+		 * Determines whether the given requirements care fully covered by the locally available data.
+		 */
+		bool isCoveredLocally(const DataItemRequirements& reqs);
+
 		// --- protocol interface ---
 
 		template<typename DataItem>

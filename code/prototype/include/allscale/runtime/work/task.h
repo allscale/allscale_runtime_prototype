@@ -21,6 +21,7 @@
 
 #include "allscale/runtime/work/task_id.h"
 #include "allscale/runtime/work/task_dependency.h"
+#include "allscale/runtime/work/task_requirements_collector.h"
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/work_item.h"
 
@@ -60,6 +61,11 @@ namespace work {
 		// a buffer for backing up processing nodes while suspending tasks
 		com::Node* processingNode = nullptr;
 
+		// a location for storing a pointer to the requirement collector created by
+		// a parent task to cover this tasks task dependencies and data requirements
+		// If null, none has been created yet
+		const TaskRequirementsCollector* requirementCollector = nullptr;
+
 	public:
 
 		// creates a new task, based on the given ingredients
@@ -91,6 +97,14 @@ namespace work {
 
 		const TaskDependencies& getDependencies() const {
 			return dependencies;
+		}
+
+		const TaskRequirementsCollector* getRequirementCollector() const {
+			return requirementCollector;
+		}
+
+		void setRequirementCollector(const TaskRequirementsCollector* collector) {
+			requirementCollector = collector;
 		}
 
 		bool isReady() const {
@@ -244,7 +258,16 @@ namespace work {
 	 */
 	template<typename T, typename ... Args>
 	std::unique_ptr<T> make_task(const TaskID& id, TaskDependencies&& deps, Args&& ... args) {
-		return std::make_unique<T>(TaskRef(id,com::Node::getLocalRank()),std::move(deps), std::forward<Args>(args)...);
+		// create the task
+		auto res = std::make_unique<T>(TaskRef(id,com::Node::getLocalRank()),std::move(deps), std::forward<Args>(args)...);
+
+		// inherit the task collector pointer of the current task
+		if (auto task = Task::getCurrent()) {
+			res->setRequirementCollector(task->getRequirementCollector());
+		}
+
+		// done
+		return std::move(res);
 	}
 
 	/**

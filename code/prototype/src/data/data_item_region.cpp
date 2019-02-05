@@ -189,7 +189,16 @@ namespace data {
 		// some quick solutions
 		if (a.empty()) return true;
 		if (b.empty()) return false;
-		return difference(a,b).empty();
+
+		// compute set difference
+		for(const auto& cur : a.regions) {
+			auto pos = b.regions.find(cur.first);
+			if (pos == b.regions.end()) return false;
+			if (!cur.second->isSubRegion(*pos->second)) return false;
+		}
+
+		// done
+		return true;
 	}
 
 	bool isDisjoint(const DataItemRegions& a, const DataItemRegions& b) {

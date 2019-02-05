@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <ostream>
 #include <unordered_map>
 #include <memory>
@@ -140,6 +141,8 @@ namespace data {
 
 			// provide clone support
 			virtual std::unique_ptr<RegionsBase> clone() const=0;
+
+			virtual bool isSubRegion(const RegionsBase& other) const=0;
 
 			virtual std::unique_ptr<RegionsBase> merge(const RegionsBase& other) const =0;
 
@@ -288,6 +291,51 @@ namespace data {
 					std::type_index(typeid(DataItem)),
 					std::make_unique<Regions>(in.read<regions_list_type>())
 				);
+			}
+
+			virtual bool isSubRegion(const RegionsBase& otherBase) const override {
+				assert_true(dynamic_cast<const Regions*>(&otherBase));
+				const auto& other = static_cast<const Regions&>(otherBase);
+
+				// check identity
+				if (this == &other) return true;
+
+				// start with size
+				if (regions.size() > other.regions.size()) return false;
+
+				// check keys next
+				bool allKeysPresent = std::includes(
+					other.regions.begin(), other.regions.end(),
+					regions.begin(), regions.end(),
+					[](const auto& a, const auto& b) { return a.first < b.first; }
+				);
+				if (!allKeysPresent) return false;
+
+
+				// check individual regions
+				auto ap = regions.begin();
+				auto ae = regions.end();
+				auto bp = other.regions.begin();
+
+				while(ap != ae) {
+
+					// move bp to the position of ap
+					while (bp->first < ap->first) {
+						++bp;
+						assert_true(bp != other.regions.end());
+					}
+
+					// check the actual associated regions
+					if (!region_type::isSubRegion(ap->second,bp->second)) {
+						return false;
+					}
+
+					// go to next
+					++ap; ++bp;
+				}
+
+				// all checks out
+				return true;
 			}
 
 			virtual std::unique_ptr<RegionsBase> merge(const RegionsBase& otherBase) const override {
@@ -483,6 +531,11 @@ namespace data {
 
 
 		// --- set operations ---
+
+		/**
+		 * Computes the set union between a and b of regions.
+		 */
+		friend bool isSubRegion(const DataItemRegions& a, const DataItemRegions& b);
 
 		/**
 		 * Computes the set union between a and b of regions.

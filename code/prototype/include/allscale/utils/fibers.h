@@ -1,16 +1,17 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <set>
 #include <thread>
 #include <ucontext.h>
 #include <unordered_map>
 #include <vector>
-#include <set>
 
 #include <sys/mman.h>
 
@@ -391,8 +392,8 @@ namespace utils {
 
 			using guard = std::lock_guard<spinlock>;
 
-
-			priority_queue_t runable;
+			// work queues of the three priority levels
+			std::array<std::deque<Fiber*>,3> queues;
 
 			mutable spinlock runableLock;
 
@@ -419,7 +420,10 @@ namespace utils {
 				// add fibers to queue of runables
 				guard g(runableLock);
 				for(auto it = begin; it != end; ++it) {
-					runable.push(*it);
+
+					// insert in queue of corresponding priority
+					queues[int((*it)->priority)].push_back(*it);
+
 				}
 
 				// wake up potential blocked threads waiting for tasks
@@ -430,31 +434,50 @@ namespace utils {
 				}
 			}
 
+		private:
+
+			bool empty() const {
+				// unprotected -- lock has to be acquired by caller
+				return queues[0].empty() && queues[1].empty() && queues[2].empty();
+			}
+
+		public:
+
 			Fiber* top(bool blocking, const std::chrono::milliseconds& maxBlockingTime) {
 
 				guard g(runableLock);
 
 				// handle empty queue
-				if (runable.empty()) {
+				if (empty()) {
 
 					// return if no wait is requested ..
 					if (!blocking) return nullptr;
 
 					// wait for entry to show up ..
 					auto start = clock::now();
-					con_var.wait_for(runableLock, maxBlockingTime, [&]{ return !runable.empty(); });
+					con_var.wait_for(runableLock, maxBlockingTime, [&]{ return !empty(); });
 					auto end = clock::now();
 					total_idle_time += end - start;
 				}
 
-				// check if there is something to do
-				if (runable.empty()) return nullptr;
+				// check queues in priority order
+				for(const auto& p : { Priority::HIGH, Priority::MEDIUM, Priority::LOW }) {
 
-				// take fiber with highest priority
-				auto fiber = runable.top();
-				runable.pop();
-				return fiber;
+					// get the current queue
+					auto& queue = queues[int(p)];
 
+					// if there is nothing => skip
+					if (queue.empty()) continue;
+
+					// if there is something, take this one
+					auto fiber = queue.front();
+					queue.pop_front();
+
+					return fiber;
+				}
+
+				// nothing found
+				return nullptr;
 			}
 
 			void unblockAll() {
@@ -463,7 +486,9 @@ namespace utils {
 
 			void suspend(Fiber& fiber) {
 				guard g(runableLock);
-				runable.push(&fiber);
+
+				queues[int(fiber.priority)].push_back(&fiber);
+
 				con_var.notify_one();
 				fiber.suspend(runableLock);
 			}

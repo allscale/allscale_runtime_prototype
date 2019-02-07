@@ -747,10 +747,10 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
     double var_7 = 1.6726217770000001E-27;
     std::cout << "Approximating particle distribution ...\n";
     int64_t var_8 = var_0.size.x * var_0.size.y * var_0.size.z;
-    std::vector<float, std::allocator<float > > var_9{((uint64_t)var_8), (std::allocator<float >{})};
+    std::vector<uint64_t, std::allocator<uint64_t > > var_9{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     std::vector<uint64_t, std::allocator<uint64_t > > var_10{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     int64_t var_11 = var_8 * (int64_t)100;
-    float var_12 = (float)pos / (float)var_11;
+    uint64_t var_12 = pos / var_11;
     IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand_ var_13 = (IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand_&&)INS_INIT(IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand_){(allscale::utils::Vector<long, 3 > const&)var_3};
     {
         {
@@ -791,8 +791,11 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
         };
         int64_t var_22 = (int64_t)(pos - var_16);
         if (var_22 != (int64_t)0) {
-            int32_t var_23 = (int32_t)(var_22 < (int64_t)0 ? 0l - ((0l - var_22) / var_8 + (int64_t)1) : var_22 / var_8 + (int64_t)1);
-            uint64_t var_24 = (uint64_t)std::abs(var_22);
+        	var_16 = (uint64_t)0;
+        	var_17 = (uint64_t)0;
+        	var_18 = std::numeric_limits<unsigned long>::max();
+        	int all_correct = var_22 / var_8;
+			int remain_correct = var_22 % var_8;
             {
                 int32_t var_25 = 0;
                 while ((int64_t)var_25 < var_0.size.x) {
@@ -802,13 +805,15 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
                             {
                                 for (int32_t var_27 = 0, _end = (int32_t)var_0.size.z; var_27 < _end; ++var_27) {
                                     {
-                                        uint64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
-                                        if (var_28 < var_24) {
-                                            var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})) += (uint64_t)var_23;
-                                            var_16 += (uint64_t)var_23;
-                                            var_17 = std::max(var_17, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                            var_18 = std::min(var_18, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                        };
+                                    	int64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
+                                    	auto& cur = var_10.operator[](var_28);
+                                    	cur += all_correct;
+                                    	if (var_28 < remain_correct) {
+                                    		cur += 1;
+                                    	}
+                                    	var_16 += cur;
+                                    	var_17 = std::max(var_17,cur);
+                                    	var_18 = std::min(var_18,cur);
                                     };
                                 };
                             };
@@ -1325,6 +1330,7 @@ int32_t IMP_ipic3d_colon__colon_processUniverse(IMP_ipic3d_colon__colon_Universe
     if (var_4) {
         IMP_ipic3d_colon__colon_outputParticlePositions(var_0.cells, std::__cxx11::basic_string<char, std::char_traits<char >, std::allocator<char > >{"t_begin.txt", std::allocator<char >{}});
     };
+    var_2 = 50;
     IMP_allscale_colon__colon_utils_colon__colon__operator_lshift_(std::cout << "Running simulation on ", var_0.properties.size) << " grid ..." << &std::endl;
     std::cout << "Warming up for " << var_3 << " timesteps ..." << &std::endl;
     IMP_ipic3d_colon__colon_simulateSteps_struct_space_ipic3d_colon__colon_detail_colon__colon_default_particle_to_field_projector_struct_space_ipic3d_colon__colon_detail_colon__colon_default_field_solver_struct_space_ipic3d_colon__colon_detail_colon__colon_default_particle_mover_returns_struct_space_ipic3d_colon__colon_DurationMeasurement(var_3, var_0);
@@ -1521,10 +1527,10 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
     double var_7 = 1.6726217770000001E-27;
     std::cout << "Approximating particle distribution ...\n";
     int64_t var_8 = var_0.size.x * var_0.size.y * var_0.size.z;
-    std::vector<float, std::allocator<float > > var_9{((uint64_t)var_8), (std::allocator<float >{})};
+    std::vector<uint64_t, std::allocator<uint64_t > > var_9{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     std::vector<uint64_t, std::allocator<uint64_t > > var_10{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     int64_t var_11 = var_8 * (int64_t)100;
-    float var_12 = (float)pos / (float)var_11;
+    uint64_t var_12 = pos / var_11;
     IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance1 var_13 = (IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance1&&)INS_INIT(IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance1){(allscale::utils::Vector<long, 3 > const&)var_3};
     {
         {
@@ -1565,33 +1571,38 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
         };
         int64_t var_22 = (int64_t)(pos - var_16);
         if (var_22 != (int64_t)0) {
-            int32_t var_23 = (int32_t)(var_22 < (int64_t)0 ? 0l - ((0l - var_22) / var_8 + (int64_t)1) : var_22 / var_8 + (int64_t)1);
-            uint64_t var_24 = (uint64_t)std::abs(var_22);
-            {
-                int32_t var_25 = 0;
-                while ((int64_t)var_25 < var_0.size.x) {
-                    {
-                        int32_t var_26 = 0;
-                        while ((int64_t)var_26 < var_0.size.y) {
-                            {
-                                for (int32_t var_27 = 0, _end = (int32_t)var_0.size.z; var_27 < _end; ++var_27) {
-                                    {
-                                        uint64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
-                                        if (var_28 < var_24) {
-                                            var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})) += (uint64_t)var_23;
-                                            var_16 += (uint64_t)var_23;
-                                            var_17 = std::max(var_17, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                            var_18 = std::min(var_18, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                        };
-                                    };
-                                };
-                            };
-                            ++var_26;
-                        };
-                    };
-                    ++var_25;
-                };
-            };
+        	var_16 = (uint64_t)0;
+			var_17 = (uint64_t)0;
+			var_18 = std::numeric_limits<unsigned long>::max();
+			int all_correct = var_22 / var_8;
+			int remain_correct = var_22 % var_8;
+			{
+				int32_t var_25 = 0;
+				while ((int64_t)var_25 < var_0.size.x) {
+					{
+						int32_t var_26 = 0;
+						while ((int64_t)var_26 < var_0.size.y) {
+							{
+								for (int32_t var_27 = 0, _end = (int32_t)var_0.size.z; var_27 < _end; ++var_27) {
+									{
+										int64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
+										auto& cur = var_10.operator[](var_28);
+										cur += all_correct;
+										if (var_28 < remain_correct) {
+											cur += 1;
+										}
+										var_16 += cur;
+										var_17 = std::max(var_17,cur);
+										var_18 = std::min(var_18,cur);
+									};
+								};
+							};
+							++var_26;
+						};
+					};
+					++var_25;
+				};
+			};
         };
         if ((bool)false) {
             std::cerr << "";
@@ -2166,10 +2177,10 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
     double var_7 = 1.6726217770000001E-27;
     std::cout << "Approximating particle distribution ...\n";
     int64_t var_8 = var_0.size.x * var_0.size.y * var_0.size.z;
-    std::vector<float, std::allocator<float > > var_9{((uint64_t)var_8), (std::allocator<float >{})};
+    std::vector<uint64_t, std::allocator<uint64_t > > var_9{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     std::vector<uint64_t, std::allocator<uint64_t > > var_10{((uint64_t)var_8), (std::allocator<uint64_t >{})};
     int64_t var_11 = var_8 * (int64_t)100;
-    float var_12 = (float)pos / (float)var_11;
+    uint64_t var_12 = pos / var_11;
     IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance2 var_13 = (IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance2&&)INS_INIT(IMP__Insieme__lambda__slash_home_slash_herbert_slash_coding_slash_c_plus__plus__slash_allscale_ipic3d_slash_code_slash_app_slash_include_slash_ipic3d_slash_app_slash_cell_dot_h_521_18_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__long_const_space_allscale_colon__colon_utils_colon__colon_Vector_lt_long_comma__space_3_gt__space__ampersand__instance2){(allscale::utils::Vector<long, 3 > const&)var_3};
     {
         {
@@ -2210,33 +2221,38 @@ allscale::runtime::DataItemReference<allscale::api::user::data::Grid<IMP_ipic3d_
         };
         int64_t var_22 = (int64_t)(pos - var_16);
         if (var_22 != (int64_t)0) {
-            int32_t var_23 = (int32_t)(var_22 < (int64_t)0 ? 0l - ((0l - var_22) / var_8 + (int64_t)1) : var_22 / var_8 + (int64_t)1);
-            uint64_t var_24 = (uint64_t)std::abs(var_22);
-            {
-                int32_t var_25 = 0;
-                while ((int64_t)var_25 < var_0.size.x) {
-                    {
-                        int32_t var_26 = 0;
-                        while ((int64_t)var_26 < var_0.size.y) {
-                            {
-                                for (int32_t var_27 = 0, _end = (int32_t)var_0.size.z; var_27 < _end; ++var_27) {
-                                    {
-                                        uint64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
-                                        if (var_28 < var_24) {
-                                            var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})) += (uint64_t)var_23;
-                                            var_16 += (uint64_t)var_23;
-                                            var_17 = std::max(var_17, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                            var_18 = std::min(var_18, var_10.operator[]((uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27})));
-                                        };
-                                    };
-                                };
-                            };
-                            ++var_26;
-                        };
-                    };
-                    ++var_25;
-                };
-            };
+        	var_16 = (uint64_t)0;
+			var_17 = (uint64_t)0;
+			var_18 = std::numeric_limits<unsigned long>::max();
+			int all_correct = var_22 / var_8;
+			int remain_correct = var_22 % var_8;
+			{
+				int32_t var_25 = 0;
+				while ((int64_t)var_25 < var_0.size.x) {
+					{
+						int32_t var_26 = 0;
+						while ((int64_t)var_26 < var_0.size.y) {
+							{
+								for (int32_t var_27 = 0, _end = (int32_t)var_0.size.z; var_27 < _end; ++var_27) {
+									{
+										int64_t var_28 = (uint64_t)var_13.operator()(allscale::utils::Vector<long, 3 >{(int64_t)var_25, (int64_t)var_26, (int64_t)var_27});
+										auto& cur = var_10.operator[](var_28);
+										cur += all_correct;
+										if (var_28 < remain_correct) {
+											cur += 1;
+										}
+										var_16 += cur;
+										var_17 = std::max(var_17,cur);
+										var_18 = std::min(var_18,cur);
+									};
+								};
+							};
+							++var_26;
+						};
+					};
+					++var_25;
+				};
+			};
         };
         if ((bool)false) {
             std::cerr << "";

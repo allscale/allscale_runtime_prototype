@@ -9,6 +9,7 @@
 #include "allscale/runtime/work/treeture.h"
 #include "allscale/runtime/work/worker.h"
 #include "allscale/runtime/mon/dashboard.h"
+#include "allscale/runtime/mon/file_logger.h"
 
 namespace allscale {
 namespace runtime {
@@ -30,6 +31,9 @@ namespace runtime {
 		// install dashboard service
 		mon::installDashbordService(network);
 
+		// install file logger service
+		mon::installFileLoggerService(network);
+
 		// install and start workers in nodes
 		work::startWorkerPool(network);
 
@@ -47,6 +51,9 @@ namespace runtime {
 
 		// wait until all periodic executor are down
 		network.sync();
+
+		// shutdown file logger service
+		mon::shutdownFileLoggerService(network);
 
 		// shutdown dashboard service
 		mon::shutdownDashbordService(network);

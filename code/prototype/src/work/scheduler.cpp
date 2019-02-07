@@ -448,7 +448,7 @@ namespace work {
 				// start periodic balancing
 				node.getLocalService<utils::PeriodicExecutorService>().runPeriodically(
 						[&]{ run(); return true; },
-						std::chrono::seconds(15)
+						std::chrono::seconds(5)
 				);
 			}
 

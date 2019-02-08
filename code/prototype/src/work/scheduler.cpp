@@ -326,11 +326,88 @@ namespace work {
 
 		};
 
+		namespace {
+
+			/**
+			 * A utility to stall the creation of tasks. In the case of
+			 * fine-grained dependencies, lots of tasks are created at the start
+			 * of a program, and distributed throughout the network. All their
+			 * dependencies are then used for proper synchronization.
+			 *
+			 * However, this causes two problems: (a) a large number of tasks is
+			 * flooding the system and (b) changes in the scheduling decision
+			 * made after the initial creation will not be effective any more.
+			 *
+			 * To this end, this utility is stalling the creation of tasks by
+			 * only allowing a given number of (root) tasks to be alive at the
+			 * same time.
+			 */
+			class TaskStaller {
+
+				using lock_t = allscale::utils::spinlock;
+				using guard = std::lock_guard<lock_t>;
+
+				// the maximum number of tasks allowed to be alive
+				const int limit;
+
+				// the current number of active tasks
+				int count;
+
+				// lock for internal synchronization
+				lock_t lock;
+
+				// a condition variable to synchronize operations
+				allscale::utils::fiber::ConditionalVariable con_var;
+
+			public:
+
+				TaskStaller(int limit)
+					: limit(limit), count(0) {
+					assert_gt(limit,0);
+				}
+
+				void process(const TaskPtr& task) {
+
+					// only interested in top-level task
+					if (!task->getId().getPath().isRoot()) return;
+
+					// wait until there is space to run the next task
+					{
+						guard g(lock);
+						count++;
+						while(count > limit) {
+							con_var.wait(lock);
+						}
+					}
+
+					// wait for completion of this task and reduce counter
+					TaskRef ref = task->getTaskRef();
+					com::Node::getLocalNode().getFiberContext().start([ref,this]{
+
+						// wait for task to complete
+						com::Node::getLocalService<work::TreetureStateService>().wait(ref);
+
+						// signal completion
+						guard g(lock);
+						count--;
+						con_var.notifyOne();
+					});
+
+				}
+
+			};
+
+		}
+
 
 		// schedules a task based on its write-set requirements, spreads evenly in case of multiple options
 		void schedule(TaskPtr&& task) {
+			static TaskStaller staller(5);
 
 			auto& service = com::HierarchicalOverlayNetwork::getLocalService<ScheduleService>();
+
+			// stall task creation to allow balancer to influence chains of fine grained tasks
+			staller.process(task);
 
 			// if the given task is already bound to local resource acquisition, schedule local
 			if (task->getRequirementCollector()) {

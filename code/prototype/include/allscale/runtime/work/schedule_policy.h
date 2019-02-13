@@ -300,7 +300,7 @@ namespace work {
 		/**
 		 * Estimates the target location a task with the given task path should be located at.
 		 */
-		com::rank_t estimateTargetLocation(const TaskPath& path) const;
+		com::rank_t estimateTargetLocation(const TaskPath& path) const override;
 
 		/**
 		 * Decides whether the given task should be split or not.

@@ -75,6 +75,9 @@ namespace work {
 			// lazy-generated events used to sync on sub-treetures
 			std::unordered_map<TaskPath,allscale::utils::fiber::EventId> events;
 
+			// to be marked once task is finished
+			bool finished = false;
+
 		public:
 
 			TreetureStateServiceBase(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
@@ -85,6 +88,10 @@ namespace work {
 
 			virtual void taskFinished() {
 				guard g(lock);
+
+				// update task finished flag
+				finished = true;
+
 				// trigger all remaining events
 				for(auto& cur : events) {
 					eventRegister.trigger(cur.second);
@@ -97,7 +104,7 @@ namespace work {
 				guard g(lock);
 
 				// test whether the task has completed by now
-				if (isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
+				if (finished || isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
 
 				// test whether there is already a event waiting for this task
 				auto pos = events.find(path);

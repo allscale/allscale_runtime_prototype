@@ -363,6 +363,8 @@ namespace data {
 
 				while(true) {
 
+					if (bp == be) break;
+
 					// move a while key is less than b's
 					while(ap != ae && ap->first < bp->first) {
 						++ap;

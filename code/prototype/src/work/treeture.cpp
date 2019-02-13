@@ -49,8 +49,7 @@ namespace work {
 			}
 
 			assert_true(pos != states.end());
-			assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-			syncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
+			syncEvent = pos->second->getSyncEvent(id.getPath());
 		}
 
 		// see that processed fiber is on same event register as this treeture state service
@@ -67,8 +66,7 @@ namespace work {
 			guard g(lock);
 			auto pos = states.find(id.getRootID());
 			assert_false(pos == states.end());
-			assert_true(dynamic_cast<detail::TreetureStateService<void>*>(pos->second.get()));
-			auto newSyncEvent = static_cast<detail::TreetureStateService<void>&>(*pos->second).getEvent(id.getPath());
+			auto newSyncEvent = pos->second->getSyncEvent(id.getPath());
 			assert_eq(newSyncEvent, allscale::utils::fiber::EVENT_IGNORE)
 				<< "Task: " << id << "\n"
 				<< "Events: " << syncEvent << " vs " << newSyncEvent << "\n";

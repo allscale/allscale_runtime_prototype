@@ -65,15 +65,6 @@ namespace work {
 
 
 		class TreetureStateServiceBase {
-		public:
-
-			virtual ~TreetureStateServiceBase() {}
-
-			virtual void taskFinished() = 0;
-		};
-
-		template<typename R>
-		class TreetureStateService : public TreetureStateServiceBase {
 
 			mutable allscale::utils::spinlock lock;
 
@@ -81,36 +72,24 @@ namespace work {
 
 			allscale::utils::fiber::EventRegister& eventRegister;
 
-			// the list of completed tasks and their results
-			std::unordered_map<TaskPath,R> results;
-
 			// lazy-generated events used to sync on sub-treetures
 			std::unordered_map<TaskPath,allscale::utils::fiber::EventId> events;
 
 		public:
 
-			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
+			TreetureStateServiceBase(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
 
-			void setResult(const TaskPath& path, R&& value) {
+			virtual ~TreetureStateServiceBase() {}
 
+			virtual bool isDone(const TaskPath&) const =0;
+
+			virtual void taskFinished() {
 				guard g(lock);
-
-				// the task must not be done yet (can only trigger once)
-				assert_false(isDone(path));
-
-				// record the result
-				results.emplace( path, std::move(value) );
-
-				// trigger potential registered events of this task or sub-tasks
-				for(auto it = events.begin(), last = events.end(); it != last;) {
-					if (isSubPath(path,it->first)) {
-						eventRegister.trigger(it->second);
-						it = events.erase(it);
-					} else {
-						++it;
-					}
+				// trigger all remaining events
+				for(auto& cur : events) {
+					eventRegister.trigger(cur.second);
 				}
-
+				events.clear();
 			}
 
 			allscale::utils::fiber::EventId getSyncEvent(const TaskPath& path) {
@@ -128,6 +107,56 @@ namespace work {
 				return events[path] = eventRegister.create();
 			}
 
+		protected:
+
+			void signalDone(const TaskPath& path) {
+				guard g(lock);
+				// trigger potential registered events of this task or sub-tasks
+				for(auto it = events.begin(), last = events.end(); it != last;) {
+					if (isSubPath(path,it->first)) {
+						eventRegister.trigger(it->second);
+						it = events.erase(it);
+					} else {
+						++it;
+					}
+				}
+			}
+
+			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
+				return parent == child || parent.isPrefixOf(child);
+			}
+
+		};
+
+		template<typename R>
+		class TreetureStateService : public TreetureStateServiceBase {
+
+			mutable allscale::utils::spinlock lock;
+
+			using guard = std::lock_guard<allscale::utils::spinlock>;
+
+			// the list of completed tasks and their results
+			std::unordered_map<TaskPath,R> results;
+
+		public:
+
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : TreetureStateServiceBase(reg) {}
+
+			void setResult(const TaskPath& path, R&& value) {
+
+				guard g(lock);
+
+				// the task must not be done yet (can only trigger once)
+				assert_false(isDone(path));
+
+				// record the result
+				results.emplace( path, std::move(value) );
+
+				// trigger potential registered events of this task or sub-tasks
+				signalDone(path);
+
+			}
+
 			R getResult(const TaskPath& path) {
 				guard g(lock);
 				auto pos = results.find(path);
@@ -137,22 +166,7 @@ namespace work {
 				return std::move(res);
 			}
 
-			void taskFinished() override {
-				guard g(lock);
-				// trigger all remaining events
-				for(auto& cur : events) {
-					eventRegister.trigger(cur.second);
-				}
-				events.clear();
-			}
-
-		private:
-
-			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
-				return parent == child || parent.isPrefixOf(child);
-			}
-
-			bool isDone(const TaskPath& path) const {
+			bool isDone(const TaskPath& path) const override {
 				return results.find(path) != results.end();
 			}
 
@@ -165,17 +179,12 @@ namespace work {
 
 			using guard = std::lock_guard<allscale::utils::spinlock>;
 
-			allscale::utils::fiber::EventRegister& eventRegister;
-
 			// the list of completed tasks
 			std::vector<TaskPath> completedTasks;
 
-			// lazy-generated events used to sync on sub-treetures
-			std::unordered_map<TaskPath,allscale::utils::fiber::EventId> events;
-
 		public:
 
-			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : eventRegister(reg) {}
+			TreetureStateService(allscale::utils::fiber::EventRegister& reg) : TreetureStateServiceBase(reg) {}
 
 
 			void setDone(const TaskPath& path) {
@@ -189,31 +198,15 @@ namespace work {
 				markDone(path);
 
 				// trigger potential registered events of this task or sub-tasks
-				for(auto it = events.begin(), last = events.end(); it != last;) {
-					if (isSubPath(path,it->first)) {
-						eventRegister.trigger(it->second);
-						it = events.erase(it);
-					} else {
-						++it;
-					}
-				}
-
+				signalDone(path);
 			}
 
-
-			allscale::utils::fiber::EventId getEvent(const TaskPath& path) {
-
-				guard g(lock);
-
-				// test whether the task has completed by now
-				if (isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
-
-				// test whether there is already a event waiting for this task
-				auto pos = events.find(path);
-				if (pos != events.end()) return pos->second;
-
-				// register a new event
-				return events[path] = eventRegister.create();
+			bool isDone(const TaskPath& path) const override {
+				// see whether this path or a parent path is done
+				for(const auto& cur : completedTasks) {
+					if (isSubPath(cur,path)) return true;
+				}
+				return false;
 			}
 
 			void taskFinished() override {
@@ -223,25 +216,10 @@ namespace work {
 				markAllDone();
 
 				// trigger all remaining events
-				for(auto& cur : events) {
-					eventRegister.trigger(cur.second);
-				}
-				events.clear();
+				TreetureStateServiceBase::taskFinished();
 			}
 
 		private:
-
-			static bool isSubPath(const TaskPath& parent, const TaskPath& child) {
-				return parent == child || parent.isPrefixOf(child);
-			}
-
-			bool isDone(const TaskPath& path) const {
-				// see whether this path or a parent path is done
-				for(const auto& cur : completedTasks) {
-					if (isSubPath(cur,path)) return true;
-				}
-				return false;
-			}
 
 			void markDone(const TaskPath& path) {
 

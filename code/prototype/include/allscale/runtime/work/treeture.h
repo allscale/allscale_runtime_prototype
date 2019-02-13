@@ -66,7 +66,7 @@ namespace work {
 
 		class TreetureStateServiceBase {
 
-			mutable allscale::utils::spinlock lock;
+			mutable allscale::utils::spinlock event_lock;
 
 			using guard = std::lock_guard<allscale::utils::spinlock>;
 
@@ -87,7 +87,7 @@ namespace work {
 			virtual bool isDone(const TaskPath&) const =0;
 
 			virtual void taskFinished() {
-				guard g(lock);
+				guard g(event_lock);
 
 				// update task finished flag
 				finished = true;
@@ -101,7 +101,7 @@ namespace work {
 
 			allscale::utils::fiber::EventId getSyncEvent(const TaskPath& path) {
 
-				guard g(lock);
+				guard g(event_lock);
 
 				// test whether the task has completed by now
 				if (finished || isDone(path)) return allscale::utils::fiber::EVENT_IGNORE;
@@ -117,7 +117,7 @@ namespace work {
 		protected:
 
 			void signalDone(const TaskPath& path) {
-				guard g(lock);
+				guard g(event_lock);
 				// trigger potential registered events of this task or sub-tasks
 				for(auto it = events.begin(), last = events.end(); it != last;) {
 					if (isSubPath(path,it->first)) {
@@ -151,13 +151,15 @@ namespace work {
 
 			void setResult(const TaskPath& path, R&& value) {
 
-				guard g(lock);
+				{
+					guard g(lock);
 
-				// the task must not be done yet (can only trigger once)
-				assert_false(isDoneInternal(path));
+					// the task must not be done yet (can only trigger once)
+					assert_false(isDoneInternal(path));
 
-				// record the result
-				results.emplace( path, std::move(value) );
+					// record the result
+					results.emplace( path, std::move(value) );
+				}
 
 				// trigger potential registered events of this task or sub-tasks
 				signalDone(path);
@@ -203,13 +205,15 @@ namespace work {
 
 			void setDone(const TaskPath& path) {
 
-				guard g(lock);
+				{
+					guard g(lock);
 
-				// the event must not be done yet
-				assert_false(isDoneInternal(path)) << "Path " << path << " already done.\nCompleted: " << completedTasks << "\n";
+					// the event must not be done yet
+					assert_false(isDoneInternal(path)) << "Path " << path << " already done.\nCompleted: " << completedTasks << "\n";
 
-				// mark as completed
-				markDone(path);
+					// mark as completed
+					markDone(path);
+				}
 
 				// trigger potential registered events of this task or sub-tasks
 				signalDone(path);
@@ -221,10 +225,12 @@ namespace work {
 			}
 
 			void taskFinished() override {
-				guard g(lock);
+				{
+					guard g(lock);
 
-				// mark all task as done
-				markAllDone();
+					// mark all task as done
+					markAllDone();
+				}
 
 				// trigger all remaining events
 				TreetureStateServiceBase::taskFinished();

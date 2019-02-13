@@ -147,7 +147,7 @@ namespace work {
 				guard g(lock);
 
 				// the task must not be done yet (can only trigger once)
-				assert_false(isDone(path));
+				assert_false(isDoneInternal(path));
 
 				// record the result
 				results.emplace( path, std::move(value) );
@@ -167,6 +167,13 @@ namespace work {
 			}
 
 			bool isDone(const TaskPath& path) const override {
+				guard g(lock);
+				return isDoneInternal(path);
+			}
+
+		private:
+
+			bool isDoneInternal(const TaskPath& path) const {
 				return results.find(path) != results.end();
 			}
 
@@ -192,7 +199,7 @@ namespace work {
 				guard g(lock);
 
 				// the event must not be done yet
-				assert_false(isDone(path)) << "Path " << path << " already done.\nCompleted: " << completedTasks << "\n";
+				assert_false(isDoneInternal(path)) << "Path " << path << " already done.\nCompleted: " << completedTasks << "\n";
 
 				// mark as completed
 				markDone(path);
@@ -202,11 +209,8 @@ namespace work {
 			}
 
 			bool isDone(const TaskPath& path) const override {
-				// see whether this path or a parent path is done
-				for(const auto& cur : completedTasks) {
-					if (isSubPath(cur,path)) return true;
-				}
-				return false;
+				guard g(lock);
+				return isDoneInternal(path);
 			}
 
 			void taskFinished() override {
@@ -220,6 +224,14 @@ namespace work {
 			}
 
 		private:
+
+			bool isDoneInternal(const TaskPath& path) const {
+				// see whether this path or a parent path is done
+				for(const auto& cur : completedTasks) {
+					if (isSubPath(cur,path)) return true;
+				}
+				return false;
+			}
 
 			void markDone(const TaskPath& path) {
 

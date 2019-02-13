@@ -85,7 +85,7 @@ namespace work {
 			res = promise.get_future();
 			promise.set_value(wait(ref)); // < this may block
 		});
-		return std::move(res);
+		return res;
 	}
 
 	void TreetureStateService::taskFinished(const TaskID& id) {

@@ -141,10 +141,7 @@ namespace com {
 		/**
 		 * Obtains a reference to the local node instance.
 		 */
-		static Node& getLocalNode() {
-			assert_true(getLocalNodeInternal()) << "Not processed within a node!";
-			return *getLocalNodeInternal();
-		}
+		static Node& getLocalNode();
 
 		/**
 		 * Obtains the fiber context active within this node.

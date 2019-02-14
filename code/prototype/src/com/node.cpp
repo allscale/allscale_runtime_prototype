@@ -13,6 +13,15 @@ namespace com {
 
 	static thread_local Node* tl_current_node = nullptr;
 
+	Node& Node::getLocalNode() {
+		#ifdef ENABLE_MPI
+			return com::Network::getLocalNode();
+		#else
+			assert_true(getLocalNodeInternal()) << "Not processed within a node!";
+			return *getLocalNodeInternal();
+		#endif
+	}
+
 	__attribute__ ((noinline))
 	Node* Node::getLocalNodeInternal() {
 		return tl_current_node;

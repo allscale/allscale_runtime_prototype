@@ -42,7 +42,7 @@ namespace work {
 		if (!dependencies && !requirements) return;
 
 		// start fiber retrieving data in fiber
-		fiberContext.start([&]{
+		fiberContext.start([this]{
 
 			// retrieve the event register to signal events
 			auto& eventReg = node.getFiberContext().getEventRegister();
@@ -94,6 +94,10 @@ namespace work {
 		return;
 	}
 
+	void TaskRequirementsCollector::wait() const {
+		fi::suspend(dependenciesDone);
+		fi::suspend(requirementsDone);
+	}
 
 
 } // end of namespace work

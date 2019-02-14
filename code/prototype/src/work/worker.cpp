@@ -154,6 +154,9 @@ namespace work {
 			// increment split counter
 			splitCounter++;
 
+			// make sure collector is done
+			collector.wait();
+
 		} else {
 
 			using clock = std::chrono::high_resolution_clock;

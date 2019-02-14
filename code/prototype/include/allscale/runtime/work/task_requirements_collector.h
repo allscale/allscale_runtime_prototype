@@ -66,6 +66,10 @@ namespace work {
 		 */
 		void waitFor(const data::DataItemRequirements& reqs) const;
 
+		/**
+		 * Waits for the collection to be completed.
+		 */
+		void wait() const;
 	};
 
 } // end of namespace work

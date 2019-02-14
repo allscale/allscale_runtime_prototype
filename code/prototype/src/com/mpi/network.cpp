@@ -447,12 +447,10 @@ namespace mpi {
 		auto& node = *localNode;
 		DEBUG_MPI_NETWORK << "Starting up request server on node " << node.getRank() << "\n";
 
-		node.run([&](Node&){
-			while(alive) {
-				// try processing some request
-				processMessageBlocking();
-			}
-		});
+		while(alive) {
+			// try processing some request
+			processMessageBlocking();
+		}
 
 		DEBUG_MPI_NETWORK << "Shutting down request server on node " << node.getRank() << "\n";
 	}

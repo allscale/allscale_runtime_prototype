@@ -269,9 +269,7 @@ namespace work {
 			auto worker = tl_current_worker ? tl_current_worker : workers[0].get();
 
 			assert_true(worker);
-			node->run([&](com::Node&){
-				worker->process(t);
-			});
+			worker->process(t);
 
 		}, allscale::utils::fiber::Priority::MEDIUM, taskEventHandler);
 

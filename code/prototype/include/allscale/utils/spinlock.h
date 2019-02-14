@@ -16,7 +16,7 @@ namespace utils {
 
 	public:
 
-		spinlock() : state(ATOMIC_FLAG_INIT) {}
+		spinlock() { state.clear(); }
 
 		void lock() {
 			// spin until acquired

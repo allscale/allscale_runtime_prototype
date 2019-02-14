@@ -609,6 +609,9 @@ namespace work {
 				auto curTime = now();
 				auto curTimes = node.getService<work::WorkerPool>().getTaskTimeSummary();
 
+				// if there has been no time since last, return nothing
+				if (curTime == lastTaskTimesSampleTime) return {};
+
 				// normalize to one second
 				auto interval = std::chrono::duration_cast<std::chrono::duration<float>>(curTime - lastTaskTimesSampleTime);
 				auto res = (curTimes - lastTaskTimes) / interval.count();

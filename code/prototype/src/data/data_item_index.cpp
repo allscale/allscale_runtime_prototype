@@ -448,11 +448,6 @@ namespace data {
 
 		if (DEBUG) std::cout << myAddress << ": Resolve location " << id << " - left and right done\n";
 
-		// check that all data could be retrieved
-		if (!isRoot) {
-			assert_eq(regions,res.getCoveredRegions());
-		}
-
 		if (DEBUG) std::cout << myAddress << ": Resolve location - inner done\n";
 
 		// done

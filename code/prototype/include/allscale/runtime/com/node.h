@@ -119,20 +119,28 @@ namespace com {
 		 */
 		template<typename Op>
 		auto run(const Op& op) -> decltype(op(*this)) {
-			// fix the local node
-			auto old = getLocalNodeInternal();
-			setLocalNode(this);
 
-			// ensure recovery after execution
-			auto _ = allscale::utils::run_finally([&]{
-				// make sure the local node is still the same
-				assert_eq(getLocalNodeInternal(),this);
-				// reset to old one
-				setLocalNode(old);
-			});
+			#ifdef ENABLE_MPI
+				// in MPI nothing special is required
+				return op(*this);
+			#else
 
-			// run this operation on this node
-			return op(*this);
+				// fix the local node
+				auto old = getLocalNodeInternal();
+				setLocalNode(this);
+
+				// ensure recovery after execution
+				auto _ = allscale::utils::run_finally([&]{
+					// make sure the local node is still the same
+					assert_eq(getLocalNodeInternal(),this);
+					// reset to old one
+					setLocalNode(old);
+				});
+
+				// run this operation on this node
+				return op(*this);
+
+			#endif
 		}
 
 

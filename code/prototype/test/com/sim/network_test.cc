@@ -66,6 +66,11 @@ namespace sim {
 
 	TEST(Network, Stats) {
 
+		// this test only works in a non-MPI setup
+		#ifdef ENABLE_MPI
+				return;
+		#endif
+
 		// create a network with a two nodes
 		Network net(2);
 		EXPECT_EQ(2,net.numNodes());

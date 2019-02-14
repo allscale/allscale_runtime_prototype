@@ -86,15 +86,15 @@ namespace data {
 
 		// todo: release access locks
 
-		// for now: check that data is still owned
-		assert_decl({
-			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
-			assert_pred2(
-				data::isSubRegion,
-				reqs.getWriteRequirements(),
-				exclusiveRegions
-			);
-		});
+//		// for now: check that data is still owned
+//		assert_decl({
+//			allscale::utils::fiber::ReadGuard g(exclusiveRegionsLock);
+//			assert_pred2(
+//				data::isSubRegion,
+//				reqs.getWriteRequirements(),
+//				exclusiveRegions
+//			);
+//		});
 
 		// also check read requirements
 //		assert_pred2(

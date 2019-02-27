@@ -229,7 +229,7 @@ namespace sim {
 				auto& eventReg = fiber->ctxt.getEventRegister();
 				EventId doneEvent = eventReg.create();		// < the event signaling the completion of the remote execution
 
-				R result;
+				allscale::utils::optional<R> result;
 
 				node.run([&](Node& node){
 
@@ -245,7 +245,8 @@ namespace sim {
 				});
 
 				suspend(doneEvent, allscale::utils::fiber::Priority::HIGH);
-				return result;
+				assert_true(bool(result));
+				return std::move(*result);
 			}
 
 		};
@@ -392,7 +393,7 @@ namespace sim {
 				auto& eventReg = fiber->ctxt.getEventRegister();
 				EventId doneEvent = eventReg.create();		// < the event signaling the completion of the remote execution
 
-				R result;
+				allscale::utils::optional<R> result;
 
 				node.run([&](Node& node){
 
@@ -408,7 +409,7 @@ namespace sim {
 				});
 
 				suspend(doneEvent, allscale::utils::fiber::Priority::HIGH);
-				return result;
+				return std::move(*result);
 
 			}
 

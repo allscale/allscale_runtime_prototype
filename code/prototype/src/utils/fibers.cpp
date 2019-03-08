@@ -16,7 +16,6 @@ namespace fiber {
 	__attribute__ ((noinline))
 	Fiber*& getCurrentFiberInfo() {
 		static thread_local Fiber* fiber = nullptr;
-		asm(""); // for the compiler, this changes everything :)
 		return fiber;
 	}
 

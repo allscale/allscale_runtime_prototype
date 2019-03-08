@@ -3132,7 +3132,7 @@ std::vector<std::__cxx11::basic_string<char, std::char_traits<char >, std::alloc
     std::__cxx11::regex_token_iterator<__gnu_cxx::__normal_iterator<const char*, std::__cxx11::basic_string<char, std::char_traits<char >, std::allocator<char > > >, char, std::__cxx11::regex_traits<char > > var_6;
     {
         while (var_5 != var_6) {
-            var_3.push_back(var_5.operator*().operator string_type());
+            var_3.push_back(var_5.operator*());
             var_5.operator++();
         };
     };
